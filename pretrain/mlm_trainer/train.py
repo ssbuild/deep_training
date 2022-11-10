@@ -17,7 +17,7 @@ from train_args import build_args
 class MyTransformer(TransformerForMaskLM):
     def __init__(self,tokenizer,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
-        self.loss_fct = CrossEntropyLoss(reduction='none',ignore_index=tokenizer.pad_token_id)  # -100 index = padding token
+        self.loss_fct = CrossEntropyLoss(reduction='none',ignore_index=tokenizer.pad_token_id)
 
     def _compute_loss(self,y_trues,y_preds,weight):
         y_preds = torch.transpose(y_preds, 1, 2)

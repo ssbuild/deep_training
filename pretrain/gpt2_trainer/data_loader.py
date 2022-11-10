@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/11/4 13:31
-# -*- coding: utf-8 -*-
-# @Time    : 2022/11/4 13:31
 import os
 import json
 import typing
@@ -29,9 +27,10 @@ class Gpt2_DataHelper(DataHelper):
         seqlen = np.asarray(len(input_ids), dtype=np.int64)
         pad_len = max_seq_length - len(input_ids)
         if pad_len > 0:
-            input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(0, 0))
-            attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(0, 0))
-            token_type_ids = np.pad(token_type_ids, (0, pad_len), 'constant', constant_values=(0, 0))
+            pad_val = tokenizer.pad_token_id
+            input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+            attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+            token_type_ids = np.pad(token_type_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
         d = {
             'input_ids': input_ids,
             'attention_mask': attention_mask,

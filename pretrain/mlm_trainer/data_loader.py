@@ -84,5 +84,3 @@ class MLM_DataHelper(DataHelper):
         o['labels'] = o['labels'][:, :max_len]
         o['weight'] = o['weight'][:, :max_len]
         return o
-
-
