@@ -1,0 +1,95 @@
+# @Time    : 2022/11/9 22:55
+# @Author  : tk
+# @FileName: data_func_args.py
+
+import os
+from pytorch_lightning import LightningDataModule
+from .data_helper import DataHelper
+from ..utils.utils_func import is_chinese_char
+from .data_module import load_tokenizer,load_configure
+
+__all__ = [
+    'is_chinese_char',
+    'get_filename_no_ext',
+    'get_filename_replace_dir',
+    'make_all_dataset_with_args',
+    'load_all_dataset_with_args',
+    'DataHelper',
+]
+
+
+def get_filename_no_ext(filename):
+    filename = os.path.basename(filename)
+    pos = filename.rfind('.')
+    if pos >= 0:
+        filename = filename[:pos]
+    return filename
+
+
+def preprocess_args(train_args):
+    if train_args.train_file is not None:
+        train_args.train_file = train_args.train_file.split(',')
+
+    if train_args.eval_file is not None:
+        train_args.eval_file = train_args.eval_file.split(',')
+
+    if train_args.test_file is not None:
+        train_args.test_file = train_args.test_file.split(',')
+
+    return train_args
+
+def get_filename_replace_dir(filename,new_path_dir,ext=None):
+    return os.path.join(new_path_dir,get_filename_no_ext(filename) + '.' + ext)
+
+def load_tokenizer_and_config_with_args(train_args,dataHelper):
+    label2id, id2label = dataHelper.read_labels_from_file(train_args.label_file)
+    tokenizer = load_tokenizer(tokenizer_name=train_args.tokenizer_name,
+                                model_name_or_path=train_args.model_name_or_path,
+                                cache_dir=train_args.cache_dir,
+                                do_lower_case=train_args.do_lower_case,
+                                use_fast_tokenizer=train_args.use_fast_tokenizer,
+                                model_revision=train_args.model_revision,
+                                use_auth_token=train_args.use_auth_token,
+                                label2id=label2id,
+                                id2label=id2label)
+    config = load_configure(config_name=train_args.config_name,
+                            model_name_or_path=train_args.model_name_or_path,
+                            cache_dir=train_args.cache_dir,
+                            model_revision=train_args.model_revision,
+                            use_auth_token=train_args.use_auth_token)
+
+    return  tokenizer,config
+
+def make_all_dataset_with_args(dataHelper,save_fn_args,train_args,intermediate_name,num_process_worker=8):
+    dataHelper: DataHelper
+    train_file, eval_file, test_file = None, None, None
+    if train_args.do_train:
+        train_file = os.path.join(train_args.output_dir,intermediate_name + '-train.' + train_args.data_backend)
+        dataHelper.make_dataset(train_args.train_file,train_file,save_fn_args,num_process_worker=num_process_worker)
+
+    if train_args.do_eval:
+        eval_file = os.path.join(train_args.output_dir,intermediate_name + '-eval.' + train_args.data_backend)
+        dataHelper.make_dataset(train_args.eval_file, eval_file, save_fn_args, num_process_worker=num_process_worker)
+
+    if train_args.do_test:
+        test_file = os.path.join(train_args.output_dir,intermediate_name + '-test.' + train_args.data_backend)
+        dataHelper.make_dataset(train_args.test_file,test_file,save_fn_args,num_process_worker=num_process_worker)
+    return train_file, eval_file, test_file
+
+
+
+def load_all_dataset_with_args(dataHelper,train_args,train_file,eval_file,test_file):
+    dataHelper: DataHelper
+    dm = LightningDataModule()
+    train_dataloader = dataHelper.load_dataset(train_file, batch_size=train_args.train_batch_size, shuffle=True,
+                                    infinite=True)
+    val_dataloader = dataHelper.load_dataset(eval_file, batch_size=train_args.eval_batch_size)
+    test_dataloader = dataHelper.load_dataset(test_file, batch_size=train_args.test_batch_size)
+
+    if train_dataloader is not None:
+        dm.train_dataloader = lambda: train_dataloader
+    if val_dataloader is not None:
+        dm.val_dataset = lambda: val_dataloader
+    if test_dataloader is not None:
+        dm.test_dataset = lambda: test_dataloader
+    return dm
