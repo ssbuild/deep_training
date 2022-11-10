@@ -46,6 +46,7 @@ def load_configure(config_name,
         "cache_dir": cache_dir,
         "revision": model_revision,
         "use_auth_token": True if use_auth_token else None,
+        **kwargs
     }
     if config_name:
         config = AutoConfig.from_pretrained(config_name, **config_kwargs)

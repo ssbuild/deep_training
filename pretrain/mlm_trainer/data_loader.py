@@ -9,7 +9,7 @@ import json
 import typing
 import torch
 import numpy as np
-from asmodels.dataHelper import DataHelper
+from asmodels.data_helper import DataHelper
 from transformers import BertTokenizerFast
 from asmodels.utils.nlpfn import make_mlm_wwm_sample
 
@@ -38,7 +38,7 @@ class MLM_DataHelper(DataHelper):
 
     # 读取文件
     @staticmethod
-    def read_data_from_file(input_files: typing.List):
+    def read_data_from_file(input_files: typing.List,mode:str):
         D = []
         line_no = 0
         for input_file in input_files:

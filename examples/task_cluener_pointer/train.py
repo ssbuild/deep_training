@@ -2,36 +2,52 @@
 import logging
 import os
 import sys
+
+import torch
+
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 from pytorch_lightning import Trainer, seed_everything,LightningDataModule
 from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, load_tokenizer_and_config_with_args
 from transformers import AdamW,get_linear_schedule_with_warmup
-from asmodels.model.nlp.models.transformer import TransformerForCausalLM
-from data_loader import Gpt2_DataHelper as DataHelper
+from asmodels.model.nlp.models.transformer import TransformerModel
+from asmodels.model.nlp.layers.seq_pointer import EfficientPointerLayer,loss_fn,f1_metric
+from data_loader import NER_DataHelper as DataHelper
 from train_args import train_args
 
-class MyTransformer(TransformerForCausalLM):
+class MyTransformer(TransformerModel):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
+        self.pointer_layer = EfficientPointerLayer(self.config.hidden_size,self.config.num_labels,64)
 
     def training_step(self, batch, batch_idx):
         outputs = self(**batch)
-        loss = outputs[0]
-        self.log('train_loss', loss, prog_bar=True)
+        logits = outputs[0]
+        logits = self.pointer_layer(logits,batch['attention_mask'])
+        labels: torch.Tensor = batch['labels']
+        loss = loss_fn(labels,logits)
+        f1 = f1_metric(labels,logits)
+        self.log_dict({
+            'train_loss': loss,
+            'acc':f1
+        }, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
+
         outputs = self(**batch)
         val_loss, logits = outputs[:2]
-        labels = batch["labels"]
-        return {"loss": val_loss, "logits": logits, "labels": labels}
+        labels = batch['labels']
+        acc = torch.eq(labels, torch.argmax(outputs[1], dim=1)) / labels.size()[0]
+        return {"loss": val_loss, "logits": logits, "labels": labels,'acc':acc}
 
     def test_step(self, batch, batch_idx):
         x, y = batch
         # implement your own
         out = self(x)
         return out
+
+
 
 if __name__== '__main__':
     train_args = train_args()
@@ -41,8 +57,12 @@ if __name__== '__main__':
 
     dataHelper = DataHelper(train_args.data_backend)
     tokenizer,config,label2id, id2label = load_tokenizer_and_config_with_args(train_args, dataHelper)
-    save_fn_args = (tokenizer, train_args.max_seq_length)
+    save_fn_args = (tokenizer, train_args.max_seq_length,label2id)
 
+
+    print(label2id)
+    print(id2label)
+    print('*' * 30,config.num_labels)
 
     N = 1
     train_files, eval_files, test_files = [], [], []
@@ -50,11 +70,12 @@ if __name__== '__main__':
         intermediate_name = train_args.intermediate_name + '_{}'.format(i)
         logging.info('make data {}...'.format(intermediate_name))
         train_file, eval_file, test_file = make_all_dataset_with_args(dataHelper, save_fn_args, train_args,
-                                                                      intermediate_name=intermediate_name)
+                                                                      intermediate_name=intermediate_name,num_process_worker=2)
         train_files.append(train_file)
         eval_files.append(eval_file)
         test_files.append(test_file)
 
+    print(train_files, eval_files, test_files)
     dm = load_all_dataset_with_args(dataHelper, train_args, train_files, eval_files, test_files)
 
     dm.setup("fit")

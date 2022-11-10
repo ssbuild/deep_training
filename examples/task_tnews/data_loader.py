@@ -8,52 +8,64 @@ import torch
 from asmodels.data_helper import DataHelper
 from transformers import BertTokenizer
 
-class Gpt2_DataHelper(DataHelper):
+class Tnews_DataHelper(DataHelper):
     # 切分词
     def on_data_process(self, data_index: int, data: typing.Any, user_data: tuple):
         tokenizer: BertTokenizer
-        tokenizer,max_seq_length = user_data
-        x = data
-        if isinstance(x, tuple):
-            o = tokenizer(text=x[0], text_pair=x[1], max_length=max_seq_length, truncation=True,
-                          add_special_tokens=True)
-        else:
-            o = tokenizer(x, max_length=max_seq_length, truncation=True, add_special_tokens=True, )
+        tokenizer,max_seq_length,label2id = user_data
+        sentence,label_str = data
 
+        o = tokenizer(sentence, max_length=max_seq_length, truncation=True, add_special_tokens=True, )
         input_ids = np.asarray(o['input_ids'], dtype=np.int64)
         attention_mask = np.asarray(o['attention_mask'], dtype=np.int64)
-        token_type_ids = np.asarray(o['token_type_ids'], dtype=np.int64)
 
+        labels = np.asarray(label2id[label_str] if label_str is not None else 0,dtype=np.int64)
         seqlen = np.asarray(len(input_ids), dtype=np.int64)
         pad_len = max_seq_length - len(input_ids)
         if pad_len > 0:
             pad_val = tokenizer.pad_token_id
             input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
             attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-            token_type_ids = np.pad(token_type_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
         d = {
             'input_ids': input_ids,
             'attention_mask': attention_mask,
-            'token_type_ids': token_type_ids,
-            'labels': input_ids,
+            'labels': labels,
             'seqlen': seqlen
         }
         return d
 
+    #读取标签
+    @staticmethod
+    def read_labels_from_file(label_fname: str):
+        if label_fname is None:
+            return None, None
+        is_json_file = label_fname.endswith('.json')
+        D = set()
+        with open(label_fname, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            for line in lines:
+                line = line.replace('\r\n', '').replace('\n', '')
+                if not line: continue
+                if is_json_file:
+                    jd = json.loads(line)
+                    line = jd['label']
+                D.add(line)
+        label2id = {label: i for i, label in enumerate(D)}
+        id2label = {i: label for i, label in enumerate(D)}
+        return label2id, id2label
 
     # 读取文件
     @staticmethod
-    def read_data_from_file(files:typing.List,mode:str):
+    def read_data_from_file(files: typing.List,mode:str):
         D = []
         for filename in files:
             with open(filename, mode='r', encoding='utf-8') as f:
-                string = f.read()
-                jds = json.loads(string)
-                for i,jd in enumerate(jds):
-                    D.append((jd['content'], jd['title']))
-
-                    if i > 1000:
-                        break
+                lines = f.readlines()
+                for line in lines:
+                    jd = json.loads(line)
+                    if not jd:
+                        continue
+                    D.append((jd['sentence'], jd.get('label',None)))
         return D
 
 
@@ -77,7 +89,6 @@ class Gpt2_DataHelper(DataHelper):
         o['attention_mask'] = o['attention_mask'][:, :max_len]
         if 'token_type_ids' in o:
             o['token_type_ids'] = o['token_type_ids'][:, :max_len]
-        o['labels'] = o['labels'][:, :max_len]
         return o
 
 

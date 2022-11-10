@@ -112,9 +112,11 @@ class DataHelper:
                  input_fn_args: typing.Tuple,
                  outfile: str,
                  overwrite=False,
-                 num_process_worker: int = 8):
+                 num_process_worker: int = 8,
+                shuffle=True):
         if not os.path.exists(outfile) or overwrite:
-            fw = DataWriteHelper(input_fn, input_fn_args, outfile, self.backend, num_process_worker)
+            fw = DataWriteHelper(input_fn, input_fn_args, outfile, self.backend,
+                                 num_process_worker=num_process_worker,shuffle=shuffle)
             fw.save(data)
 
 
@@ -123,10 +125,13 @@ class DataHelper:
                      outfile: str,
                      input_fn_args: typing.Tuple,
                      overwrite=False,
-                     num_process_worker: int = 8):
+                     num_process_worker: int = 8,
+                     shuffle=True,
+                     mode=None):
         if not os.path.exists(outfile) or overwrite:
-            data = self.read_data_from_file(input_files)
-            fw = DataWriteHelper(self.on_data_process, input_fn_args, outfile, self.backend, num_process_worker)
+            data = self.read_data_from_file(input_files,mode)
+            fw = DataWriteHelper(self.on_data_process, input_fn_args,
+                                 outfile, self.backend, num_process_worker=num_process_worker,shuffle=shuffle)
             fw.save(data)
 
     #下游任务继承
@@ -153,7 +158,7 @@ class DataHelper:
         return label2id, id2label
     # 读取文件
     @staticmethod
-    def read_data_from_file(filename:typing.Union[typing.List[str],str]):
+    def read_data_from_file(filename:typing.Union[typing.List[str],str],mode:str):
         D = []
         with open(filename, 'r', encoding='utf-8') as f:
             lines = f.readlines()

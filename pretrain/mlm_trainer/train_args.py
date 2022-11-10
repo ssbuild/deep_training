@@ -2,7 +2,7 @@
 # @Time    : 2022/11/4 15:23
 
 import argparse
-from asmodels.dataHelper.data_args_func import preprocess_args
+from asmodels.data_helper.data_args_func import preprocess_args
 
 
 def build_args():
@@ -38,7 +38,7 @@ def train_args(parser = argparse.ArgumentParser(),is_build=True):
     parser.add_argument('--use_auth_token', default=False, type=bool,
                         help='The specific model version to use (can be a branch name, tag name or commit id).')
 
-    parser.add_argument('--learning_rate', default=1e-4, type=float, help='模型训练时的学习率')
+    parser.add_argument('--learning_rate', default=5e-5, type=float, help='模型训练时的学习率')
     parser.add_argument('--max_epochs', default=None, type=int, help='模型训练的轮数')
     parser.add_argument('--max_steps', default=-1, type=int, help='max_steps')
     parser.add_argument('--adam_epsilon', default=1e-8, type=float, help='Adam优化器的epsilon值')

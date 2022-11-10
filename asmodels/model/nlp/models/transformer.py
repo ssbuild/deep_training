@@ -26,7 +26,7 @@ from transformers import (
     AdamW,
     AutoConfig,
     AutoModelForCausalLM,
-    get_linear_schedule_with_warmup,
+    get_linear_schedule_with_warmup, AutoModelForPreTraining, AutoModel,
 )
 
 class TransformerBase(LightningModule):
@@ -108,6 +108,49 @@ class TransformerBase(LightningModule):
     #     self.log("val_loss", loss, prog_bar=True)
     #     # self.log_dict(self.metric.compute(predictions=preds, references=labels), prog_bar=True)
 
+
+class TransformerModel(TransformerBase):
+    def __init__(self, config, train_args: argparse.Namespace, *args: Any, **kwargs: Any):
+        super().__init__(config, train_args, *args, **kwargs)
+        config = self.config
+
+        if train_args.model_name_or_path:
+            model_kwargs = {
+                "cache_dir": train_args.cache_dir,
+                "revision": train_args.model_revision,
+                "use_auth_token": True if train_args.use_auth_token else None,
+            }
+            model = AutoModel.from_pretrained(
+                train_args.model_name_or_path,
+                from_tf=bool(".ckpt" in train_args.model_name_or_path),
+                config=config,
+                **model_kwargs
+            )
+        else:
+            model = AutoModel.from_config(config)
+        self.model = model
+
+class TransformerForPreTraining(TransformerBase):
+    def __init__(self, config, train_args: argparse.Namespace, *args: Any, **kwargs: Any):
+        super().__init__(config, train_args, *args, **kwargs)
+        config = self.config
+
+        if train_args.model_name_or_path:
+            model_kwargs = {
+                "cache_dir": train_args.cache_dir,
+                "revision": train_args.model_revision,
+                "use_auth_token": True if train_args.use_auth_token else None,
+            }
+            model = AutoModelForPreTraining.from_pretrained(
+                train_args.model_name_or_path,
+                from_tf=bool(".ckpt" in train_args.model_name_or_path),
+                config=config,
+                **model_kwargs
+            )
+        else:
+            model = AutoModelForPreTraining.from_config(config)
+        self.model = model
+
 class TransformerForCausalLM(TransformerBase):
     def __init__(self,config,train_args: argparse.Namespace, *args: Any, **kwargs: Any):
         super().__init__(config,train_args, *args, **kwargs)
@@ -129,6 +172,9 @@ class TransformerForCausalLM(TransformerBase):
         else:
             model = AutoModelForCausalLM.from_config(config)
         self.model = model
+
+
+
 
 class TransformerForMaskLM(TransformerBase):
     def __init__(self,config,train_args: argparse.Namespace, *args: Any, **kwargs: Any):

@@ -46,15 +46,14 @@ def train_args():
 
 
     parser.add_argument('--max_seq_length', type=int, default=512, help='输入模型的最大长度')
-    parser.add_argument('--title_max_len', type=int, default=32, help='生成标题的最大长度，要比max_len小')
 
     parser.add_argument('--do_train', action="store_true", help='是否训练')
     parser.add_argument('--do_eval', action="store_true", help='是否eval')
     parser.add_argument('--do_test', action="store_true", help='是否test')
-    parser.add_argument('--train_file', default='./data_dir/train_data.json', type=str, help='新闻标题生成的训练数据')
-    parser.add_argument('--eval_file', default=None, type=str,help='新闻标题生成的训练数据')
-    parser.add_argument('--test_file', default=None, type=str, help='新闻标题生成的测试数据')
-    parser.add_argument('--label_file', default=None, type=str, help='新闻标题生成的测试数据')
+    parser.add_argument('--train_file', default='./data_dir/train_data.json', type=str, help='训练语料，多个文件“,”分割')
+    parser.add_argument('--eval_file', default=None, type=str,help='评估语料，多个文件“,”分割')
+    parser.add_argument('--test_file', default=None, type=str, help='测试语料，多个文件“,”分割')
+    parser.add_argument('--label_file', default=None, type=str, help='标签文件，多个文件“,”分割')
     parser.add_argument('--intermediate_name', default='feature', type=str,
                         help='dataset文件名前缀')
 

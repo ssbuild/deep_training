@@ -50,30 +50,42 @@ def load_tokenizer_and_config_with_args(train_args,dataHelper):
                                 use_fast_tokenizer=train_args.use_fast_tokenizer,
                                 model_revision=train_args.model_revision,
                                 use_auth_token=train_args.use_auth_token,
-                                label2id=label2id,
-                                id2label=id2label)
+                               )
     config = load_configure(config_name=train_args.config_name,
                             model_name_or_path=train_args.model_name_or_path,
                             cache_dir=train_args.cache_dir,
                             model_revision=train_args.model_revision,
-                            use_auth_token=train_args.use_auth_token)
+                            use_auth_token=train_args.use_auth_token,
+                            label2id=label2id,
+                            id2label=id2label,
+                            num_labels=len(label2id) if label2id is not None else None
+                            )
 
-    return  tokenizer,config
+    return  tokenizer,config,label2id, id2label
 
 def make_all_dataset_with_args(dataHelper,save_fn_args,train_args,intermediate_name,num_process_worker=8):
     dataHelper: DataHelper
     train_file, eval_file, test_file = None, None, None
     if train_args.do_train:
         train_file = os.path.join(train_args.output_dir,intermediate_name + '-train.' + train_args.data_backend)
-        dataHelper.make_dataset(train_args.train_file,train_file,save_fn_args,num_process_worker=num_process_worker)
+        dataHelper.make_dataset(train_args.train_file,train_file,save_fn_args,
+                                num_process_worker=num_process_worker,
+                                shuffle=True,
+                                mode='train')
 
     if train_args.do_eval:
         eval_file = os.path.join(train_args.output_dir,intermediate_name + '-eval.' + train_args.data_backend)
-        dataHelper.make_dataset(train_args.eval_file, eval_file, save_fn_args, num_process_worker=num_process_worker)
+        dataHelper.make_dataset(train_args.eval_file, eval_file, save_fn_args,
+                                num_process_worker=num_process_worker,
+                                shuffle=False,
+                                mode='eval')
 
     if train_args.do_test:
         test_file = os.path.join(train_args.output_dir,intermediate_name + '-test.' + train_args.data_backend)
-        dataHelper.make_dataset(train_args.test_file,test_file,save_fn_args,num_process_worker=num_process_worker)
+        dataHelper.make_dataset(train_args.test_file,test_file,save_fn_args,
+                                num_process_worker=num_process_worker,
+                                shuffle=False,
+                                mode='test')
     return train_file, eval_file, test_file
 
 

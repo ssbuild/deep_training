@@ -11,7 +11,7 @@ from pytorch_lightning import LightningDataModule, Trainer, seed_everything
 from transformers import AdamW,get_linear_schedule_with_warmup
 from asmodels.model.nlp.models.transformer import TransformerForMaskLM
 from data_loader import MLM_DataHelper as DataHelper
-from asmodels.dataHelper.data_args_func import load_tokenizer_and_config_with_args, make_all_dataset_with_args, load_all_dataset_with_args
+from asmodels.data_helper.data_args_func import load_tokenizer_and_config_with_args, make_all_dataset_with_args, load_all_dataset_with_args
 from train_args import build_args
 
 class MyTransformer(TransformerForMaskLM):
@@ -23,8 +23,7 @@ class MyTransformer(TransformerForMaskLM):
         y_preds = torch.transpose(y_preds, 1, 2)
         loss = self.loss_fct(y_preds,y_trues)
         loss = loss * weight
-        loss = torch.sum(loss, dtype=torch.float) / (
-                    torch.sum(weight, dtype=torch.float) + 1e-8)
+        loss = torch.sum(loss, dtype=torch.float) / (torch.sum(weight, dtype=torch.float) + 1e-8)
         return loss
 
     def training_step(self, batch, batch_idx):
@@ -38,9 +37,11 @@ class MyTransformer(TransformerForMaskLM):
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         weight = batch.pop('weight')
+        labels = batch.pop('labels')
         outputs = self(**batch)
-        val_loss, logits = outputs[:2]
-        labels = batch["labels"]
+        # val_loss, logits = outputs[:2]
+        logits = outputs[0]
+        val_loss = self._compute_loss(labels, logits, weight)
         return {"loss": val_loss, "logits": logits, "labels": labels}
 
     def test_step(self, batch, batch_idx):
@@ -59,7 +60,7 @@ if __name__== '__main__':
         os.mkdir(train_args.output_dir)
 
     dataHelper = DataHelper(train_args.data_backend)
-    tokenizer, config = load_tokenizer_and_config_with_args(train_args, dataHelper)
+    tokenizer,config,label2id, id2label = load_tokenizer_and_config_with_args(train_args, dataHelper)
     save_fn_args = (tokenizer, train_args.max_seq_length,
                     rng, train_args.do_whole_word_mask, train_args.max_predictions_per_seq,
                     train_args.masked_lm_prob)
