@@ -18,7 +18,7 @@ class DataWriteHelper:
                  backend='record',
                  num_process_worker=8,
                  shuffle=True):
-        assert backend in ['record', 'lmdb', 'leveldb']
+        assert backend in ['record', 'lmdb', 'leveldb','memory']
 
         self.input_fn = input_fn
         self.input_fn_args = input_fn_args
