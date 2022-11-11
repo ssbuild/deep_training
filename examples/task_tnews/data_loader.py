@@ -10,7 +10,7 @@ from transformers import BertTokenizer
 
 class Tnews_DataHelper(DataHelper):
     # 切分词
-    def on_data_process(self, data_index: int, data: typing.Any, user_data: tuple):
+    def on_data_process(self,data: typing.Any, user_data: tuple):
         tokenizer: BertTokenizer
         tokenizer,max_seq_length,label2id = user_data
         sentence,label_str = data

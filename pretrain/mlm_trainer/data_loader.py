@@ -16,7 +16,7 @@ from asmodels.utils.nlpfn import make_mlm_wwm_sample
 
 class MLM_DataHelper(DataHelper):
     # 切分词
-    def on_data_process(self, data_index: int, data: typing.Any, user_data: typing.Any):
+    def on_data_process(self, data: typing.Any, user_data: typing.Any):
         tokenizer: BertTokenizerFast
         tokenizer,max_seq_length, rng, do_whole_word_mask, max_predictions_per_seq, masked_lm_prob = user_data
 

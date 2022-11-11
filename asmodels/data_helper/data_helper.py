@@ -8,7 +8,7 @@ import numpy as np
 from fastdatasets.record import RECORD
 from fastdatasets.leveldb import LEVELDB
 from fastdatasets.lmdb import LMDB
-from fastdatasets.utils import NumpyReaderAdapter,E_file_backend
+from fastdatasets.utils.NumpyAdapter import NumpyReaderAdapter,E_file_backend
 from torch.utils.data import DataLoader
 from fastdatasets.torch_dataset import IterableDataset as torch_IterableDataset,Dataset as torch_Dataset
 from fastdatasets.common.iterable_dataset import IterableDatasetBase
@@ -117,8 +117,8 @@ class DataHelper:
         if not os.path.exists(outfile) or overwrite:
             fw = DataWriteHelper(input_fn, input_fn_args, outfile, self.backend,
                                  num_process_worker=num_process_worker,shuffle=shuffle)
-            fw.save(data)
-
+            outfile = fw.save(data)
+        return outfile
 
     #回调 on_data_process
     def make_dataset(self,input_files: typing.Union[typing.List[str],str],
@@ -132,11 +132,12 @@ class DataHelper:
             data = self.read_data_from_file(input_files,mode)
             fw = DataWriteHelper(self.on_data_process, input_fn_args,
                                  outfile, self.backend, num_process_worker=num_process_worker,shuffle=shuffle)
-            fw.save(data)
+            outfile = fw.save(data)
+        return outfile
 
     #下游任务继承
-    def on_data_process(self,data_index: int, data: typing.Any, user_data: tuple):
-        return make_gpt2_sample(data_index,data,user_data)
+    def on_data_process(self,data: typing.Any, user_data: tuple):
+        return make_gpt2_sample(data,user_data)
 
     @staticmethod
     def read_labels_from_file(label_fname: str):

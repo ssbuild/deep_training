@@ -9,8 +9,10 @@ from asmodels.data_helper import DataHelper
 from transformers import BertTokenizer
 
 class NER_DataHelper(DataHelper):
+    index = 0
     # 切分词
-    def on_data_process(self, data_index: int, data: typing.Any, user_data: tuple):
+    def on_data_process(self, data: typing.Any, user_data: tuple):
+
         tokenizer: BertTokenizer
         tokenizer,max_seq_length,label2id = user_data
         sentence,label_dict = data

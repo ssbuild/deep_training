@@ -75,7 +75,7 @@ def train_args(parser = argparse.ArgumentParser(),is_build=True):
 
 
 def data_args(parser = argparse.ArgumentParser(),is_build=True):
-    parser.add_argument('--data_backend', default='record', type=str, help='data_backend')
+    parser.add_argument('--data_backend', default='record', type=str, help='record,leveldb,lmdb,memory,memory_raw')
     parser.add_argument('--tokenizer_name', default=None, type=str,
                         help='Pretrained tokenizer name or path if not the same as model_name')
     # parser.add_argument('--input_file', default=None, type=str, help='Input raw text file (or comma-separated list of files)')

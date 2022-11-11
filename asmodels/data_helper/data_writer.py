@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/11/9 11:02
 import typing
-from fastdatasets.utils import NumpyWriterAdapter,ParallelNumpyWriter
+from fastdatasets.utils.NumpyAdapter import NumpyWriterAdapter,ParallelNumpyWriter
 
 __all__ = [
     'DataWriteHelper',
@@ -18,7 +18,7 @@ class DataWriteHelper:
                  backend='record',
                  num_process_worker=8,
                  shuffle=True):
-        assert backend in ['record', 'lmdb', 'leveldb','memory']
+        assert backend in ['record', 'lmdb', 'leveldb','memory','memory_raw']
 
         self.input_fn = input_fn
         self.input_fn_args = input_fn_args
@@ -41,3 +41,4 @@ class DataWriteHelper:
         self._parallel_writer.initailize_input_hook(self.input_fn, self.input_fn_args)
         self._parallel_writer.initialize_writer(self.outfile ,self.backend_type)
         self._parallel_writer.parallel_apply(data)
+        return self._parallel_writer.get_result() or self.outfile

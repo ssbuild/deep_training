@@ -1,7 +1,7 @@
 # @Time    : 2022/11/9 22:55
 # @Author  : tk
 # @FileName: data_func_args.py
-
+import logging
 import os
 from pytorch_lightning import LightningDataModule
 from .data_helper import DataHelper
@@ -67,22 +67,27 @@ def make_all_dataset_with_args(dataHelper,save_fn_args,train_args,intermediate_n
     dataHelper: DataHelper
     train_file, eval_file, test_file = None, None, None
     if train_args.do_train:
+
         train_file = os.path.join(train_args.output_dir,intermediate_name + '-train.' + train_args.data_backend)
-        dataHelper.make_dataset(train_args.train_file,train_file,save_fn_args,
+        logging.info('make data {}...'.format(train_file))
+        train_file = dataHelper.make_dataset(train_args.train_file,train_file,save_fn_args,
                                 num_process_worker=num_process_worker,
                                 shuffle=True,
                                 mode='train')
 
     if train_args.do_eval:
+
         eval_file = os.path.join(train_args.output_dir,intermediate_name + '-eval.' + train_args.data_backend)
-        dataHelper.make_dataset(train_args.eval_file, eval_file, save_fn_args,
+        logging.info('make data {}...'.format(train_file))
+        eval_file = dataHelper.make_dataset(train_args.eval_file, eval_file, save_fn_args,
                                 num_process_worker=num_process_worker,
                                 shuffle=False,
                                 mode='eval')
 
     if train_args.do_test:
         test_file = os.path.join(train_args.output_dir,intermediate_name + '-test.' + train_args.data_backend)
-        dataHelper.make_dataset(train_args.test_file,test_file,save_fn_args,
+        logging.info('make data {}...'.format(test_file))
+        test_file = dataHelper.make_dataset(train_args.test_file,test_file,save_fn_args,
                                 num_process_worker=num_process_worker,
                                 shuffle=False,
                                 mode='test')

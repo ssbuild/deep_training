@@ -68,14 +68,13 @@ if __name__== '__main__':
     train_files, eval_files, test_files = [], [], []
     for i in range(N):
         intermediate_name = train_args.intermediate_name + '_{}'.format(i)
-        logging.info('make data {}...'.format(intermediate_name))
         train_file, eval_file, test_file = make_all_dataset_with_args(dataHelper, save_fn_args, train_args,
                                                                       intermediate_name=intermediate_name,num_process_worker=2)
         train_files.append(train_file)
         eval_files.append(eval_file)
         test_files.append(test_file)
 
-    print(train_files, eval_files, test_files)
+
     dm = load_all_dataset_with_args(dataHelper, train_args, train_files, eval_files, test_files)
 
     dm.setup("fit")

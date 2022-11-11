@@ -12,7 +12,7 @@ def train_args():
     parser.add_argument('--device', default='0', type=str, help='设置训练或测试时使用的显卡')
 
 
-    parser.add_argument('--data_backend', default='record', type=str, help='data_backend')
+    parser.add_argument('--data_backend', default='record', type=str, help='record,leveldb,lmdb,memory,memory_raw')
 
     parser.add_argument('--model_name_or_path', default=None, type=str, help='模型参数配置信息')
     parser.add_argument('--model_type', default=None, type=str, help='模型参数配置信息')

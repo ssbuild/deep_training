@@ -147,7 +147,7 @@ def make_mlm_wwm_sample(text : str ,user_data):
 
 
 # 切分词
-def make_gpt2_sample(data_index: int, data: typing.Any, user_data: tuple):
+def make_gpt2_sample(data: typing.Any, user_data: tuple):
     tokenizer, max_seq_length = user_data
 
     x = data

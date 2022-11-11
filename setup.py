@@ -11,6 +11,6 @@ setup(
     url='https://github.com/ssbuild/torch_training',
     author='ssbuild',
     author_email='9727464@qq.com',
-    install_requires=['pytorch-lightning>=1.7','fastdataset>=0.7.6','numpy','transformer'],
+    install_requires=['pytorch-lightning>=1.7','fastdataset>=0.7.8','numpy','transformer'],
     packages=find_packages()
 )
