@@ -6,6 +6,7 @@
 
 
 ## 更新
+- <strong>2022年11月11</strong>: 增加cluener_pointer 中文命名实体提取,tnews 中文分类
 - <strong>2022年11月06</strong>: 增加GPT2 MLM 预训练
 
 
