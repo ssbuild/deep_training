@@ -1,6 +1,7 @@
 
 ## 说明
-基于pytorch-lightning 和 transformers实现的上下游训练框架
+- 基于pytorch-lightning 和 transformers实现的上下游训练框架
+- 当前正在重构中...，接口是不稳定的
 
 
 
