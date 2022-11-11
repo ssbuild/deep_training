@@ -1,18 +1,22 @@
-# -*- coding: utf-8 -*-
-# @Time    : 2022/11/11 17:15
+# @Time    : 2022/11/11 20:15
+# @Author  : tk
+# @FileName: gp_linker.py
 import torch
 from transformers import AdamW, get_linear_schedule_with_warmup
 from .transformer import TransformerModel
-from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer
-from ..layers.seq_pointer import loss_fn,f1_metric
+from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer, loss_fn, f1_metric
 
-class TransformerPointer(TransformerModel):
+
+class TransformerGplinker(TransformerModel):
     def __init__(self,with_efficient=True, *args,**kwargs):
-        super(TransformerPointer, self).__init__(*args,**kwargs)
-        if with_efficient:
-            self.pointer_layer = EfficientPointerLayer(self.config.hidden_size,self.config.num_labels,64)
-        else:
-            self.pointer_layer = PointerLayer(self.config.hidden_size,self.config.num_labels,64)
+        super(TransformerGplinker, self).__init__(*args,**kwargs)
+
+        PointerLayerObject = EfficientPointerLayer if with_efficient else PointerLayer
+        self.entities_layer = PointerLayerObject(self.config.hidden_size, 2, 64)
+        self.heads_layer = PointerLayerObject(self.config.hidden_size, 2, 64)
+        self.tails_layer = PointerLayerObject(self.config.hidden_size, self.config.num_labels, 64)
+
+
 
     def configure_optimizers(self):
         """Prepare optimizer and schedule (linear warmup and decay)"""
@@ -49,14 +53,20 @@ class TransformerPointer(TransformerModel):
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
         return [optimizer], [scheduler]
 
+
+
     def training_step(self, batch, batch_idx):
-        labels: torch.Tensor = batch.pop('labels')
+        entities_labels: torch.Tensor = batch.pop('entities_labels')
+        heads_labels: torch.Tensor = batch.pop('heads_labels')
+        tails_labels: torch.Tensor = batch.pop('tails_labels')
         outputs = self(**batch)
         logits = outputs[0]
 
-        logits = self.pointer_layer(logits, batch['attention_mask'])
+        logits1 = self.entities_layer(logits, batch['attention_mask'])
+        logits2 = self.entities_layer(logits, batch['attention_mask'])
+        logits3 = self.entities_layer(logits, batch['attention_mask'])
 
-        loss = loss_fn(labels, logits)
-        f1 = f1_metric(labels, logits)
+        loss = loss_fn(entities_labels, logits1) +loss_fn(heads_labels, logits2) + loss_fn(tails_labels, logits3)
+        f1 = (f1_metric(entities_labels, logits1) +f1_metric(heads_labels, logits2) + f1_metric(tails_labels, logits3)) / 3
         self.log_dict({'train_loss': loss, 'f1': f1}, prog_bar=True)
         return loss

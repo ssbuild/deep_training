@@ -1,3 +1,7 @@
 transformers
 pytorch_lightning
 fastdatasets
+seqmetric
+sklearn
+scipy
+scikit-learn

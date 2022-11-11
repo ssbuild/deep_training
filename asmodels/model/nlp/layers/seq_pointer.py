@@ -1,14 +1,8 @@
 # @Time    : 2022/11/10 21:54
 # @Author  : tk
-# @FileName: globalpointer.py
-
-# -*- coding: utf-8 -*-
-# @Time    : 2022/8/11 15:53
-# @Author  : tk
-
+# @FileName: seqpointer.py
 import torch
 import torch.nn as nn
-
 
 def multilabel_categorical_crossentropy(y_true, y_pred):
 

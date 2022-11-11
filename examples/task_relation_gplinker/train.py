@@ -4,27 +4,26 @@ import sys
 
 import numpy as np
 
-
-
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 import logging
 from typing import Union, List
 import torch
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
-from asmodels.model.nlp.layers.seq_pointer import f1_metric
 
-from pytorch_lightning import Trainer, seed_everything,LightningDataModule
+
+from pytorch_lightning import Trainer, seed_everything
 from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, load_tokenizer_and_config_with_args
-
+from asmodels.model.nlp.layers.seq_pointer import loss_fn,f1_metric
 from data_loader import NER_DataHelper as DataHelper
 from train_args import train_args
-from asmodels.model.nlp.models.pointer import TransformerPointer
+from asmodels.model.nlp.models.gplinker import TransformerGplinker
 from asmodels.model.nlp.metrics.pointer import metric_for_pointer
 
-class MyTransformer(TransformerPointer):
+class MyTransformer(TransformerGplinker):
     def __init__(self, *args,**kwargs):
         super(MyTransformer, self).__init__(with_efficient=True,*args,**kwargs)
+
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         labels: torch.Tensor = batch.pop('labels')
