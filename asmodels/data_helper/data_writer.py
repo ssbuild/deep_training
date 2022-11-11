@@ -16,7 +16,7 @@ class DataWriteHelper:
                  input_fn_args:typing.Tuple,
                  outfile:str,
                  backend='record',
-                 num_process_worker=8,
+                 num_process_worker=0,
                  shuffle=True):
         assert backend in ['record', 'lmdb', 'leveldb','memory','memory_raw']
 
@@ -25,7 +25,6 @@ class DataWriteHelper:
         assert isinstance(input_fn_args, tuple)
         self.outfile = outfile
         self._backend_type = backend
-        assert num_process_worker > 0
         self._parallel_writer = ParallelNumpyWriter(num_process_worker=num_process_worker,shuffle=shuffle)
 
     @property

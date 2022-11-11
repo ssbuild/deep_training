@@ -63,23 +63,21 @@ def load_tokenizer_and_config_with_args(train_args,dataHelper):
 
     return  tokenizer,config,label2id, id2label
 
-def make_all_dataset_with_args(dataHelper,save_fn_args,train_args,intermediate_name,num_process_worker=8):
+def make_all_dataset_with_args(dataHelper,save_fn_args,train_args,intermediate_name,num_process_worker=0):
     dataHelper: DataHelper
     train_file, eval_file, test_file = None, None, None
     if train_args.do_train:
-
         train_file = os.path.join(train_args.output_dir,intermediate_name + '-train.' + train_args.data_backend)
         logging.info('make data {}...'.format(train_file))
-        train_file = dataHelper.make_dataset(train_args.train_file,train_file,save_fn_args,
+        train_file = dataHelper.make_dataset(train_args.train_file,train_file,save_fn_args + ('train',),
                                 num_process_worker=num_process_worker,
                                 shuffle=True,
                                 mode='train')
 
     if train_args.do_eval:
-
         eval_file = os.path.join(train_args.output_dir,intermediate_name + '-eval.' + train_args.data_backend)
-        logging.info('make data {}...'.format(train_file))
-        eval_file = dataHelper.make_dataset(train_args.eval_file, eval_file, save_fn_args,
+        logging.info('make data {}...'.format(eval_file))
+        eval_file = dataHelper.make_dataset(train_args.eval_file, eval_file, save_fn_args+ ('eval',),
                                 num_process_worker=num_process_worker,
                                 shuffle=False,
                                 mode='eval')
@@ -87,7 +85,7 @@ def make_all_dataset_with_args(dataHelper,save_fn_args,train_args,intermediate_n
     if train_args.do_test:
         test_file = os.path.join(train_args.output_dir,intermediate_name + '-test.' + train_args.data_backend)
         logging.info('make data {}...'.format(test_file))
-        test_file = dataHelper.make_dataset(train_args.test_file,test_file,save_fn_args,
+        test_file = dataHelper.make_dataset(train_args.test_file,test_file,save_fn_args+ ('test',),
                                 num_process_worker=num_process_worker,
                                 shuffle=False,
                                 mode='test')

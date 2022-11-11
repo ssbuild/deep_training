@@ -12,7 +12,7 @@ class Tnews_DataHelper(DataHelper):
     # 切分词
     def on_data_process(self,data: typing.Any, user_data: tuple):
         tokenizer: BertTokenizer
-        tokenizer,max_seq_length,label2id = user_data
+        tokenizer,max_seq_length,label2id,mode = user_data
         sentence,label_str = data
 
         o = tokenizer(sentence, max_length=max_seq_length, truncation=True, add_special_tokens=True, )

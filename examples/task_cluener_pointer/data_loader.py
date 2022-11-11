@@ -14,7 +14,7 @@ class NER_DataHelper(DataHelper):
     def on_data_process(self, data: typing.Any, user_data: tuple):
 
         tokenizer: BertTokenizer
-        tokenizer,max_seq_length,label2id = user_data
+        tokenizer,max_seq_length,label2id,mode = user_data
         sentence,label_dict = data
 
         o = tokenizer(sentence, max_length=max_seq_length, truncation=True, add_special_tokens=True, )
@@ -22,17 +22,15 @@ class NER_DataHelper(DataHelper):
         attention_mask = np.asarray(o['attention_mask'], dtype=np.int64)
         seqlen = np.asarray(len(input_ids), dtype=np.int64)
 
-        labels = np.zeros(shape=(len(label2id),max_seq_length,max_seq_length),dtype=np.int64)
-
+        labels = np.zeros(shape=(len(label2id),max_seq_length,max_seq_length),dtype=np.int32)
         real_label = []
-        if label_dict is not None:
-            for label_str, o in label_dict.items():
-                pts = list(o.values())[0]
-                labelid = label2id[label_str]
-                for pt in pts:
-                    if pt[1] < max_seq_length:
-                        labels[labelid,pt[0],pt[1]] = 1
-                    real_label.append((labelid,pt[0],pt[1]))
+        for label_str, o in label_dict.items():
+            pts = list(o.values())[0]
+            labelid = label2id[label_str]
+            for pt in pts:
+                if pt[1] < max_seq_length:
+                    labels[labelid, pt[0], pt[1]] = 1
+                real_label.append((labelid, pt[0], pt[1]))
 
         pad_len = max_seq_length - len(input_ids)
         if pad_len > 0:
@@ -44,8 +42,9 @@ class NER_DataHelper(DataHelper):
             'attention_mask': attention_mask,
             'labels': labels,
             'seqlen': seqlen,
-            'real_label': np.asarray(bytes(json.dumps(real_label,ensure_ascii=False),encoding='utf-8'))
         }
+        if mode == 'eval':
+            d['real_label'] = np.asarray(bytes(json.dumps(real_label,ensure_ascii=False),encoding='utf-8'))
         return d
 
     #读取标签
@@ -70,7 +69,7 @@ class NER_DataHelper(DataHelper):
                     if not jd:
                         continue
                     D.append((jd['text'], jd.get('label',None)))
-        return D[:1000]
+        return D
 
 
     @staticmethod
@@ -87,12 +86,14 @@ class NER_DataHelper(DataHelper):
             o[k] = torch.stack(o[k])
 
         seqlen = o.pop('seqlen')
-        # max_len = torch.max(seqlen)
-        #
-        # o['input_ids'] = o['input_ids'][:, :max_len]
-        # o['attention_mask'] = o['attention_mask'][:, :max_len]
-        # if 'token_type_ids' in o:
-        #     o['token_type_ids'] = o['token_type_ids'][:, :max_len]
+        max_len = torch.max(seqlen)
+
+        o['input_ids'] = o['input_ids'][:, :max_len]
+        o['attention_mask'] = o['attention_mask'][:, :max_len]
+        if 'token_type_ids' in o:
+            o['token_type_ids'] = o['token_type_ids'][:, :max_len]
+
+        o['labels'] = o['labels'][:,:, :max_len,:max_len]
         return o
 
 

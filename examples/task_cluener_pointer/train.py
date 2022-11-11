@@ -2,44 +2,98 @@
 import logging
 import os
 import sys
+from typing import Union, List
 
 import torch
+from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 from pytorch_lightning import Trainer, seed_everything,LightningDataModule
 from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, load_tokenizer_and_config_with_args
 from transformers import AdamW,get_linear_schedule_with_warmup
-from asmodels.model.nlp.models.transformer import TransformerModel
-from asmodels.model.nlp.layers.seq_pointer import EfficientPointerLayer,loss_fn,f1_metric
+from asmodels.model.nlp.layers.seq_pointer import EfficientPointerLayer,PointerLayer,loss_fn,f1_metric
 from data_loader import NER_DataHelper as DataHelper
 from train_args import train_args
+from asmodels.model.nlp.models.pointer import TransformerPointer
 
-class MyTransformer(TransformerModel):
-    def __init__(self,*args,**kwargs):
-        super(MyTransformer, self).__init__(*args,**kwargs)
-        self.pointer_layer = EfficientPointerLayer(self.config.hidden_size,self.config.num_labels,64)
+class MyTransformer(TransformerPointer):
+    def __init__(self, *args,**kwargs):
+        super(MyTransformer, self).__init__(with_efficient=True,*args,**kwargs)
 
     def training_step(self, batch, batch_idx):
+        labels: torch.Tensor = batch.pop('labels')
         outputs = self(**batch)
         logits = outputs[0]
+
         logits = self.pointer_layer(logits,batch['attention_mask'])
-        labels: torch.Tensor = batch['labels']
+
         loss = loss_fn(labels,logits)
         f1 = f1_metric(labels,logits)
         self.log_dict({
             'train_loss': loss,
-            'acc':f1
+            'f1':f1
         }, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
+        labels: torch.Tensor = batch.pop('labels')
+
+
+        real_label = batch.pop(batch)
 
         outputs = self(**batch)
         val_loss, logits = outputs[:2]
-        labels = batch['labels']
         acc = torch.eq(labels, torch.argmax(outputs[1], dim=1)) / labels.size()[0]
-        return {"loss": val_loss, "logits": logits, "labels": labels,'acc':acc}
+        return {"loss": val_loss, "logits": logits.item(),
+                "labels": labels.item(),
+                'acc':acc,
+                'real_label':real_label
+                }
+
+    def validation_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
+        """Called at the end of the validation epoch with the outputs of all validation steps.
+
+        .. code-block:: python
+
+            # the pseudocode for these calls
+            val_outs = []
+            for val_batch in val_data:
+                out = validation_step(val_batch)
+                val_outs.append(out)
+            validation_epoch_end(val_outs)
+
+        Args:
+            outputs: List of outputs you defined in :meth:`validation_step`, or if there
+                are multiple dataloaders, a list containing a list of outputs for each dataloader.
+
+        Return:
+            None
+
+        Note:
+            If you didn't define a :meth:`validation_step`, this won't be called.
+
+        Examples:
+            With a single dataloader:
+
+            .. code-block:: python
+
+                def validation_epoch_end(self, val_step_outputs):
+                    for out in val_step_outputs:
+                        ...
+
+            With multiple dataloaders, `outputs` will be a list of lists. The outer list contains
+            one entry per dataloader, while the inner list contains the individual outputs of
+            each validation step for that dataloader.
+
+            .. code-block:: python
+
+                def validation_epoch_end(self, outputs):
+                    for dataloader_output_result in outputs:
+                        dataloader_outs = dataloader_output_result.dataloader_i_outputs
+
+                    self.log("final_metric", final_value)
+        """
 
     def test_step(self, batch, batch_idx):
         x, y = batch
@@ -60,16 +114,12 @@ if __name__== '__main__':
     save_fn_args = (tokenizer, train_args.max_seq_length,label2id)
 
 
-    print(label2id)
-    print(id2label)
-    print('*' * 30,config.num_labels)
-
     N = 1
     train_files, eval_files, test_files = [], [], []
     for i in range(N):
         intermediate_name = train_args.intermediate_name + '_{}'.format(i)
         train_file, eval_file, test_file = make_all_dataset_with_args(dataHelper, save_fn_args, train_args,
-                                                                      intermediate_name=intermediate_name,num_process_worker=2)
+                                                                      intermediate_name=intermediate_name,num_process_worker=0)
         train_files.append(train_file)
         eval_files.append(eval_file)
         test_files.append(test_file)

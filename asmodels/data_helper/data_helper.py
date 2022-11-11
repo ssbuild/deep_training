@@ -73,9 +73,13 @@ class DataHelper:
             if not os.path.exists(files):
                 return None
         else:
-            files = [f for f in files if f is not None and os.path.exists(f)]
-            if not files:
-                return None
+            files_ = [f for f in files if f is not None and isinstance(f,str) and os.path.exists(f)]
+            if not files_:
+                files = [f for f in files if f is not None and isinstance(f,list)]
+                if not files:
+                    return None
+            else:
+                files = files_
 
         dataHelper = self
         dataset = dataHelper.load_numpy_dataset(files, cycle_length=cycle_length, block_length=block_length)

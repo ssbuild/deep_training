@@ -12,7 +12,7 @@ class Gpt2_DataHelper(DataHelper):
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
         tokenizer: BertTokenizer
-        tokenizer,max_seq_length = user_data
+        tokenizer,max_seq_length,mode = user_data
         x = data
         if isinstance(x, tuple):
             o = tokenizer(text=x[0], text_pair=x[1], max_length=max_seq_length, truncation=True,

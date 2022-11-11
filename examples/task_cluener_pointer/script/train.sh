@@ -11,10 +11,10 @@ python ../train.py \
 --eval_file /data/nlp/nlp_train_data/clue/cluener/dev.json \
 --test_file /data/nlp/nlp_train_data/clue/cluener/test.json \
 --do_train \
---do_eval \
 --learning_rate 5e-5 \
 --max_epochs 3 \
 --train_batch_size 10 \
+--eval_batch_size 2 \
 --test_batch_size 2 \
 --adam_epsilon 1e-8 \
 --gradient_accumulation_steps 1 \
@@ -22,6 +22,6 @@ python ../train.py \
 --weight_decay 0 \
 --warmup_steps 0 \
 --output_dir './output' \
---max_seq_length 512
+--max_seq_length 160
 
 
