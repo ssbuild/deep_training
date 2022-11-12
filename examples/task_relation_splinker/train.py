@@ -4,53 +4,18 @@ import sys
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 import logging
-import numpy as np
 from typing import Union, List
 import torch
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from pytorch_lightning import Trainer, seed_everything
 from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, load_tokenizer_and_config_with_args
-from asmodels.model.nlp.layers.seq_pointer import loss_fn,f1_metric
 from data_loader import NER_DataHelper as DataHelper
 from train_args import train_args
-from asmodels.model.nlp.models.gplinker import TransformerGplinker
-from asmodels.model.nlp.metrics.pointer import metric_for_pointer
+from asmodels.model.nlp.models.slinker import TransformerForSlinker
 
-class MyTransformer(TransformerGplinker):
+class MyTransformer(TransformerForSlinker):
     def __init__(self, *args,**kwargs):
         super(MyTransformer, self).__init__(with_efficient=True,*args,**kwargs)
-
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        labels: torch.Tensor = batch.pop('labels')
-        real_label = batch.pop("real_label")
-        outputs = self(**batch)
-        val_loss, logits = outputs[:2]
-        f1 = f1_metric(labels,logits)
-        return {"loss": val_loss, "logits": logits.item(),"labels": real_label,'f1':f1}
-
-    def validation_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
-        id2label = self.config.id2label
-        threshold = 1e-7
-        preds = []
-        labels = []
-        for o in outputs:
-            logits = o['logits']
-            label = o['labels']
-            for tag in logits:
-                one_result = []
-                for (l, s, e) in zip(*np.where(tag > threshold)):
-                    one_result.append((l, s, e))
-                preds.append(one_result)
-            labels.append(label)
-        m = metric_for_pointer(labels,preds,id2label)
-        print(m)
-
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        # implement your own
-        out = self(x)
-        return out
-
 
 
 if __name__== '__main__':

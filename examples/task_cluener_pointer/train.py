@@ -1,16 +1,12 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
-
-import numpy as np
-
-
-
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 import logging
 from typing import Union, List
 import torch
+import numpy as np
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from asmodels.model.nlp.layers.seq_pointer import f1_metric
 

@@ -6,11 +6,13 @@ from transformers import AdamW, get_linear_schedule_with_warmup
 from .transformer import TransformerModel
 from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer, loss_fn, f1_metric
 
+__all__ = [
+    'TransformerGplinker'
+]
 
 class TransformerGplinker(TransformerModel):
     def __init__(self,with_efficient=True, *args,**kwargs):
         super(TransformerGplinker, self).__init__(*args,**kwargs)
-
         PointerLayerObject = EfficientPointerLayer if with_efficient else PointerLayer
         self.entities_layer = PointerLayerObject(self.config.hidden_size, 2, 64)
         self.heads_layer = PointerLayerObject(self.config.hidden_size, 2, 64)
@@ -22,26 +24,20 @@ class TransformerGplinker(TransformerModel):
         """Prepare optimizer and schedule (linear warmup and decay)"""
         model = self.model
         no_decay = ["bias", "LayerNorm.weight"]
-        opt = [
-            {
-                "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-                "weight_decay": self.hparams.weight_decay,"lr": self.hparams.learning_rate,
-            },
-            {
-                "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
-                "weight_decay": 0.0,"lr": self.hparams.learning_rate,
-            },
-        ]
-        opt  += [
-            {
-                "params": [p for n, p in self.pointer_layer.named_parameters() if not any(nd in n for nd in no_decay)],
-                "weight_decay": self.hparams.weight_decay,"lr": self.hparams.learning_rate,
-            },
-            {
-                "params": [p for n, p in self.pointer_layer.named_parameters() if any(nd in n for nd in no_decay)],
-                "weight_decay": 0.0,"lr": self.hparams.learning_rate,
-            },
-        ]
+        attrs = [model,self.entities_layer,self.heads_layer,self.tails_layer]
+        opt = []
+        for a in attrs:
+            opt += [
+                    {
+                        "params": [p for n, p in a.named_parameters() if not any(nd in n for nd in no_decay)],
+                        "weight_decay": self.hparams.weight_decay,"lr": self.hparams.learning_rate,
+                    },
+                    {
+                        "params": [p for n, p in a.named_parameters() if any(nd in n for nd in no_decay)],
+                        "weight_decay": 0.0,"lr": self.hparams.learning_rate,
+                    },
+                ]
+
 
         optimizer = AdamW(opt, lr=self.hparams.learning_rate, eps=self.hparams.adam_epsilon)
 
