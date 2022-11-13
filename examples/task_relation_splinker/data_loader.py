@@ -90,15 +90,16 @@ class NER_DataHelper(DataHelper):
             if len(sub_tokens) != 1:
                 print('!!! bad token')
                 sub_tokens = [tokenizer.unk_token]
+            flag = False
             for sub_token in sub_tokens:
                 tok_to_orig_start_index.append(len(text_tmp) - len(token))
                 tok_to_orig_end_index.append(len(text_tmp) - 1)
                 tokens.append(sub_token)
                 if len(tokens) >= max_seq_length - 2:
+                    flag = True
                     break
-            else:
-                continue
-            break
+            if flag:
+                break
 
         seq_len = len(tokens)
         # 2 tags for each predicate + I tag + O tag

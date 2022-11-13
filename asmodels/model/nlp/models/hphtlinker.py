@@ -4,14 +4,15 @@ import torch
 from torch import nn
 from transformers import AdamW, get_linear_schedule_with_warmup
 from .transformer import TransformerModel
+from ..layers.norm import LayerNorm
 
 __all__ = [
     'TransformerForHphtlinker'
 ]
 
-class BCELossForIE(nn.Module):
+class BCELossForLinker(nn.Module):
     def __init__(self, ):
-        super(BCELossForIE, self).__init__()
+        super(BCELossForLinker, self).__init__()
         self.criterion = nn.BCEWithLogitsLoss(reduction='none')
 
     def forward(self, logits, labels, mask):
@@ -28,9 +29,12 @@ class TransformerForHphtlinker(TransformerModel):
 
         config = self.config
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
-        self.BCELoss = BCELossForIE()
+        self.subject = nn.Linear(config.hidden_size, 2)
+        self.object = nn.Linear(config.hidden_size, 2 * config.num_labels)
+        self.BCELoss = BCELossForLinker()
         self.sigmoid = nn.Sigmoid()
+        self.condLayerNorm = LayerNorm(hidden_size=config.hidden_size, conditional_size=config.hidden_size*2)
+
         self.init_weights()
         self.device_id = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         task_specific_params = config.task_specific_params
@@ -65,14 +69,37 @@ class TransformerForHphtlinker(TransformerModel):
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
         return [optimizer], [scheduler]
 
+
+
+    def extract_subject(self,inputs):
+        """根据subject_ids从output中取出subject的向量表征
+        """
+        output, subject_ids = inputs
+
+        start = torch.gather(output, subject_ids[:, :1])
+        end = torch.gather(output, subject_ids[:, 1:])
+        subject = torch.cat([start, end], 2)
+        return subject[:, 0]
+
+
     def training_step(self, batch, batch_idx):
-        labels: torch.Tensor = batch.pop('labels')
-        mask = batch.pop('mask')
+        subject_labels: torch.Tensor = batch.pop('subject_labels')
+        subject_ids: torch.Tensor = batch.pop('subject_ids')
+        object_labels: torch.Tensor = batch.pop('object_labels')
+
         outputs = self(**batch)
-        logits = outputs[0]
-        logits = self.dropout(logits)
-        logits = self.classifier(logits)
-        loss = self.BCELoss(logits=logits, labels=labels, mask=mask)
+        last_hidden = outputs[0]
+        logits = self.dropout(last_hidden)
+        subject_preds = self.sigmoid(self.subject(logits)) ** 2
+
+
+        subject_output = self.extract_subject([last_hidden,subject_ids])
+        subject_output = self.condLayerNorm(subject_output)
+        object_preds = self.object(subject_output)
+        object_preds = torch.reshape(object_preds,shape=(-1,self.config.num_labels,2))
+
+        loss = self.BCELoss(subject_preds,subject_labels) + self.BCELoss(object_preds,object_labels)
+
         self.log_dict({'train_loss': loss}, prog_bar=True)
         return loss
 

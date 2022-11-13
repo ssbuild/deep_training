@@ -9,58 +9,6 @@ from asmodels.data_helper import DataHelper
 from transformers import BertTokenizer
 
 
-def parse_label(spo_list, label2id, tokens, max_length):
-    # 2 tags for each predicate + I tag + O tag
-    num_labels = 2 * (len(label2id.keys()) - 2) + 2
-    seq_len = len(tokens)
-    # initialize tag
-    labels = [[0] * num_labels for i in range(seq_len)]
-
-    for spo in spo_list:
-        for relation_name in spo:
-            relation = spo[relation_name]
-            if len(relation) != 2:
-                raise Exception('len(relation) != 2')
-            subject = relation[0]
-            object = relation[1]
-
-            if relation_name not in label2id.keys():
-                relation_name = relation_name + '_' + object['label']
-                if relation_name not in label2id.keys():
-                    raise relation_name + ' not in ' + ''.join(list(label2id.keys()))
-
-            subject_ids = [subject['pos'][0],subject['pos'][1] - 1]
-            object_ids= [object['pos'][0],object['pos'][1] - 1]
-
-            if subject_ids[1] >= max_length -2 or object_ids[1] >= max_length -2:
-                continue
-
-            label_subject = label2id[relation_name]
-            label_object = label_subject + len(label2id.keys()) - 2
-
-
-            index = subject_ids[0]
-            subject_tokens_len = subject_ids[1] - subject_ids[0] + 1
-            labels[index][label_subject] = 1
-            for i in range(subject_tokens_len - 1):
-                labels[index + i + 1][1] = 1
-
-            index = object_ids[0]
-            labels[index][label_object] = 1
-            object_tokens_len = object_ids[1] - object_ids[0] + 1
-
-            if index + object_tokens_len - 1 >= seq_len:
-                print(spo_list)
-                print(seq_len,object_ids,object_tokens_len)
-            for i in range(object_tokens_len - 1):
-                labels[index + i + 1][1] = 1
-
-    # if token wasn't assigned as any "B"/"I" tag, give it an "O" tag for outside
-    for i in range(seq_len):
-        if labels[i] == [0] * num_labels:
-            labels[i][0] = 1
-
-    return labels
 
 
 
@@ -90,23 +38,33 @@ class NER_DataHelper(DataHelper):
             if len(sub_tokens) != 1:
                 print('!!! bad token')
                 sub_tokens = [tokenizer.unk_token]
+            flag = False
             for sub_token in sub_tokens:
                 tok_to_orig_start_index.append(len(text_tmp) - len(token))
                 tok_to_orig_end_index.append(len(text_tmp) - 1)
                 tokens.append(sub_token)
                 if len(tokens) >= max_seq_length - 2:
+                    flag = True
                     break
-            else:
-                continue
-            break
+            if flag:
+                break
 
         seq_len = len(tokens)
-        # 2 tags for each predicate + I tag + O tag
-        num_labels = 2 * (len(label2id.keys()) - 2) + 2
-        # initialize tag
-        labels = [[0] * num_labels for i in range(seq_len)]
-        if spo_list is not None:
-            labels = parse_label(spo_list, label2id, tokens, max_seq_length)
+
+        spoes = {}
+        for s, p, o in d['spo_list']:
+            s = tokenizer.encode(s)[0][1:-1]
+            p = predicate2id[p]
+            o = tokenizer.encode(o)[0][1:-1]
+            s_idx = search(s, token_ids)
+            o_idx = search(o, token_ids)
+            if s_idx != -1 and o_idx != -1:
+                s = (s_idx, s_idx + len(s) - 1)
+                o = (o_idx, o_idx + len(o) - 1, p)
+                if s not in spoes:
+                    spoes[s] = []
+                spoes[s].append(o)
+
 
         # add [CLS] and [SEP] token, they are tagged into "O" for outside
         if seq_len > max_seq_length - 2:
@@ -140,8 +98,8 @@ class NER_DataHelper(DataHelper):
             "mask": np.asarray(mask),
             "labels": np.array(labels),
             "seq_len": np.array(seq_len),
-            "tok_to_orig_start_index": np.array(tok_to_orig_start_index),
-            "tok_to_orig_end_index": np.array(tok_to_orig_end_index),
+            # "tok_to_orig_start_index": np.array(tok_to_orig_start_index),
+            # "tok_to_orig_end_index": np.array(tok_to_orig_end_index),
 
         }
         return d
