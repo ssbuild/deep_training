@@ -8,7 +8,7 @@ import torch
 from asmodels.data_helper import DataHelper
 from transformers import BertTokenizer
 
-class Tnews_DataHelper(DataHelper):
+class NN_DataHelper(DataHelper):
     # 切分词
     def on_data_process(self,data: typing.Any, user_data: tuple):
         tokenizer: BertTokenizer

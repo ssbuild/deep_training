@@ -12,10 +12,8 @@ __all__ = [
 class TransformerPointer(TransformerModel):
     def __init__(self,with_efficient=True, *args,**kwargs):
         super(TransformerPointer, self).__init__(*args,**kwargs)
-        if with_efficient:
-            self.pointer_layer = EfficientPointerLayer(self.config.hidden_size,self.config.num_labels,64)
-        else:
-            self.pointer_layer = PointerLayer(self.config.hidden_size,self.config.num_labels,64)
+        PointerLayerObject = EfficientPointerLayer if with_efficient else PointerLayer
+        self.pointer_layer = PointerLayerObject(self.config.hidden_size,self.config.num_labels,64)
 
     def configure_optimizers(self):
         """Prepare optimizer and schedule (linear warmup and decay)"""

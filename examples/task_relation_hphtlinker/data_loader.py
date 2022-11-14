@@ -22,8 +22,8 @@ class NN_DataHelper(DataHelper):
         if len(tokens) > max_seq_length - 2:
             tokens = tokens[0:(max_seq_length - 2)]
         input_ids = tokenizer.convert_tokens_to_ids(['CLS'] +tokens + ['SEP'] )
-        input_length = len(input_ids)
-        attention_mask = [1] * input_length
+        seqlen = len(input_ids)
+        attention_mask = [1] * seqlen
 
         input_ids = np.asarray(input_ids, dtype = np.int64)
         attention_mask = np.asarray(attention_mask, dtype=np.int64)
@@ -56,7 +56,7 @@ class NN_DataHelper(DataHelper):
             for o in spoes.get((start,end), []):
                 object_labels[o[0], o[2], 0] = 1
                 object_labels[o[1], o[2], 1] = 1
-        pad_len = max_seq_length - input_length
+        pad_len = max_seq_length - seqlen
         if pad_len > 0:
             pad_val = tokenizer.pad_token_id
             input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
@@ -67,7 +67,7 @@ class NN_DataHelper(DataHelper):
             'subject_labels': subject_labels,
             'subject_ids':subject_ids,
             'object_labels': object_labels,
-            'seqlen': input_length
+            'seqlen': seqlen
         }
         return d
 

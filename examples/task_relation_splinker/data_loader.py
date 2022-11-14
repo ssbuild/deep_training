@@ -22,39 +22,32 @@ class NN_DataHelper(DataHelper):
         input_ids = tokenizer.convert_tokens_to_ids(['CLS'] + tokens + ['SEP'])
         seqlen = len(input_ids)
         attention_mask = [1] * seqlen
-
         input_ids = np.asarray(input_ids, dtype=np.int64)
         attention_mask = np.asarray(attention_mask, dtype=np.int64)
-
-
         num_labels = len(predicate2id)
 
         if spo_list is not None:
             labels = np.zeros(shape=(seqlen - 2, num_labels),dtype=np.int64)
+
+            valid_label_n = (len(predicate2id.keys()) - 2) // 2
             for s,p,o in spo_list:
                 if s[1] >= seqlen - 2 or o[1] >= seqlen - 2:
                     continue
-
                 s_ids = [s[0], s[1]]
                 o_ids = [o[0], o[1]]
-
                 label_for_s = predicate2id[p]
-                label_for_o = label_for_s + ((len(predicate2id.keys()) - 2) // 2)
-
+                label_for_o = label_for_s + valid_label_n
                 slen = s_ids[1] - s_ids[0] + 1
                 labels[s[0]][label_for_s] = 1
                 for i in range(slen - 1):
                     labels[s[0] + i + 1][1] = 1
-
                 labels[o[0]][label_for_o] = 1
                 olen = o_ids[1] - o_ids[0] + 1
                 for i in range(olen - 1):
                     labels[o[0] + i + 1][1] = 1
-
             for i in range(seqlen-2):
                 if not np.any(labels[i]):
                     labels[i][0] = 1
-
             edge = np.expand_dims(np.asarray([1] + [0] * (num_labels - 1),dtype=np.int64), axis=0)
             labels = np.concatenate([edge, labels, edge], axis=0)
         else:

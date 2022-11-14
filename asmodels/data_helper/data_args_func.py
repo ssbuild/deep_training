@@ -42,10 +42,11 @@ def preprocess_args(train_args):
         train_args.label_file = []
     return train_args
 
+
 def get_filename_replace_dir(filename,new_path_dir,ext=None):
     return os.path.join(new_path_dir,get_filename_no_ext(filename) + '.' + ext)
 
-def load_tokenizer_and_config_with_args(train_args,dataHelper):
+def load_tokenizer_and_config_with_args(train_args,dataHelper,task_specific_params=None):
     label2id, id2label = dataHelper.read_labels_from_file(train_args.label_file)
     tokenizer = load_tokenizer(tokenizer_name=train_args.tokenizer_name,
                                 model_name_or_path=train_args.model_name_or_path,
@@ -62,7 +63,12 @@ def load_tokenizer_and_config_with_args(train_args,dataHelper):
                             use_auth_token=train_args.use_auth_token,
                             label2id=label2id,
                             id2label=id2label,
-                            num_labels=len(label2id) if label2id is not None else None
+                            num_labels=len(label2id) if label2id is not None else None,
+                            bos_token_id=tokenizer.bos_token_id,
+                            pad_token_id=tokenizer.pad_token_id,
+                            eos_token_id=tokenizer.eos_token_id,
+                            sep_token_id=tokenizer.sep_token_id,
+                            task_specific_params=task_specific_params,
                             )
 
     return  tokenizer,config,label2id, id2label

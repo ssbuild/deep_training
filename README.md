@@ -9,9 +9,9 @@
 - <strong>中文分类</strong>: 例子 tnews 中文分类
 - <strong>命名实体提取</strong>: 例子 cluener 全指针提取
 - <strong>关系提取</strong>
-  - <strong>gplinker 关系提取</strong>例子： 法研杯2022信息抽取数据
-  - <strong>hphtlinker 关系提取</strong>例子： 法研杯2022信息抽取数据
-  - <strong>spliner 关系提取</strong>例子： 法研杯2022信息抽取数据
+  - <strong>gplinker 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[法研杯2022信息抽取数据](https://github.com/ssbuild/cail2022-info-extract)
+  - <strong>hphtlinker 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[法研杯2022信息抽取数据](https://github.com/ssbuild/cail2022-info-extract)
+  - <strong>spliner 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[法研杯2022信息抽取数据](https://github.com/ssbuild/cail2022-info-extract)
 
 ## 更新
 - <strong>2022年11月12</strong>: 增加关系任务 gplinker (全局指针), hphtlinker(半指针半标注 ,half pointer and half tages ),spliner (全指针提取 sigmoid pointer or simple pointer)

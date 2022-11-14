@@ -1,51 +1,46 @@
-# -*- coding: utf-8 -*-
-# @Time    : 2022/11/11 17:15
+# @Time    : 2022/11/14 19:53
+# @Author  : tk
+# @FileName: unilm.py
+__all__ = [
+    'TransformerForSplinker'
+]
+
 import torch
 from torch import nn
 from transformers import AdamW, get_linear_schedule_with_warmup
-from .transformer import TransformerModel
-from ..layers.norm import LayerNorm
 
-__all__ = [
-    'TransformerForHphtlinker'
-]
+from asmodels.model.nlp.models.transformer import TransformerModel
 
-class BCELossForLinker(nn.Module):
-    def __init__(self,i ):
-        super(BCELossForLinker, self).__init__()
+
+class BCELossForIE(nn.Module):
+    def __init__(self, ):
+        super(BCELossForIE, self).__init__()
         self.criterion = nn.BCEWithLogitsLoss(reduction='none')
 
-    def forward(self, logits, labels, mask=None):
+    def forward(self, logits, labels, mask):
         loss = self.criterion(logits, labels)
-        if mask is not None:
-            mask = mask.float()
-            loss = loss * mask.unsqueeze(-1)
-            loss = torch.sum(torch.mean(loss,dim=2), dim=1) / torch.sum(mask, dim=1)
+        mask = mask.float()
+        loss = loss * mask.unsqueeze(-1)
+        loss = torch.sum(torch.mean(loss,dim=2), dim=1) / torch.sum(mask, dim=1)
         loss = loss.mean()
         return loss
 
-class TransformerForHphtlinker(TransformerModel):
+class TransformerForUnilm(TransformerModel):
     def __init__(self,*args,**kwargs):
-        super(TransformerForHphtlinker, self).__init__(*args,**kwargs)
+        super(TransformerForUnilm, self).__init__(*args, **kwargs)
 
         config = self.config
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.subject = nn.Linear(config.hidden_size, 2)
-        self.object = nn.Linear(config.hidden_size, 2 * config.num_labels)
-        self.BCELoss = BCELossForLinker()
+        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+        self.BCELoss = BCELossForIE()
         self.sigmoid = nn.Sigmoid()
-        self.condLayerNorm = LayerNorm(hidden_size=config.hidden_size,
-                                       conditional_size=config.hidden_size*2)
 
-        # task_specific_params = config.task_specific_params
-        # self.cls_token_id = task_specific_params['cls_token_id']
-        # self.sep_token_id = task_specific_params['sep_token_id']
 
     def configure_optimizers(self):
         """Prepare optimizer and schedule (linear warmup and decay)"""
         model = self.model
         no_decay = ["bias", "LayerNorm.weight"]
-        attrs = [model, self.subject, self.object]
+        attrs = [model, self.classifier]
         opt = []
         for a in attrs:
             opt += [
@@ -69,37 +64,14 @@ class TransformerForHphtlinker(TransformerModel):
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
         return [optimizer], [scheduler]
 
-
-
-    def extract_subject(self,inputs):
-        """根据subject_ids从output中取出subject的向量表征
-        """
-        output, subject_ids = inputs
-
-        start = torch.gather(output, dim=1, index=subject_ids[:, :1].unsqueeze(2).expand(-1, -1, output.shape[-1]))
-        end = torch.gather(output, dim=1, index=subject_ids[:, 1:].unsqueeze(2).expand(-1, -1, output.shape[-1]))
-        subject = torch.cat([start, end], 2)
-        return subject[:, 0]
-
-
     def training_step(self, batch, batch_idx):
-        subject_labels: torch.Tensor = batch.pop('subject_labels')
-        subject_ids: torch.Tensor = batch.pop('subject_ids')
-        object_labels: torch.Tensor = batch.pop('object_labels')
-
+        labels: torch.Tensor = batch.pop('labels')
+        mask = batch.pop('mask')
         outputs = self(**batch)
-        last_hidden = outputs[0]
-        logits = self.dropout(last_hidden)
-        subject_preds = self.sigmoid(self.subject(logits)) ** 2
-
-
-        subject_output = self.extract_subject([last_hidden,subject_ids])
-        subject_output = self.condLayerNorm([last_hidden,subject_output])
-        object_preds = self.sigmoid(self.object(subject_output)) ** 4
-        object_preds = torch.reshape(object_preds,shape=(*object_preds.shape[:2],self.config.num_labels,2))
-
-        loss = self.BCELoss(subject_preds,subject_labels) + self.BCELoss(object_preds,object_labels)
-
+        logits = outputs[0]
+        logits = self.dropout(logits)
+        logits = self.sigmoid(self.classifier(logits))
+        loss = self.BCELoss(logits=logits, labels=labels, mask=mask)
         self.log_dict({'train_loss': loss}, prog_bar=True)
         return loss
 

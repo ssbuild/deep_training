@@ -22,11 +22,10 @@ class NN_DataHelper(DataHelper):
         if len(tokens) > max_seq_length - 2:
             tokens = tokens[0:(max_seq_length - 2)]
         input_ids = tokenizer.convert_tokens_to_ids(['CLS'] + tokens + ['SEP'])
-        input_length = len(input_ids)
-        attention_mask = [1] * input_length
+        seqlen = len(input_ids)
+        attention_mask = [1] * seqlen
         input_ids = np.asarray(input_ids, dtype=np.int64)
         attention_mask = np.asarray(attention_mask, dtype=np.int64)
-        seqlen = len(input_ids)
         entity_labels = np.zeros(shape=(2,max_seq_length,max_seq_length))
         head_labels = np.zeros(shape=(len(predicate2id),max_seq_length,max_seq_length))
         tail_labels = np.zeros(shape=(len(predicate2id),max_seq_length,max_seq_length))

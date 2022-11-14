@@ -41,11 +41,22 @@ def load_configure(config_name,
                    model_revision="main",
                    use_auth_token=None,
                    model_type=None,
-                   config_overrides=None, **kwargs):
+                   config_overrides=None,
+                   bos_token_id=None,
+                   pad_token_id=None,
+                   eos_token_id=None,
+                   sep_token_id=None,
+                   task_specific_params=None,
+                   **kwargs):
     config_kwargs = {
         "cache_dir": cache_dir,
         "revision": model_revision,
         "use_auth_token": True if use_auth_token else None,
+        "bos_token_id": bos_token_id,
+        "pad_token_id": pad_token_id,
+        "eos_token_id": eos_token_id,
+        "sep_token_id": sep_token_id,
+        "task_specific_params": task_specific_params,
         **kwargs
     }
     if config_name:

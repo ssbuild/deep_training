@@ -11,13 +11,14 @@ from pytorch_lightning import LightningDataModule, Trainer, seed_everything
 from transformers import AdamW,get_linear_schedule_with_warmup
 from asmodels.model.nlp.models.transformer import TransformerForMaskLM
 from data_loader import MLM_DataHelper as DataHelper
-from asmodels.data_helper.data_args_func import load_tokenizer_and_config_with_args, make_all_dataset_with_args, load_all_dataset_with_args
+from asmodels.data_helper.data_args_func import load_tokenizer_and_config_with_args, make_all_dataset_with_args, \
+    load_all_dataset_with_args
 from train_args import build_args
 
 class MyTransformer(TransformerForMaskLM):
-    def __init__(self,tokenizer,*args,**kwargs):
+    def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
-        self.loss_fct = CrossEntropyLoss(reduction='none',ignore_index=tokenizer.pad_token_id)
+        self.loss_fct = CrossEntropyLoss(reduction='none',ignore_index=self.config.pad_token_id)
 
     def _compute_loss(self,y_trues,y_preds,weight):
         y_preds = torch.transpose(y_preds, 1, 2)
@@ -78,7 +79,7 @@ if __name__== '__main__':
     print(train_files, eval_files, test_files)
     dm = load_all_dataset_with_args(dataHelper, train_args, train_files, eval_files, test_files)
     dm.setup("fit")
-    model = MyTransformer(tokenizer,config=config,train_args=train_args)
+    model = MyTransformer(config=config,train_args=train_args)
     trainer = Trainer(
         # callbacks=[progress_bar],
         max_epochs=train_args.max_epochs,
