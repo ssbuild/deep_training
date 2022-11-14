@@ -11,12 +11,17 @@ __all__ = [
 ]
 
 class TransformerGplinker(TransformerModel):
-    def __init__(self,with_efficient=True, *args,**kwargs):
+    def __init__(self,with_efficient=False, *args,**kwargs):
         super(TransformerGplinker, self).__init__(*args,**kwargs)
+
         PointerLayerObject = EfficientPointerLayer if with_efficient else PointerLayer
         self.entities_layer = PointerLayerObject(self.config.hidden_size, 2, 64)
-        self.heads_layer = PointerLayerObject(self.config.hidden_size, 2, 64,RoPE=False, tril_mask=False)
-        self.tails_layer = PointerLayerObject(self.config.hidden_size, self.config.num_labels, 64,RoPE=False, tril_mask=False)
+        self.heads_layer = PointerLayerObject(self.config.hidden_size, self.config.num_labels, 64,RoPE=False, tril_mask=False)
+        self.tails_layer = PointerLayerObject(self.config.hidden_size,
+                                              self.config.num_labels,
+                                              64,
+                                              RoPE=False,
+                                              tril_mask=False)
 
 
 
@@ -52,17 +57,27 @@ class TransformerGplinker(TransformerModel):
 
 
     def training_step(self, batch, batch_idx):
-        entities_labels: torch.Tensor = batch.pop('entities_labels')
-        heads_labels: torch.Tensor = batch.pop('heads_labels')
-        tails_labels: torch.Tensor = batch.pop('tails_labels')
+        entity_labels: torch.Tensor = batch.pop('entity_labels')
+        head_labels: torch.Tensor = batch.pop('head_labels')
+        tail_labels: torch.Tensor = batch.pop('tail_labels')
         outputs = self(**batch)
         logits = outputs[0]
 
-        logits1 = self.entities_layer(logits, batch['attention_mask'])
-        logits2 = self.entities_layer(logits, batch['attention_mask'])
-        logits3 = self.entities_layer(logits, batch['attention_mask'])
 
-        loss = loss_fn(entities_labels, logits1) +loss_fn(heads_labels, logits2) + loss_fn(tails_labels, logits3)
-        f1 = (f1_metric(entities_labels, logits1) +f1_metric(heads_labels, logits2) + f1_metric(tails_labels, logits3)) / 3
+
+        logits1 = self.entities_layer(logits, batch['attention_mask'])
+        logits2 = self.heads_layer(logits, batch['attention_mask'])
+        logits3 = self.tails_layer(logits, batch['attention_mask'])
+
+        print(entity_labels.shape)
+        print(head_labels.shape)
+        print(tail_labels.shape)
+
+        print(logits1.shape)
+        print(logits2.shape)
+        print(logits3.shape)
+
+        loss = loss_fn(entity_labels, logits1) +loss_fn(head_labels, logits2) + loss_fn(tail_labels, logits3)
+        f1 = (f1_metric(entity_labels, logits1) +f1_metric(head_labels, logits2) + f1_metric(tail_labels, logits3)) / 3
         self.log_dict({'train_loss': loss, 'f1': f1}, prog_bar=True)
         return loss

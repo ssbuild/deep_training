@@ -12,7 +12,9 @@ from transformers import BertTokenizer
 def pad_to_seq(d,pad_val=0):
     d = list(map(lambda x: list(x), d))
     length = max(list(map(lambda x: len(x), d)))
-    for lst in d:
+    length = max(length,1)
+    for i in range(len(d)):
+        lst = d[i]
         while len(lst) < length:
             lst.append([pad_val,pad_val])
     return np.asarray(d)
@@ -38,9 +40,9 @@ class NN_DataHelper(DataHelper):
         attention_mask = np.asarray(attention_mask, dtype=np.int64)
         seqlen = len(input_ids)
 
-        entity_labels = np.zeros(shape=(max_seq_length,2,2))
-        head_labels = np.zeros(shape=(max_seq_length,len(predicate2id),2))
-        tail_labels = np.zeros(shape=(max_seq_length,len(predicate2id),2))
+        entity_labels = np.zeros(shape=(2,max_seq_length,max_seq_length))
+        head_labels = np.zeros(shape=(len(predicate2id),max_seq_length,max_seq_length))
+        tail_labels = np.zeros(shape=(len(predicate2id),max_seq_length,max_seq_length))
 
         entity_labels_tmp = [set() for _ in range(2)]
         head_labels_tmp = [set() for _ in range(len(predicate2id))]
@@ -53,15 +55,16 @@ class NN_DataHelper(DataHelper):
                 head_labels_tmp[p].add((s[0], s[1]))
                 tail_labels_tmp[p].add((o[0], o[1]))
 
+
         entity_labels_tmp = pad_to_seq(entity_labels_tmp,pad_val=tokenizer.pad_token_id)
         head_labels_tmp = pad_to_seq(head_labels_tmp,pad_val=tokenizer.pad_token_id)
         tail_labels_tmp = pad_to_seq(tail_labels_tmp,pad_val=tokenizer.pad_token_id)
 
 
         ##
-        entity_labels[:len(entity_labels_tmp)] = entity_labels_tmp
-        head_labels[:len(head_labels_tmp)] = head_labels_tmp
-        head_labels[:len(tail_labels_tmp)] = tail_labels_tmp
+        entity_labels[:entity_labels_tmp.shape[0],:entity_labels_tmp.shape[1]] = entity_labels_tmp
+        head_labels[:head_labels_tmp.shape[0],:head_labels_tmp.shape[1]] = head_labels_tmp
+        head_labels[:tail_labels_tmp.shape[0],:tail_labels_tmp.shape[1]] = tail_labels_tmp
 
         pad_len = max_seq_length - len(input_ids)
         if pad_len > 0:
@@ -161,7 +164,8 @@ class NN_DataHelper(DataHelper):
         if 'token_type_ids' in o:
             o['token_type_ids'] = o['token_type_ids'][:, :max_len]
 
-        o['labels'] = o['labels'][:,:, :max_len,:max_len]
+        o['entity_labels'] = o['entity_labels'][:,:, :max_len,:max_len]
+        o['head_labels'] = o['head_labels'][:, :, :max_len,:max_len]
+        o['tail_labels'] = o['tail_labels'][:, :, :max_len,:max_len]
         return o
-
 

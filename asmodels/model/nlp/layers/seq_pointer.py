@@ -124,7 +124,7 @@ class PointerLayer(nn.Module):
 
 
 class EfficientPointerLayer(nn.Module):
-    def __init__(self, in_hidden_size, heads, head_size, RoPE=True):
+    def __init__(self, in_hidden_size, heads, head_size, RoPE=True,tril_mask=True):
         super().__init__()
         self.heads = heads
         self.head_size = head_size
@@ -132,6 +132,7 @@ class EfficientPointerLayer(nn.Module):
         self.dense1 = nn.Linear(self.hidden_size, self.head_size * 2)
         self.dense2 = nn.Linear(self.hidden_size, self.heads * 2)
         self.RoPE = RoPE
+        self.tril_mask = tril_mask
 
     def sinusoidal_position_embedding(self, batch_size, seq_len, output_dim):
         position_ids = torch.arange(0, seq_len, dtype=torch.float).unsqueeze(0)
