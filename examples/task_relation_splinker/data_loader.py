@@ -31,7 +31,7 @@ class NN_DataHelper(DataHelper):
         labels = np.zeros(shape=(seqlen - 2, num_labels))
         if spo_list is not None:
             for s,p,o in spo_list:
-                if s[1] > seqlen - 2 or o[1] > seqlen - 2:
+                if s[1] >= seqlen - 2 or o[1] >= seqlen - 2:
                     continue
 
                 s_ids = [s[0], s[1]]
@@ -47,7 +47,6 @@ class NN_DataHelper(DataHelper):
 
                 labels[o[0]][label_for_o] = 1
                 olen = o_ids[1] - o_ids[0] + 1
-                print(o_ids,olen)
                 for i in range(olen - 1):
                     labels[o[0] + i + 1][1] = 1
 
