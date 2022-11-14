@@ -4,6 +4,14 @@
 import torch
 import torch.nn as nn
 
+__all__ = [
+    'multilabel_categorical_crossentropy',
+    'loss_fn',
+    'f1_metric',
+    'PointerLayer',
+    'EfficientPointerLayer'
+]
+
 def multilabel_categorical_crossentropy(y_true, y_pred):
 
     y_pred = (1 - 2 * y_true) * y_pred
@@ -33,6 +41,15 @@ def f1_metric(y_true, y_pred):
     return 2 * torch.sum(y_true * y_pred) / torch.sum(y_true + y_pred)
 
 
+def seq_masking(logits:torch.Tensor,mask,axis,value=-1e12):
+    x = logits
+    for _ in range(axis - 1):
+        mask = torch.unsqueeze(mask,1)
+    for _ in range(len(x.size()) -len(mask.size())):
+        mask = torch.unsqueeze(mask, -1)
+    x = x * mask + (1 - mask) * value
+    return x
+
 class PointerLayer(nn.Module):
     def __init__(self, in_hidden_size, heads, head_size, RoPE=True, tril_mask=True):
         super().__init__()
@@ -58,14 +75,7 @@ class PointerLayer(nn.Module):
         embeddings = embeddings.to(self.device)
         return embeddings
 
-    def seq_masking(self,logits:torch.Tensor,mask,axis,value=-1e12):
-        x = logits
-        for _ in range(axis - 1):
-            mask = torch.unsqueeze(mask,1)
-        for _ in range(len(x.size()) -len(mask.size())):
-            mask = torch.unsqueeze(mask, -1)
-        x = x * mask + (1 - mask) * value
-        return x
+
 
     def forward(self, context_output, attention_mask):
 
@@ -111,8 +121,8 @@ class PointerLayer(nn.Module):
         logits = torch.einsum('bmhd,bnhd->bhmn', qw, kw)
 
 
-        logits = self.seq_masking(logits, attention_mask, 2)
-        logits = self.seq_masking(logits, attention_mask, 3)
+        logits = seq_masking(logits, attention_mask, 2)
+        logits = seq_masking(logits, attention_mask, 3)
 
         if self.tril_mask:
             #排除下三角
@@ -148,14 +158,6 @@ class EfficientPointerLayer(nn.Module):
         embeddings = embeddings.to(self.device)
         return embeddings
 
-    def seq_masking(self,logits:torch.Tensor,mask,axis,value=-1e12):
-        x = logits
-        for _ in range(axis - 1):
-            mask = torch.unsqueeze(mask,1)
-        for _ in range(len(x.size()) -len(mask.size())):
-            mask = torch.unsqueeze(mask, -1)
-        x = x * mask + (1 - mask) * value
-        return x
 
     def forward(self, context_output, attention_mask):
         self.device = attention_mask.device
@@ -196,8 +198,8 @@ class EfficientPointerLayer(nn.Module):
         bias = torch.einsum('bnh->bhn',outputs_dense ) / 2
         logits = logits[:, None] + bias[:, ::2, None] + bias[:, 1::2, :, None]
 
-        logits = self.seq_masking(logits, attention_mask, 2)
-        logits = self.seq_masking(logits, attention_mask, 3)
+        logits = seq_masking(logits, attention_mask, 2)
+        logits = seq_masking(logits, attention_mask, 3)
 
         if self.tril_mask:
             #排除下三角

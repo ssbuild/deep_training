@@ -13,7 +13,7 @@ from asmodels.model.nlp.layers.seq_pointer import f1_metric
 from pytorch_lightning import Trainer, seed_everything,LightningDataModule
 from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, load_tokenizer_and_config_with_args
 
-from data_loader import NER_DataHelper as DataHelper
+from data_loader import NN_DataHelper as DataHelper
 from train_args import train_args
 from asmodels.model.nlp.models.pointer import TransformerPointer
 from asmodels.model.nlp.metrics.pointer import metric_for_pointer

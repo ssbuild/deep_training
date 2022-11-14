@@ -6,10 +6,7 @@ import typing
 import numpy as np
 import torch
 from asmodels.data_helper import DataHelper
-from transformers import BertTokenizer
-
-
-
+from transformers import BertTokenizer #仅编写提示使用，实际不一定使用
 
 class NN_DataHelper(DataHelper):
     index = 0

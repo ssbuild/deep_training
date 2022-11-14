@@ -33,9 +33,7 @@ class TransformerForSplinker(TransformerModel):
         self.sigmoid = nn.Sigmoid()
         self.init_weights()
         self.device_id = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        task_specific_params = config.task_specific_params
-        self.cls_token_id = task_specific_params['cls_token_id']
-        self.sep_token_id = task_specific_params['sep_token_id']
+
 
     def configure_optimizers(self):
         """Prepare optimizer and schedule (linear warmup and decay)"""
