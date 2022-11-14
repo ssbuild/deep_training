@@ -43,9 +43,7 @@ class TransformerGplinker(TransformerModel):
                     },
                 ]
 
-
         optimizer = AdamW(opt, lr=self.hparams.learning_rate, eps=self.hparams.adam_epsilon)
-
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
             num_warmup_steps=self.hparams.warmup_steps,
@@ -63,21 +61,12 @@ class TransformerGplinker(TransformerModel):
         outputs = self(**batch)
         logits = outputs[0]
 
-
-
         logits1 = self.entities_layer(logits, batch['attention_mask'])
         logits2 = self.heads_layer(logits, batch['attention_mask'])
         logits3 = self.tails_layer(logits, batch['attention_mask'])
 
-        print(entity_labels.shape)
-        print(head_labels.shape)
-        print(tail_labels.shape)
 
-        print(logits1.shape)
-        print(logits2.shape)
-        print(logits3.shape)
-
-        loss = loss_fn(entity_labels, logits1) +loss_fn(head_labels, logits2) + loss_fn(tail_labels, logits3)
+        loss = (loss_fn(entity_labels, logits1) +loss_fn(head_labels, logits2) + loss_fn(tail_labels, logits3)) / 3
         f1 = (f1_metric(entity_labels, logits1) +f1_metric(head_labels, logits2) + f1_metric(tail_labels, logits3)) / 3
         self.log_dict({'train_loss': loss, 'f1': f1}, prog_bar=True)
         return loss

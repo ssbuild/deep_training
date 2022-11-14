@@ -9,15 +9,7 @@ from asmodels.data_helper import DataHelper
 from transformers import BertTokenizer
 
 
-def pad_to_seq(d,pad_val=0):
-    d = list(map(lambda x: list(x), d))
-    length = max(list(map(lambda x: len(x), d)))
-    length = max(length,1)
-    for i in range(len(d)):
-        lst = d[i]
-        while len(lst) < length:
-            lst.append([pad_val,pad_val])
-    return np.asarray(d)
+
 
 class NN_DataHelper(DataHelper):
     index = 0
@@ -55,16 +47,18 @@ class NN_DataHelper(DataHelper):
                 head_labels_tmp[p].add((s[0], s[1]))
                 tail_labels_tmp[p].add((o[0], o[1]))
 
+        x1 = list(map(lambda x: list(x), entity_labels_tmp))
+        x2 = list(map(lambda x: list(x), entity_labels_tmp))
+        x3 = list(map(lambda x: list(x), entity_labels_tmp))
 
-        entity_labels_tmp = pad_to_seq(entity_labels_tmp,pad_val=tokenizer.pad_token_id)
-        head_labels_tmp = pad_to_seq(head_labels_tmp,pad_val=tokenizer.pad_token_id)
-        tail_labels_tmp = pad_to_seq(tail_labels_tmp,pad_val=tokenizer.pad_token_id)
+        def feed_label(x,pts_list):
+            for i,pts in enumerate(pts_list):
+                for p in pts:
+                    x[i][p[0]][p[1]] = 1
 
-
-        ##
-        entity_labels[:entity_labels_tmp.shape[0],:entity_labels_tmp.shape[1]] = entity_labels_tmp
-        head_labels[:head_labels_tmp.shape[0],:head_labels_tmp.shape[1]] = head_labels_tmp
-        head_labels[:tail_labels_tmp.shape[0],:tail_labels_tmp.shape[1]] = tail_labels_tmp
+        feed_label(entity_labels,x1)
+        feed_label(head_labels, x2)
+        feed_label(tail_labels, x3)
 
         pad_len = max_seq_length - len(input_ids)
         if pad_len > 0:
