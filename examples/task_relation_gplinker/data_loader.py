@@ -27,11 +27,9 @@ class NN_DataHelper(DataHelper):
         input_ids = tokenizer.convert_tokens_to_ids(['CLS'] + tokens + ['SEP'])
         input_length = len(input_ids)
         attention_mask = [1] * input_length
-
         input_ids = np.asarray(input_ids, dtype=np.int64)
         attention_mask = np.asarray(attention_mask, dtype=np.int64)
         seqlen = len(input_ids)
-
         entity_labels = np.zeros(shape=(2,max_seq_length,max_seq_length))
         head_labels = np.zeros(shape=(len(predicate2id),max_seq_length,max_seq_length))
         tail_labels = np.zeros(shape=(len(predicate2id),max_seq_length,max_seq_length))
@@ -48,14 +46,12 @@ class NN_DataHelper(DataHelper):
                 tail_labels_tmp[p].add((o[0], o[1]))
 
         x1 = list(map(lambda x: list(x), entity_labels_tmp))
-        x2 = list(map(lambda x: list(x), entity_labels_tmp))
-        x3 = list(map(lambda x: list(x), entity_labels_tmp))
-
+        x2 = list(map(lambda x: list(x), head_labels_tmp))
+        x3 = list(map(lambda x: list(x), tail_labels_tmp))
         def feed_label(x,pts_list):
             for i,pts in enumerate(pts_list):
                 for p in pts:
                     x[i][p[0]][p[1]] = 1
-
         feed_label(entity_labels,x1)
         feed_label(head_labels, x2)
         feed_label(tail_labels, x3)
