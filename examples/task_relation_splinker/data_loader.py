@@ -28,8 +28,9 @@ class NN_DataHelper(DataHelper):
 
 
         num_labels = len(predicate2id)
-        labels = np.zeros(shape=(seqlen - 2, num_labels))
+
         if spo_list is not None:
+            labels = np.zeros(shape=(seqlen - 2, num_labels),dtype=np.int64)
             for s,p,o in spo_list:
                 if s[1] >= seqlen - 2 or o[1] >= seqlen - 2:
                     continue
@@ -50,21 +51,21 @@ class NN_DataHelper(DataHelper):
                 for i in range(olen - 1):
                     labels[o[0] + i + 1][1] = 1
 
-            # if token wasn't assigned as any "B"/"I" tag, give it an "O" tag for outside
-            for i in range(seqlen):
-                if labels[i] == [0] * num_labels:
+            for i in range(seqlen-2):
+                if not np.any(labels[i]):
                     labels[i][0] = 1
 
-
-        edge = np.expand_dims(np.asarray([[1] + [0] * (num_labels - 1)]),axis=1)
-        labels = np.concatenate([edge,labels,edge],axis=1)
+            edge = np.expand_dims(np.asarray([1] + [0] * (num_labels - 1),dtype=np.int64), axis=0)
+            labels = np.concatenate([edge, labels, edge], axis=0)
+        else:
+            labels = np.zeros(shape=(seqlen, num_labels),dtype=np.int64)
 
         pad_len = max_seq_length - len(input_ids)
         if pad_len:
             pad_val = tokenizer.pad_token_id
             input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
             attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-            labels = np.concatenate([labels, np.zeros(pad_val,num_labels)],axis=0)
+            labels = np.concatenate([labels, np.zeros(shape=(pad_len,num_labels))],axis=0)
 
 
         mask = np.logical_and(input_ids != tokenizer.pad_token_id,
@@ -74,7 +75,7 @@ class NN_DataHelper(DataHelper):
             "input_ids": np.array(input_ids,dtype=np.int64),
             "attention_mask": np.asarray(attention_mask,dtype=np.int64),
             "mask": np.asarray(mask,dtype=np.int64),
-            "labels": np.array(labels,dtype=np.int64),
+            "labels": np.array(labels,dtype=np.float32),
             "seqlen": np.array(seqlen,dtype=np.int64),
         }
         return d

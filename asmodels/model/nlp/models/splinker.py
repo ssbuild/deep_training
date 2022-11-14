@@ -31,15 +31,13 @@ class TransformerForSplinker(TransformerModel):
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
         self.BCELoss = BCELossForIE()
         self.sigmoid = nn.Sigmoid()
-        self.init_weights()
-        self.device_id = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
     def configure_optimizers(self):
         """Prepare optimizer and schedule (linear warmup and decay)"""
         model = self.model
         no_decay = ["bias", "LayerNorm.weight"]
-        attrs = [model, self.entities_layer, self.heads_layer, self.tails_layer]
+        attrs = [model, self.classifier]
         opt = []
         for a in attrs:
             opt += [
@@ -69,7 +67,7 @@ class TransformerForSplinker(TransformerModel):
         outputs = self(**batch)
         logits = outputs[0]
         logits = self.dropout(logits)
-        logits = self.classifier(logits)
+        logits = self.sigmoid(self.classifier(logits))
         loss = self.BCELoss(logits=logits, labels=labels, mask=mask)
         self.log_dict({'train_loss': loss}, prog_bar=True)
         return loss
