@@ -15,8 +15,8 @@ class TransformerGplinker(TransformerModel):
         super(TransformerGplinker, self).__init__(*args,**kwargs)
         PointerLayerObject = EfficientPointerLayer if with_efficient else PointerLayer
         self.entities_layer = PointerLayerObject(self.config.hidden_size, 2, 64)
-        self.heads_layer = PointerLayerObject(self.config.hidden_size, 2, 64)
-        self.tails_layer = PointerLayerObject(self.config.hidden_size, self.config.num_labels, 64)
+        self.heads_layer = PointerLayerObject(self.config.hidden_size, 2, 64,RoPE=False, tril_mask=False)
+        self.tails_layer = PointerLayerObject(self.config.hidden_size, self.config.num_labels, 64,RoPE=False, tril_mask=False)
 
 
 

@@ -9,174 +9,59 @@ from asmodels.data_helper import DataHelper
 from transformers import BertTokenizer
 
 
-def parse_label(spo_list, label2id, tokens, max_length):
-    # 2 tags for each predicate + I tag + O tag
-    num_labels = 2 * (len(label2id.keys()) - 2) + 2
-    seq_len = len(tokens)
-    # initialize tag
-    labels = [[0] * num_labels for i in range(seq_len)]
+def pad_to_seq(d,pad_val=0):
+    d = list(map(lambda x: list(x), d))
+    length = max(list(map(lambda x: len(x), d)))
+    for lst in d:
+        while len(lst) < length:
+            lst.append([pad_val,pad_val])
+    return np.asarray(d)
 
-    for spo in spo_list:
-        for relation_name in spo:
-            relation = spo[relation_name]
-            if len(relation) != 2:
-                raise Exception('len(relation) != 2')
-            subject = relation[0]
-            object = relation[1]
-
-            if relation_name not in label2id.keys():
-                relation_name = relation_name + '_' + object['label']
-                if relation_name not in label2id.keys():
-                    raise relation_name + ' not in ' + ''.join(list(label2id.keys()))
-
-            subject_ids = [subject['pos'][0],subject['pos'][1] - 1]
-            object_ids= [object['pos'][0],object['pos'][1] - 1]
-
-            if subject_ids[1] >= max_length -2 or object_ids[1] >= max_length -2:
-                continue
-
-            label_subject = label2id[relation_name]
-            label_object = label_subject + len(label2id.keys()) - 2
-
-
-            index = subject_ids[0]
-            subject_tokens_len = subject_ids[1] - subject_ids[0] + 1
-            labels[index][label_subject] = 1
-            for i in range(subject_tokens_len - 1):
-                labels[index + i + 1][1] = 1
-
-            index = object_ids[0]
-            labels[index][label_object] = 1
-            object_tokens_len = object_ids[1] - object_ids[0] + 1
-
-            if index + object_tokens_len - 1 >= seq_len:
-                print(spo_list)
-                print(seq_len,object_ids,object_tokens_len)
-            for i in range(object_tokens_len - 1):
-                labels[index + i + 1][1] = 1
-
-    # if token wasn't assigned as any "B"/"I" tag, give it an "O" tag for outside
-    for i in range(seq_len):
-        if labels[i] == [0] * num_labels:
-            labels[i][0] = 1
-
-    return labels
-
-
-def convert_example_to_feature(
-        example,
-        tokenizer:BertTokenizer,
-        label2id,
-        max_length: typing.Optional[int]=512):
-
-    spo_list = example['re_list'] if "re_list" in example.keys() else None
-    text_raw = example['text']
-
-    sub_text = []
-    for char in text_raw:
-        sub_text.append(char)
-
-    tok_to_orig_start_index = []
-    tok_to_orig_end_index = []
-    orig_to_tok_index = []
-    tokens = []
-    text_tmp = ''
-
-    for (i, token) in enumerate(sub_text):
-        orig_to_tok_index.append(len(tokens))
-        sub_tokens = tokenizer._tokenize(token)
-        text_tmp += token
-
-        if len(sub_tokens) != 1:
-            print('!!! bad token')
-            sub_tokens = [tokenizer.unk_token]
-        flag = False
-        for sub_token in sub_tokens:
-            tok_to_orig_start_index.append(len(text_tmp) - len(token))
-            tok_to_orig_end_index.append(len(text_tmp) - 1)
-            tokens.append(sub_token)
-            if len(tokens) >= max_length - 2:
-                flag = True
-                break
-        if flag:
-            break
-
-    seq_len = len(tokens)
-    # 2 tags for each predicate + I tag + O tag
-    num_labels = 2 * (len(label2id.keys()) - 2) + 2
-    # initialize tag
-    labels = [[0] * num_labels for i in range(seq_len)]
-    if spo_list is not None:
-        labels = parse_label(spo_list, label2id, tokens, max_length)
-
-    # add [CLS] and [SEP] token, they are tagged into "O" for outside
-    if seq_len > max_length - 2:
-        tokens = tokens[0:(max_length - 2)]
-        labels = labels[0:(max_length - 2)]
-        tok_to_orig_start_index = tok_to_orig_start_index[0:(max_length - 2)]
-        tok_to_orig_end_index = tok_to_orig_end_index[0:(max_length - 2)]
-    tokens = ["[CLS]"] + tokens + ["[SEP]"]
-    input_mask= [1] * len(tokens)
-    # "O" tag for [PAD], [CLS], [SEP] token
-    outside_label = [[1] + [0] * (num_labels - 1)]
-
-    labels = outside_label + labels + outside_label
-    tok_to_orig_start_index = [-1] + tok_to_orig_start_index + [-1]
-    tok_to_orig_end_index = [-1] + tok_to_orig_end_index + [-1]
-    if seq_len < max_length:
-        tokens = tokens + ["[PAD]"] * (max_length - seq_len - 2)
-        input_mask = input_mask + [0] * (max_length - seq_len - 2)
-        labels = labels + outside_label * (max_length - len(labels))
-        tok_to_orig_start_index = tok_to_orig_start_index + [-1] * (
-            max_length - len(tok_to_orig_start_index))
-        tok_to_orig_end_index = tok_to_orig_end_index + [-1] * (
-            max_length - len(tok_to_orig_end_index))
-
-    token_ids = np.array(tokenizer.convert_tokens_to_ids(tokens))
-
-    mask = np.logical_and(token_ids != tokenizer.pad_token_id,np.logical_and(token_ids != tokenizer.cls_token_id,token_ids != tokenizer.sep_token_id))
-
-
-    o = {
-        "input_ids": np.array(token_ids),
-        "attention_mask": np.asarray(input_mask),
-        "labels": np.array(labels),
-        "seq_len": np.array(seq_len),
-        "tok_to_orig_start_index": np.array(tok_to_orig_start_index),
-        "tok_to_orig_end_index": np.array(tok_to_orig_end_index),
-
-    }
-    return o
-
-
-class NER_DataHelper(DataHelper):
+class NN_DataHelper(DataHelper):
     index = 0
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
 
         tokenizer: BertTokenizer
-        tokenizer,max_seq_length,label2id,mode = user_data
-        sentence,label_dict = data
+        tokenizer, max_seq_length, predicate2id, mode = user_data
+        sentence, entities, re_list = data
+        spo_list = re_list
+        tokens = list(sentence)
 
-        input_ids = tokenizer.convert_tokens_to_ids(list(sentence))
-        if len(input_ids) > max_seq_length - 2:
-            input_ids = input_ids[:max_seq_length - 2]
-        input_ids = [tokenizer.cls_token_id] + input_ids + [tokenizer.sep_token_id]
-        attention_mask = [1] * len(input_ids)
+        if len(tokens) > max_seq_length - 2:
+            tokens = tokens[0:(max_seq_length - 2)]
+        input_ids = tokenizer.convert_tokens_to_ids(['CLS'] + tokens + ['SEP'])
+        input_length = len(input_ids)
+        attention_mask = [1] * input_length
 
         input_ids = np.asarray(input_ids, dtype=np.int64)
         attention_mask = np.asarray(attention_mask, dtype=np.int64)
-        seqlen = np.asarray(len(input_ids), dtype=np.int64)
+        seqlen = len(input_ids)
 
-        labels = np.zeros(shape=(len(label2id),max_seq_length,max_seq_length),dtype=np.int32)
-        real_label = []
-        for label_str, o in label_dict.items():
-            pts = list(o.values())[0]
-            labelid = label2id[label_str]
-            for pt in pts:
-                if pt[1] < max_seq_length:
-                    labels[labelid, pt[0], pt[1]] = 1
-                real_label.append((labelid, pt[0], pt[1]))
+        entity_labels = np.zeros(shape=(max_seq_length,2,2))
+        head_labels = np.zeros(shape=(max_seq_length,len(predicate2id),2))
+        tail_labels = np.zeros(shape=(max_seq_length,len(predicate2id),2))
+
+        entity_labels_tmp = [set() for _ in range(2)]
+        head_labels_tmp = [set() for _ in range(len(predicate2id))]
+        tail_labels_tmp = [set() for _ in range(len(predicate2id))]
+        for s, p, o in spo_list:
+            if s[1] < max_seq_length - 2 and o[1] < max_seq_length - 2:
+                entity_labels_tmp[0].add((s[0], s[1]))
+                entity_labels_tmp[1].add((o[0], o[1]))
+                p:int = predicate2id[p]
+                head_labels_tmp[p].add((s[0], s[1]))
+                tail_labels_tmp[p].add((o[0], o[1]))
+
+        entity_labels_tmp = pad_to_seq(entity_labels_tmp,pad_val=tokenizer.pad_token_id)
+        head_labels_tmp = pad_to_seq(head_labels_tmp,pad_val=tokenizer.pad_token_id)
+        tail_labels_tmp = pad_to_seq(tail_labels_tmp,pad_val=tokenizer.pad_token_id)
+
+
+        ##
+        entity_labels[:len(entity_labels_tmp)] = entity_labels_tmp
+        head_labels[:len(head_labels_tmp)] = head_labels_tmp
+        head_labels[:len(tail_labels_tmp)] = tail_labels_tmp
 
         pad_len = max_seq_length - len(input_ids)
         if pad_len > 0:
@@ -186,26 +71,33 @@ class NER_DataHelper(DataHelper):
         d = {
             'input_ids': input_ids,
             'attention_mask': attention_mask,
-            'labels': labels,
+            'entity_labels': entity_labels,
+            'head_labels': head_labels,
+            'tail_labels': tail_labels,
             'seqlen': seqlen,
         }
-        if mode == 'eval':
-            d['real_label'] = np.asarray(bytes(json.dumps(real_label,ensure_ascii=False),encoding='utf-8'))
         return d
 
-    #读取标签
+    # 读取标签
     @staticmethod
-    def read_labels_from_file(label_fname: str):
-        labels = [
-            'address','book','company','game','government','movie','name','organization','position','scene'
-        ]
+    def read_labels_from_file(files: typing.List):
+        labels = []
+        label_filename = files[0]
+        with open(label_filename, mode='r', encoding='utf-8') as f:
+            lines = f.readlines()
+            for line in lines:
+                jd = json.loads(line)
+                if not jd:
+                    continue
+                larr = [jd['subject'], jd['predicate'], jd['object']]
+                labels.append('+'.join(larr))
         label2id = {label: i for i, label in enumerate(labels)}
         id2label = {i: label for i, label in enumerate(labels)}
         return label2id, id2label
 
     # 读取文件
     @staticmethod
-    def read_data_from_file(files: typing.List,mode:str):
+    def read_data_from_file(files: typing.List, mode: str):
         D = []
         for filename in files:
             with open(filename, mode='r', encoding='utf-8') as f:
@@ -214,7 +106,37 @@ class NER_DataHelper(DataHelper):
                     jd = json.loads(line)
                     if not jd:
                         continue
-                    D.append((jd['text'], jd.get('label',None)))
+
+                    entities = jd.get('entities', None)
+                    re_list = jd.get('re_list', None)
+
+                    if entities:
+                        entities_label = []
+                        for k, v in entities.items():
+                            pts = list(v.values())[0]
+                            for pt in pts:
+                                entities_label.append((k, pt[0], pt[1]))
+                    else:
+                        entities_label = None
+
+                    if re_list is not None:
+                        re_list_label = []
+                        for re_node in re_list:
+                            for l, relation in re_node.items():
+                                s = relation[0]
+                                o = relation[1]
+                                re_list_label.append((
+                                    # (s['pos'][0], s['pos'][1],s['label']),
+                                    # l,
+                                    # (o['pos'][0], o['pos'][1],o['label'])
+                                    (s['pos'][0], s['pos'][1]),
+                                    '+'.join([s['label'], l, o['label']]),
+                                    (o['pos'][0], o['pos'][1])
+                                ))
+                    else:
+                        re_list_label = None
+
+                    D.append((jd['text'], entities_label, re_list_label))
         return D
 
 

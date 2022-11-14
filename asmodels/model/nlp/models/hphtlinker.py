@@ -15,11 +15,12 @@ class BCELossForLinker(nn.Module):
         super(BCELossForLinker, self).__init__()
         self.criterion = nn.BCEWithLogitsLoss(reduction='none')
 
-    def forward(self, logits, labels, mask):
+    def forward(self, logits, labels, mask=None):
         loss = self.criterion(logits, labels)
-        mask = mask.float()
-        loss = loss * mask.unsqueeze(-1)
-        loss = torch.sum(torch.mean(loss,dim=2), dim=1) / torch.sum(mask, dim=1)
+        if mask is not None:
+            mask = mask.float()
+            loss = loss * mask.unsqueeze(-1)
+            loss = torch.sum(torch.mean(loss,dim=2), dim=1) / torch.sum(mask, dim=1)
         loss = loss.mean()
         return loss
 
@@ -33,19 +34,19 @@ class TransformerForHphtlinker(TransformerModel):
         self.object = nn.Linear(config.hidden_size, 2 * config.num_labels)
         self.BCELoss = BCELossForLinker()
         self.sigmoid = nn.Sigmoid()
-        self.condLayerNorm = LayerNorm(hidden_size=config.hidden_size, conditional_size=config.hidden_size*2)
+        self.condLayerNorm = LayerNorm(hidden_size=config.hidden_size,
+                                       conditional_size=config.hidden_size*2)
 
-        self.init_weights()
         self.device_id = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        task_specific_params = config.task_specific_params
-        self.cls_token_id = task_specific_params['cls_token_id']
-        self.sep_token_id = task_specific_params['sep_token_id']
+        # task_specific_params = config.task_specific_params
+        # self.cls_token_id = task_specific_params['cls_token_id']
+        # self.sep_token_id = task_specific_params['sep_token_id']
 
     def configure_optimizers(self):
         """Prepare optimizer and schedule (linear warmup and decay)"""
         model = self.model
         no_decay = ["bias", "LayerNorm.weight"]
-        attrs = [model, self.entities_layer, self.heads_layer, self.tails_layer]
+        attrs = [model, self.subject, self.object]
         opt = []
         for a in attrs:
             opt += [
@@ -76,8 +77,8 @@ class TransformerForHphtlinker(TransformerModel):
         """
         output, subject_ids = inputs
 
-        start = torch.gather(output, subject_ids[:, :1])
-        end = torch.gather(output, subject_ids[:, 1:])
+        start = torch.gather(output, dim=1, index=subject_ids[:, :1].unsqueeze(2).expand(-1, -1, output.shape[-1]))
+        end = torch.gather(output, dim=1, index=subject_ids[:, 1:].unsqueeze(2).expand(-1, -1, output.shape[-1]))
         subject = torch.cat([start, end], 2)
         return subject[:, 0]
 
@@ -94,9 +95,9 @@ class TransformerForHphtlinker(TransformerModel):
 
 
         subject_output = self.extract_subject([last_hidden,subject_ids])
-        subject_output = self.condLayerNorm(subject_output)
-        object_preds = self.object(subject_output)
-        object_preds = torch.reshape(object_preds,shape=(-1,self.config.num_labels,2))
+        subject_output = self.condLayerNorm([last_hidden,subject_output])
+        object_preds = self.sigmoid(self.object(subject_output)) ** 4
+        object_preds = torch.reshape(object_preds,shape=(*object_preds.shape[:2],self.config.num_labels,2))
 
         loss = self.BCELoss(subject_preds,subject_labels) + self.BCELoss(object_preds,object_labels)
 

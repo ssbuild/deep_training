@@ -144,9 +144,10 @@ class DataHelper:
         return make_gpt2_sample(data,user_data)
 
     @staticmethod
-    def read_labels_from_file(label_fname: str):
-        if label_fname is None:
+    def read_labels_from_file(files: typing.List[str]):
+        if not files:
             return None,None
+        label_fname = files[0]
         is_json_file = label_fname.endswith('.json')
         D = set()
         with open(label_fname, 'r', encoding='utf-8') as f:
@@ -163,14 +164,15 @@ class DataHelper:
         return label2id, id2label
     # 读取文件
     @staticmethod
-    def read_data_from_file(filename:typing.Union[typing.List[str],str],mode:str):
+    def read_data_from_file(files:typing.List[str],mode:str):
         D = []
-        with open(filename, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-            for line in lines:
-                line = line.replace('\r\n', '').replace('\n')
-                if not line: continue
-                D.append(line)
+        for filename in files:
+            with open(filename, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                for line in lines:
+                    line = line.replace('\r\n', '').replace('\n')
+                    if not line: continue
+                    D.append(line)
         return D
 
     @staticmethod

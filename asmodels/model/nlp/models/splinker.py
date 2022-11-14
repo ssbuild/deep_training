@@ -6,7 +6,7 @@ from transformers import AdamW, get_linear_schedule_with_warmup
 from .transformer import TransformerModel
 
 __all__ = [
-    'TransformerForSlinker'
+    'TransformerForSplinker'
 ]
 
 class BCELossForIE(nn.Module):
@@ -22,9 +22,9 @@ class BCELossForIE(nn.Module):
         loss = loss.mean()
         return loss
 
-class TransformerForSlinker(TransformerModel):
+class TransformerForSplinker(TransformerModel):
     def __init__(self,*args,**kwargs):
-        super(TransformerForSlinker, self).__init__(*args,**kwargs)
+        super(TransformerForSplinker, self).__init__(*args, **kwargs)
 
         config = self.config
         self.dropout = nn.Dropout(config.hidden_dropout_prob)

@@ -14,7 +14,7 @@ def parse_label(spo_list, label2id, tokens, max_length):
     num_labels = 2 * (len(label2id.keys()) - 2) + 2
     seq_len = len(tokens)
     # initialize tag
-    labels = [[0] * num_labels for i in range(seq_len)]
+    labels = np.zeros(shape=(max_length,num_labels))
 
     for spo in spo_list:
         for relation_name in spo:
@@ -64,102 +64,96 @@ def parse_label(spo_list, label2id, tokens, max_length):
 
 
 
-class NER_DataHelper(DataHelper):
+class NN_DataHelper(DataHelper):
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
 
         tokenizer: BertTokenizer
-        tokenizer,max_seq_length,label2id,mode = user_data
-        sentence,spo_list = data
+        tokenizer, max_seq_length, predicate2id, mode = user_data
+        sentence, entities, re_list = data
+        spo_list = re_list
+        tokens = list(sentence)
 
-        sub_text = []
-        for char in sentence:
-            sub_text.append(char)
+        if len(tokens) > max_seq_length - 2:
+            tokens = tokens[0:(max_seq_length - 2)]
+        input_ids = tokenizer.convert_tokens_to_ids(['CLS'] + tokens + ['SEP'])
+        input_length = len(input_ids)
+        attention_mask = [1] * input_length
+
+        input_ids = np.asarray(input_ids, dtype=np.int64)
+        attention_mask = np.asarray(attention_mask, dtype=np.int64)
+
+        seq_len = len(input_ids)
+        # 2 tags for each predicate + I tag + O tag
+        num_labels = 2 * (len(predicate2id.keys()) - 2) + 2
+        # initialize tag
+        labels = [[0] * num_labels for _ in range(seq_len)]
+        if spo_list is not None:
+            labels = parse_label(spo_list, predicate2id, tokens, max_seq_length)
 
         tok_to_orig_start_index = []
         tok_to_orig_end_index = []
         orig_to_tok_index = []
-        tokens = []
-        text_tmp = ''
-
-        for (i, token) in enumerate(sub_text):
-            orig_to_tok_index.append(len(tokens))
-            sub_tokens = tokenizer._tokenize(token)
-            text_tmp += token
-
-            if len(sub_tokens) != 1:
-                print('!!! bad token')
-                sub_tokens = [tokenizer.unk_token]
-            flag = False
-            for sub_token in sub_tokens:
-                tok_to_orig_start_index.append(len(text_tmp) - len(token))
-                tok_to_orig_end_index.append(len(text_tmp) - 1)
-                tokens.append(sub_token)
-                if len(tokens) >= max_seq_length - 2:
-                    flag = True
-                    break
-            if flag:
-                break
-
-        seq_len = len(tokens)
-        # 2 tags for each predicate + I tag + O tag
-        num_labels = 2 * (len(label2id.keys()) - 2) + 2
-        # initialize tag
-        labels = [[0] * num_labels for i in range(seq_len)]
-        if spo_list is not None:
-            labels = parse_label(spo_list, label2id, tokens, max_seq_length)
-
-        # add [CLS] and [SEP] token, they are tagged into "O" for outside
         if seq_len > max_seq_length - 2:
             tokens = tokens[0:(max_seq_length - 2)]
             labels = labels[0:(max_seq_length - 2)]
             tok_to_orig_start_index = tok_to_orig_start_index[0:(max_seq_length - 2)]
             tok_to_orig_end_index = tok_to_orig_end_index[0:(max_seq_length - 2)]
-        tokens = ["[CLS]"] + tokens + ["[SEP]"]
-        input_mask = [1] * len(tokens)
+
+
         # "O" tag for [PAD], [CLS], [SEP] token
         outside_label = [[1] + [0] * (num_labels - 1)]
 
         labels = outside_label + labels + outside_label
         tok_to_orig_start_index = [-1] + tok_to_orig_start_index + [-1]
         tok_to_orig_end_index = [-1] + tok_to_orig_end_index + [-1]
-        if seq_len < max_seq_length:
-            tokens = tokens + ["[PAD]"] * (max_seq_length - seq_len - 2)
-            input_mask = input_mask + [0] * (max_seq_length - seq_len - 2)
+
+        pad_len = max_seq_length - len(input_ids)
+        if pad_len:
+            pad_val = tokenizer.pad_token_id
+            input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+            attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
             labels = labels + outside_label * (max_seq_length - len(labels))
             tok_to_orig_start_index = tok_to_orig_start_index + [-1] * (max_seq_length - len(tok_to_orig_start_index))
             tok_to_orig_end_index = tok_to_orig_end_index + [-1] * (max_seq_length - len(tok_to_orig_end_index))
 
-        token_ids = np.array(tokenizer.convert_tokens_to_ids(tokens))
 
-        mask = np.logical_and(token_ids != tokenizer.pad_token_id,
-                              np.logical_and(token_ids != tokenizer.cls_token_id, token_ids != tokenizer.sep_token_id))
+        mask = np.logical_and(input_ids != tokenizer.pad_token_id,
+                              np.logical_and(input_ids != tokenizer.cls_token_id, input_ids != tokenizer.sep_token_id))
 
         d = {
-            "input_ids": np.array(token_ids),
-            "attention_mask": np.asarray(input_mask),
+            "input_ids": np.array(input_ids),
+            "attention_mask": np.asarray(attention_mask),
             "mask": np.asarray(mask),
             "labels": np.array(labels),
             "seq_len": np.array(seq_len),
-            "tok_to_orig_start_index": np.array(tok_to_orig_start_index),
-            "tok_to_orig_end_index": np.array(tok_to_orig_end_index),
+            # "tok_to_orig_start_index": np.array(tok_to_orig_start_index),
+            # "tok_to_orig_end_index": np.array(tok_to_orig_end_index),
 
         }
         return d
 
-    #读取标签
+        # 读取标签
+
     @staticmethod
-    def read_labels_from_file(label_fname: str):
-        labels = [
-            'address','book','company','game','government','movie','name','organization','position','scene'
-        ]
+    def read_labels_from_file(files: typing.List):
+        labels = []
+        label_filename = files[0]
+        with open(label_filename, mode='r', encoding='utf-8') as f:
+            lines = f.readlines()
+            for line in lines:
+                jd = json.loads(line)
+                if not jd:
+                    continue
+                larr = [jd['subject'], jd['predicate'], jd['object']]
+                labels.append('+'.join(larr))
         label2id = {label: i for i, label in enumerate(labels)}
         id2label = {i: label for i, label in enumerate(labels)}
         return label2id, id2label
 
     # 读取文件
     @staticmethod
-    def read_data_from_file(files: typing.List,mode:str):
+    def read_data_from_file(files: typing.List, mode: str):
         D = []
         for filename in files:
             with open(filename, mode='r', encoding='utf-8') as f:
@@ -168,7 +162,37 @@ class NER_DataHelper(DataHelper):
                     jd = json.loads(line)
                     if not jd:
                         continue
-                    D.append((jd['text'], jd.get('label',None)))
+
+                    entities = jd.get('entities', None)
+                    re_list = jd.get('re_list', None)
+
+                    if entities:
+                        entities_label = []
+                        for k, v in entities.items():
+                            pts = list(v.values())[0]
+                            for pt in pts:
+                                entities_label.append((k, pt[0], pt[1]))
+                    else:
+                        entities_label = None
+
+                    if re_list is not None:
+                        re_list_label = []
+                        for re_node in re_list:
+                            for l, relation in re_node.items():
+                                s = relation[0]
+                                o = relation[1]
+                                re_list_label.append((
+                                    # (s['pos'][0], s['pos'][1],s['label']),
+                                    # l,
+                                    # (o['pos'][0], o['pos'][1],o['label'])
+                                    (s['pos'][0], s['pos'][1]),
+                                    '+'.join([s['label'], l, o['label']]),
+                                    (o['pos'][0], o['pos'][1])
+                                ))
+                    else:
+                        re_list_label = None
+
+                    D.append((jd['text'], entities_label, re_list_label))
         return D
 
 

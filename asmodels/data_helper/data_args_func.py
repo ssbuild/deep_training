@@ -36,6 +36,10 @@ def preprocess_args(train_args):
     if train_args.test_file is not None:
         train_args.test_file = train_args.test_file.split(',')
 
+    if train_args.label_file is not None:
+        train_args.label_file = train_args.label_file.split(',')
+    else:
+        train_args.label_file = []
     return train_args
 
 def get_filename_replace_dir(filename,new_path_dir,ext=None):

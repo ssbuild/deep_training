@@ -34,7 +34,7 @@ def f1_metric(y_true, y_pred):
 
 
 class PointerLayer(nn.Module):
-    def __init__(self, in_hidden_size, heads, head_size, RoPE=True):
+    def __init__(self, in_hidden_size, heads, head_size, RoPE=True, tril_mask=True):
         super().__init__()
         self.heads = heads
         self.head_size = head_size
@@ -42,6 +42,7 @@ class PointerLayer(nn.Module):
         self.dense = nn.Linear(self.hidden_size, self.heads * self.head_size * 2)
 
         self.RoPE = RoPE
+        self.tril_mask = tril_mask
 
     def sinusoidal_position_embedding(self, batch_size, seq_len, output_dim):
         position_ids = torch.arange(0, seq_len, dtype=torch.float).unsqueeze(0)
@@ -113,9 +114,10 @@ class PointerLayer(nn.Module):
         logits = self.seq_masking(logits, attention_mask, 2)
         logits = self.seq_masking(logits, attention_mask, 3)
 
-        #排除下三角
-        mask = torch.tril(torch.ones_like(logits), -1)
-        logits = logits - mask * 1e12
+        if self.tril_mask:
+            #排除下三角
+            mask = torch.tril(torch.ones_like(logits), -1)
+            logits = logits - mask * 1e12
 
         return logits / self.head_size ** 0.5
 
@@ -195,7 +197,9 @@ class EfficientPointerLayer(nn.Module):
 
         logits = self.seq_masking(logits, attention_mask, 2)
         logits = self.seq_masking(logits, attention_mask, 3)
-        #排除下三角
-        mask = torch.tril(torch.ones_like(logits), -1)
-        logits = logits - mask * 1e12
+
+        if self.tril_mask:
+            #排除下三角
+            mask = torch.tril(torch.ones_like(logits), -1)
+            logits = logits - mask * 1e12
         return logits
