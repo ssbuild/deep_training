@@ -17,22 +17,17 @@ class NN_DataHelper(DataHelper):
         x = data
         o1 = tokenizer(x[0], max_length=max_s_len, truncation=True, add_special_tokens=True, )
         o2 = tokenizer(x[1], max_length=max_d_len, truncation=True, add_special_tokens=True, )
-
-
         input_ids = np.asarray(o1['input_ids'], dtype=np.int64)
         attention_mask = np.asarray(o1['attention_mask'], dtype=np.int64)
 
-        decoder_input_ids = np.asarray(o2['input_ids'], dtype=np.int64)
-
         slen = np.asarray(len(input_ids), dtype=np.int64)
-
         pad_len = max_s_len - slen
         if pad_len > 0:
             pad_val = tokenizer.pad_token_id
             input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
             attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
 
-
+        decoder_input_ids = np.asarray(o2['input_ids'], dtype=np.int64)
         labels = np.asarray(decoder_input_ids[1:],dtype=np.int64)
         decoder_input_ids = np.asarray(decoder_input_ids[:-1],dtype=np.int64)
         decoder_attention_mask = np.asarray([1] * len(decoder_input_ids),dtype=np.int64)
