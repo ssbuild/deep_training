@@ -4,9 +4,12 @@
 - 当前正在重构中...，接口是不稳定的...
 
 ## 支持任务
-- <strong>mlm 预训练</strong>: 例子 MLM 预训练 &nbsp;&nbsp;参考数据&nbsp;&nbsp;[清华NLP组提供的THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
-- <strong>lm 预训练</strong>: 例子 GPT2 预训练 &nbsp;&nbsp;参考数据&nbsp;&nbsp;[清华NLP组提供的THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
-- <strong>unilm 预训练</strong>: 例子 unilm 预训练 &nbsp;&nbsp;参考数据&nbsp;&nbsp;[清华NLP组提供的THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
+- <strong>mlm 预训练</strong>:
+  - 例子 <strong>mlm 预训练</strong> &nbsp;&nbsp;参考数据&nbsp;&nbsp;[清华NLP组提供的THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
+- <strong>lm 预训练</strong>:
+  - 例子 <strong>gpt2 预训练</strong> &nbsp;&nbsp;参考数据&nbsp;&nbsp;[清华NLP组提供的THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
+- <strong>unilm 预训练</strong>: 
+  - 例子 <strong>unilm 预训练</strong> &nbsp;&nbsp;参考数据&nbsp;&nbsp;[清华NLP组提供的THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
 - <strong>中文分类</strong>: 例子 tnews 中文分类 
 - <strong>命名实体提取</strong>: 
   - 例子 <strong>cluener 全指针提取</strong>
