@@ -2,18 +2,21 @@
 # @Time    : 2022/11/15 10:13
 import argparse
 from typing import Any
-
 import torch
 from torch import nn
 from torch.nn import MSELoss, CrossEntropyLoss, BCEWithLogitsLoss
-from transformers import AdamW, get_linear_schedule_with_warmup
-
 from .transformer import TransformerModel
 from ..layers.prefix_encoder import PrefixEncoder
 from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer, loss_fn, f1_metric
 from ..layers.crf import CRF
 from ..utils import configure_optimizers
 
+__all__ = [
+    'PrefixTransformerForModel',
+    'PrefixTransformerForSequenceClassification',
+    'PrefixTransformerForTokenClassification',
+    'PrefixTransformerForCRF'
+]
 
 class PrefixTransformerForModel(TransformerModel):
     def __init__(self, config, train_args: argparse.Namespace, *args: Any, **kwargs: Any):
@@ -78,7 +81,6 @@ class PrefixTransformerForModel(TransformerModel):
             past_key_values=past_key_values,
         )
         return outputs
-
 
 
 class PrefixTransformerForSequenceClassification(PrefixTransformerForModel):
@@ -243,7 +245,6 @@ class PrefixTransformerPointer(PrefixTransformerForModel):
         # implement your own
         _, logits = self.get_loss_and_outputs(x)
         return logits
-
 
 
 class PrefixTransformerForCRF(PrefixTransformerForModel):
