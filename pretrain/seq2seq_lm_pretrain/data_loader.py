@@ -12,8 +12,7 @@ class NN_DataHelper(DataHelper):
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
         tokenizer: BertTokenizer
-        tokenizer,max_s_len,mode = user_data
-        max_d_len = 128
+        tokenizer,max_s_len,max_d_len,mode = user_data
         x = data
         o1 = tokenizer(x[0], max_length=max_s_len, truncation=True, add_special_tokens=True, )
         o2 = tokenizer(x[1], max_length=max_d_len, truncation=True, add_special_tokens=True, )
