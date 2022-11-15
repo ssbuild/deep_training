@@ -4,6 +4,7 @@ import os
 import sys
 
 import torch
+from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
@@ -11,18 +12,44 @@ from pytorch_lightning import Trainer, seed_everything,LightningDataModule
 from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, \
     load_tokenizer_and_config_with_args
 from transformers import AdamW,get_linear_schedule_with_warmup
-from asmodels.model.nlp.models.transformer import TransformerForSequenceClassification
+from asmodels.model.nlp.models.ptuingv2 import PrefixTransformerForSequenceClassification
 from data_loader import NN_DataHelper as DataHelper
 from train_args import train_args
 
-class MyTransformer(TransformerForSequenceClassification):
+class MyTransformer(PrefixTransformerForSequenceClassification):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
 
     def training_step(self, batch, batch_idx):
-        outputs = self(**batch)
-        loss,logits = outputs[0:2]
-        labels: torch.Tensor = batch['labels']
+        labels: torch.Tensor = batch.pop('labels')
+        outputs = self.get_transformer_outputs(batch)
+        pooled_output = outputs[1]
+        pooled_output = self.dropout(pooled_output)
+        logits = self.classifier(pooled_output)
+        loss = None
+        if labels is not None:
+            if self.config.problem_type is None:
+                if self.num_labels == 1:
+                    self.config.problem_type = "regression"
+                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
+                    self.config.problem_type = "single_label_classification"
+                else:
+                    self.config.problem_type = "multi_label_classification"
+
+            if self.config.problem_type == "regression":
+                loss_fct = MSELoss()
+                if self.num_labels == 1:
+                    loss = loss_fct(logits.squeeze(), labels.squeeze())
+                else:
+                    loss = loss_fct(logits, labels)
+            elif self.config.problem_type == "single_label_classification":
+                loss_fct = CrossEntropyLoss()
+                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            elif self.config.problem_type == "multi_label_classification":
+                loss_fct = BCEWithLogitsLoss()
+                loss = loss_fct(logits, labels)
+
+
         acc = torch.sum(torch.eq(labels.view(-1),torch.argmax(logits,dim=1,keepdim=False))) / labels.view(-1).size()[0]
         self.log_dict({
             'train_loss': loss,
@@ -30,19 +57,6 @@ class MyTransformer(TransformerForSequenceClassification):
         }, prog_bar=True)
         return loss
 
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-
-        outputs = self(**batch)
-        val_loss, logits = outputs[:2]
-        labels = batch['labels']
-        acc = torch.eq(labels, torch.argmax(outputs[1], dim=1)) / labels.size()[0]
-        return {"loss": val_loss, "logits": logits, "labels": labels,'acc':acc}
-
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        # implement your own
-        out = self(x)
-        return out
 
 
 
