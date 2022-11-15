@@ -56,19 +56,26 @@ def load_tokenizer_and_config_with_args(train_args,dataHelper,task_specific_para
                                 model_revision=train_args.model_revision,
                                 use_auth_token=train_args.use_auth_token,
                                )
+
+    kwargs_args = {
+        "bos_token_id" : tokenizer.bos_token_id,
+        "pad_token_id" : tokenizer.pad_token_id,
+        "eos_token_id" : tokenizer.eos_token_id,
+        "sep_token_id" : tokenizer.sep_token_id,
+        "task_specific_params" : task_specific_params,
+    }
+
+    if label2id is not None:
+        kwargs_args['label2id'] = label2id
+        kwargs_args['id2label'] = id2label
+        kwargs_args['num_labels'] = len(label2id) if label2id is not None else None
+
     config = load_configure(config_name=train_args.config_name,
                             model_name_or_path=train_args.model_name_or_path,
                             cache_dir=train_args.cache_dir,
                             model_revision=train_args.model_revision,
                             use_auth_token=train_args.use_auth_token,
-                            label2id=label2id,
-                            id2label=id2label,
-                            num_labels=len(label2id) if label2id is not None else None,
-                            bos_token_id=tokenizer.bos_token_id,
-                            pad_token_id=tokenizer.pad_token_id,
-                            eos_token_id=tokenizer.eos_token_id,
-                            sep_token_id=tokenizer.sep_token_id,
-                            task_specific_params=task_specific_params,
+                            **kwargs_args
                             )
 
     return  tokenizer,config,label2id, id2label

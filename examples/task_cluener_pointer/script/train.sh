@@ -7,11 +7,11 @@ python ../train.py \
 --model_name_or_path /data/nlp/pre_models/torch/bert/bert-base-chinese \
 --tokenizer_name /data/nlp/pre_models/torch/bert/bert-base-chinese \
 --config_name /data/nlp/pre_models/torch/bert/bert-base-chinese/config.json \
+--do_train \
+--do_eval \
 --train_file /data/nlp/nlp_train_data/clue/cluener/train.json \
 --eval_file /data/nlp/nlp_train_data/clue/cluener/dev.json \
 --test_file /data/nlp/nlp_train_data/clue/cluener/test.json \
---do_train \
---do_eval \
 --learning_rate 5e-5 \
 --max_epochs 3 \
 --train_batch_size 10 \

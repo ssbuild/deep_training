@@ -4,7 +4,13 @@
 
 import argparse
 from typing import Any
+
+import torch
 from pytorch_lightning import LightningModule
+from torch import nn
+from torch.nn import CrossEntropyLoss
+
+from ..layers.mask import lm_mask,unilm_mask
 
 from transformers import (
     CONFIG_MAPPING,
@@ -132,6 +138,93 @@ class TransformerModel(TransformerBase):
         else:
             model = AutoModel.from_config(config)
         self.model = model
+
+class TransformerModelUnilm(TransformerModel):
+    def __init__(self, config, train_args: argparse.Namespace, *args: Any, **kwargs: Any):
+        super().__init__(config, train_args, *args, **kwargs)
+        config = self.config
+
+        if train_args.model_name_or_path:
+            model_kwargs = {
+                "cache_dir": train_args.cache_dir,
+                "revision": train_args.model_revision,
+                "use_auth_token": True if train_args.use_auth_token else None,
+            }
+            model = AutoModel.from_pretrained(
+                train_args.model_name_or_path,
+                from_tf=bool(".ckpt" in train_args.model_name_or_path),
+                config=config,
+                **model_kwargs
+            )
+        else:
+            model = AutoModel.from_config(config)
+        self.model = model
+        self.loss_fct = CrossEntropyLoss(ignore_index=self.config.pad_token_id)
+        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+
+    def configure_optimizers(self):
+        """Prepare optimizer and schedule (linear warmup and decay)"""
+        model = self.model
+        no_decay = ["bias", "LayerNorm.weight"]
+        attrs = [model,self.lm_head]
+        opt = []
+        for a in attrs:
+            opt += [
+                {
+                    "params": [p for n, p in a.named_parameters() if not any(nd in n for nd in no_decay)],
+                    "weight_decay": self.hparams.weight_decay, "lr": self.hparams.learning_rate,
+                },
+                {
+                    "params": [p for n, p in a.named_parameters() if any(nd in n for nd in no_decay)],
+                    "weight_decay": 0.0, "lr": self.hparams.learning_rate,
+                },
+            ]
+        optimizer = AdamW(opt, lr=self.hparams.learning_rate, eps=self.hparams.adam_epsilon)
+
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=self.hparams.warmup_steps,
+            num_training_steps=self.trainer.estimated_stepping_batches,
+        )
+        scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
+        return [optimizer], [scheduler]
+    def training_step(self, batch, batch_idx):
+        batch['attention_mask'] = unilm_mask(batch['token_type_ids'])
+        if 'labels' in batch:
+            labels = batch.pop('labels')
+        else:
+            labels = batch['input_ids']
+        outputs = self(**batch)
+        hidden_states = outputs[0]
+        lm_logits = self.lm_head(hidden_states)
+        shift_logits = lm_logits[..., :-1, :].contiguous()
+        shift_labels = labels[..., 1:].contiguous()
+        loss = self.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+
+        self.log('train_loss',loss,prog_bar=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
+        batch['attention_mask'] = unilm_mask(batch['token_type_ids'])
+        if 'labels' in batch:
+            labels = batch.pop('labels')
+        else:
+            labels = batch['input_ids']
+        outputs = self(**batch)
+        hidden_states = outputs[0]
+        lm_logits = self.lm_head(hidden_states)
+        shift_logits = lm_logits[..., :-1, :].contiguous()
+        shift_labels = labels[..., 1:].contiguous()
+        val_loss = self.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+        return {"loss": val_loss, "logits": lm_logits, "labels": labels}
+
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        x['attention_mask'] = unilm_mask(x['token_type_ids'])
+        outputs = self(**batch)
+        hidden_states = outputs[0]
+        lm_logits = self.lm_head(hidden_states)
+        return lm_logits
 
 class TransformerForPreTraining(TransformerBase):
     def __init__(self, config, train_args: argparse.Namespace, *args: Any, **kwargs: Any):
