@@ -10,7 +10,7 @@ python ../train.py \
 --tokenizer_name /data/nlp/pre_models/torch/bert/bert-base-chinese \
 --config_name /data/nlp/pre_models/torch/bert/bert-base-chinese/config.json \
 --do_train \
---train_file /data/nlp/nlp_train_data/thucnews/thucnews_data.json \
+--train_file /data/nlp/nlp_train_data/thucnews/train.json \
 --max_steps 100000 \
 --train_batch_size 8 \
 --test_batch_size 2 \

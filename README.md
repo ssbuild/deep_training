@@ -4,10 +4,10 @@
 - 当前正在重构中...，接口是不稳定的...
 
 ## 支持任务
-- <strong>MLM 预训练</strong>: 例子 MLM 预训练
-- <strong>LM 预训练</strong>: 例子 GPT2 预训练
-- <strong>unilm 预训练</strong>: 例子 GPT2 预训练
-- <strong>中文分类</strong>: 例子 tnews 中文分类
+- <strong>MLM 预训练</strong>: 例子 MLM 预训练 &nbsp;&nbsp;参考数据&nbsp;&nbsp;[清华NLP组提供的THUCNews新闻文本分类数据集的子集](https://github.com/ssbuild/cail2022-info-extract)
+- <strong>LM 预训练</strong>: 例子 GPT2 预训练 &nbsp;&nbsp;参考数据&nbsp;&nbsp;[清华NLP组提供的THUCNews新闻文本分类数据集的子集](https://github.com/ssbuild/cail2022-info-extract)
+- <strong>unilm 预训练</strong>: 例子 unilm 预训练 &nbsp;&nbsp;参考数据&nbsp;&nbsp;[清华NLP组提供的THUCNews新闻文本分类数据集的子集](https://github.com/ssbuild/cail2022-info-extract)
+- <strong>中文分类</strong>: 例子 tnews 中文分类 
 - <strong>命名实体提取</strong>: 例子 cluener 全指针提取
 - <strong>关系提取</strong>
   - <strong>gplinker 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[法研杯2022信息抽取数据](https://github.com/ssbuild/cail2022-info-extract)
@@ -16,7 +16,7 @@
 
 ## 更新
 - <strong>2022年11月15</strong>: 增加unilm autotitle
-- <strong>2022年11月12</strong>: 增加关系任务 gplinker (全局指针), hphtlinker(半指针半标注 ,half pointer and half tages ),spliner (全指针提取 sigmoid pointer or simple pointer)
+- <strong>2022年11月12</strong>: 增加关系任务 gplinker (全局指针提取), hphtlinker(半指针半标注提取 ,half pointer and half tages ),spliner (全指针提取 sigmoid pointer or simple pointer)
 - <strong>2022年11月11</strong>: 增加cluener_pointer 中文命名实体提取,tnews 中文分类
 - <strong>2022年11月06</strong>: 增加GPT2 MLM 预训练
 

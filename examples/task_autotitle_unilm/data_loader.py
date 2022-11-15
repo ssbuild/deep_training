@@ -41,11 +41,10 @@ class NN_DataHelper(DataHelper):
         D = []
         for filename in files:
             with open(filename, mode='r', encoding='utf-8') as f:
-                string = f.read()
-                jds = json.loads(string)
-                for i,jd in enumerate(jds):
+                lines = f.readlines()
+                for i,line in enumerate(lines):
+                    jd = json.loads(line)
                     D.append((jd['content'], jd['title']))
-
                     if i > 1000:
                         break
         return D
