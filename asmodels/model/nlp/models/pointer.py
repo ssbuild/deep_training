@@ -6,15 +6,15 @@ from .transformer import TransformerModel
 from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer,loss_fn,f1_metric
 
 __all__ = [
-    'TransformerPointer'
+    'TransformerForPointer'
 ]
 
 from ..utils import configure_optimizers
 
 
-class TransformerPointer(TransformerModel):
+class TransformerForPointer(TransformerModel):
     def __init__(self,config, train_args,with_efficient=True, *args,**kwargs):
-        super(TransformerPointer, self).__init__(config, train_args,*args,**kwargs)
+        super(TransformerForPointer, self).__init__(config, train_args, *args, **kwargs)
         PointerLayerObject = EfficientPointerLayer if with_efficient else PointerLayer
         self.pointer_layer = PointerLayerObject(self.config.hidden_size,self.config.num_labels,64)
 

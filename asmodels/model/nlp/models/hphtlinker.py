@@ -33,8 +33,8 @@ class TransformerForHphtlinker(TransformerModel):
 
         config = self.config
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.subject = nn.Linear(config.hidden_size, 2)
-        self.object = nn.Linear(config.hidden_size, 2 * config.num_labels)
+        self.subject_layer = nn.Linear(config.hidden_size, 2)
+        self.object_layer = nn.Linear(config.hidden_size, 2 * config.num_labels)
         self.BCELoss = BCELossForLinker()
         self.sigmoid = nn.Sigmoid()
         self.condLayerNorm = LayerNorm(hidden_size=config.hidden_size,
@@ -43,8 +43,8 @@ class TransformerForHphtlinker(TransformerModel):
 
     def configure_optimizers(self):
         attrs = [(self.model, self.config.task_specific_params['learning_rate']),
-                 (self.subject, self.config.task_specific_params['learning_rate_for_task']),
-                 (self.object, self.config.task_specific_params['learning_rate_for_task']),
+                 (self.subject_layer, self.config.task_specific_params['learning_rate_for_task']),
+                 (self.object_layer, self.config.task_specific_params['learning_rate_for_task']),
                  ]
         return configure_optimizers(attrs, self.hparams, self.trainer.estimated_stepping_batches)
 
@@ -68,12 +68,12 @@ class TransformerForHphtlinker(TransformerModel):
         outputs = self(**batch)
         last_hidden = outputs[0]
         logits = self.dropout(last_hidden)
-        subject_preds = self.sigmoid(self.subject(logits)) ** 2
+        subject_preds = self.sigmoid(self.subject_layer(logits)) ** 2
 
 
         subject_output = self.extract_subject([last_hidden,subject_ids])
         subject_output = self.condLayerNorm([last_hidden,subject_output])
-        object_preds = self.sigmoid(self.object(subject_output)) ** 4
+        object_preds = self.sigmoid(self.object_layer(subject_output)) ** 4
         object_preds = torch.reshape(object_preds,shape=(*object_preds.shape[:2],self.config.num_labels,2))
 
         loss = self.BCELoss(subject_preds,subject_labels) + self.BCELoss(object_preds,object_labels)

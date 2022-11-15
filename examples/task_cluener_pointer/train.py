@@ -14,10 +14,10 @@ from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load
     load_tokenizer_and_config_with_args
 from data_loader import NN_DataHelper as DataHelper
 from train_args import train_args
-from asmodels.model.nlp.models.pointer import TransformerPointer
+from asmodels.model.nlp.models.pointer import TransformerForPointer
 from asmodels.model.nlp.metrics.pointer import metric_for_pointer
 
-class MyTransformer(TransformerPointer):
+class MyTransformer(TransformerForPointer):
     def __init__(self, *args,**kwargs):
         super(MyTransformer, self).__init__(with_efficient=True,*args,**kwargs)
 

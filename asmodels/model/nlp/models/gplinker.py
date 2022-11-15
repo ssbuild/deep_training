@@ -7,15 +7,15 @@ from .transformer import TransformerModel
 from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer, loss_fn, f1_metric
 
 __all__ = [
-    'TransformerGplinker'
+    'TransformerForGplinker'
 ]
 
 from ..utils import configure_optimizers
 
 
-class TransformerGplinker(TransformerModel):
+class TransformerForGplinker(TransformerModel):
     def __init__(self,config, train_args,with_efficient=False, *args,**kwargs):
-        super(TransformerGplinker, self).__init__(config, train_args,*args,**kwargs)
+        super(TransformerForGplinker, self).__init__(config, train_args, *args, **kwargs)
         PointerLayerObject = EfficientPointerLayer if with_efficient else PointerLayer
         self.entities_layer = PointerLayerObject(self.config.hidden_size, 2, 64)
         self.heads_layer = PointerLayerObject(self.config.hidden_size, self.config.num_labels, 64,RoPE=False, tril_mask=False)
