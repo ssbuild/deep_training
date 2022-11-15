@@ -20,9 +20,9 @@
   - 例子 <strong>hphtlinker 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[法研杯2022信息抽取数据](https://github.com/ssbuild/cail2022-info-extract)
   - 例子 <strong>spliner 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[法研杯2022信息抽取数据](https://github.com/ssbuild/cail2022-info-extract)
 - <strong>p-tuning v2 系列</strong>: 
-  - 例子 <strong>tnews 中文分类</strong>
-  - 例子 <strong>cluener 命名实体全局指针提取</strong>
-  - 例子 <strong>cluener 命名实体crf提取</strong>
+  - 例子 <strong>p-tuning v2 tnews 中文分类</strong>
+  - 例子 <strong>p-tuning v2 cluener 命名实体全局指针提取</strong>
+  - 例子 <strong>p-tuning v2 cluener 命名实体crf提取</strong>
 - <strong>prompt 系列</strong>: 
   - 例子 正在调试ing</strong>
 
