@@ -1,33 +1,37 @@
-# -*- coding: utf-8 -*-
-# @Time    : 2022/11/15 10:13
+# @Time    : 2022/11/15 21:28
+# @Author  : tk
+# @FileName: prompt.py
+
 import argparse
 from typing import Any
 import torch
 from torch import nn
 from torch.nn import MSELoss, CrossEntropyLoss, BCEWithLogitsLoss
 from .transformer import TransformerModel
-from ..layers.prefix_encoder import PrefixEncoder
 from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer, loss_fn, f1_metric
 from ..layers.crf import CRF
 from ..utils import configure_optimizers
 
+
 __all__ = [
-    'PrefixTransformerForModel',
-    'PrefixTransformerForSequenceClassification',
-    'PrefixTransformerForTokenClassification',
+    'PromptTransformerForModel',
+    'PromptTransformerForSequenceClassification',
+    'PromptTransformerForTokenClassification',
+    'PromptTransformerPointer',
     'PrefixTransformerForCRF'
 ]
 
-class PrefixTransformerForModel(TransformerModel):
+class PromptTransformerForModel(TransformerModel):
     def __init__(self, config, train_args: argparse.Namespace, *args: Any, **kwargs: Any):
         super().__init__(config, train_args, *args, **kwargs)
 
         config.pre_seq_len = train_args.pre_seq_len
-        config.prefix_projection = train_args.prefix_projection
-        config.prefix_hidden_size = train_args.prefix_hidden_size
+
 
         self.num_labels = config.num_labels
         self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
+
+        self.embeddings = self.model.embeddings
 
         for param in self.model.parameters():
             param.requires_grad = False
@@ -38,52 +42,59 @@ class PrefixTransformerForModel(TransformerModel):
         self.n_embd = config.hidden_size // config.num_attention_heads
 
         self.prefix_tokens = torch.arange(self.pre_seq_len).long()
-        self.prefix_encoder = PrefixEncoder(config)
+        self.prefix_encoder = torch.nn.Embedding(self.pre_seq_len, config.hidden_size)
 
-        bert_param = 0
+        the_model_param = 0
         for name, param in self.model.named_parameters():
-            bert_param += param.numel()
+            the_model_param += param.numel()
         all_param = 0
         for name, param in self.named_parameters():
             all_param += param.numel()
-        total_param = all_param - bert_param
+        total_param = all_param - the_model_param
         print('total param is {}'.format(total_param))  # 9860105
-
 
     def get_prompt(self, batch_size):
         prefix_tokens = self.prefix_tokens.unsqueeze(0).expand(batch_size, -1).to(self.model.device)
-        past_key_values = self.prefix_encoder(prefix_tokens)
-        # bsz, seqlen, _ = past_key_values.shape
-        past_key_values = past_key_values.view(
-            batch_size,
-            self.pre_seq_len,
-            self.n_layer * 2,
-            self.n_head,
-            self.n_embd
-        )
-        past_key_values = self.dropout(past_key_values)
-        # (self.n_layer * 2,batch,n_head,pre_seq_len,n_embd)
-        # (24,batch,12,16,64)
-        past_key_values = past_key_values.permute([2, 0, 3, 1, 4]).split(2)
-        return past_key_values
+        prompts = self.prefix_encoder(prefix_tokens)
+        return prompts
 
 
     def get_transformer_outputs(self,batch):
         input_ids = batch['input_ids']
-        attention_mask = batch.pop('attention_mask')
+        attention_mask = batch['attention_mask']
         batch_size = input_ids.shape[0]
-        past_key_values = self.get_prompt(batch_size=batch_size)
+
+        raw_embedding = self.embeddings(
+            input_ids=input_ids,
+            position_ids=batch.get('position_ids',None) ,
+            token_type_ids=batch.get('token_type_ids',None),
+        )
+
+        prompts = self.get_prompt(batch_size=batch_size)
+        inputs_embeds = torch.cat((prompts, raw_embedding), dim=1)
         prefix_attention_mask = torch.ones(batch_size, self.pre_seq_len).to(self.model.device)
         attention_mask = torch.cat((prefix_attention_mask, attention_mask), dim=1)
-        batch['attention_mask'] = attention_mask
-        outputs = self(
-            **batch,
-            past_key_values=past_key_values,
+
+        outputs = self.model(
+            # input_ids,
+            attention_mask=attention_mask,
+            # token_type_ids=token_type_ids,
+            # position_ids=position_ids,
+            head_mask=batch.get('head_mask',None),
+            inputs_embeds=inputs_embeds,
+            # past_key_values=past_key_values,
         )
-        return outputs
 
+        # pooled_output = outputs[1]
+        sequence_output = outputs[0]
+        sequence_output = sequence_output[:, self.pre_seq_len:, :].contiguous()
+        first_token_tensor = sequence_output[:, 0]
+        # pooled_output = self.bert.pooler.dense(first_token_tensor)
+        # pooled_output = self.bert.pooler.activation(pooled_output)
+        return (sequence_output,first_token_tensor)
+    
 
-class PrefixTransformerForSequenceClassification(PrefixTransformerForModel):
+class PromptTransformerForSequenceClassification(PromptTransformerForModel):
     def __init__(self, config, train_args: argparse.Namespace, *args: Any, **kwargs: Any):
         super().__init__(config, train_args, *args, **kwargs)
         self.classifier = torch.nn.Linear(config.hidden_size, config.num_labels)
@@ -122,16 +133,6 @@ class PrefixTransformerForSequenceClassification(PrefixTransformerForModel):
             elif self.config.problem_type == "multi_label_classification":
                 loss_fct = BCEWithLogitsLoss()
                 loss = loss_fct(logits, labels)
-        # if not return_dict:
-        #     output = (logits,) + outputs[2:]
-        #     return ((loss,) + output) if loss is not None else output
-        #
-        # return SequenceClassifierOutput(
-        #     loss=loss,
-        #     logits=logits,
-        #     hidden_states=outputs.hidden_states,
-        #     attentions=outputs.attentions,
-        # )
         return loss,logits
 
     def training_step(self, batch, batch_idx):
@@ -151,7 +152,7 @@ class PrefixTransformerForSequenceClassification(PrefixTransformerForModel):
         return logits
 
 
-class PrefixTransformerForTokenClassification(PrefixTransformerForModel):
+class PromptTransformerForTokenClassification(PromptTransformerForModel):
     def __init__(self, config, train_args: argparse.Namespace, *args: Any, **kwargs: Any):
         super().__init__(config, train_args, *args, **kwargs)
         self.num_labels = config.num_labels
@@ -203,7 +204,7 @@ class PrefixTransformerForTokenClassification(PrefixTransformerForModel):
         return logits
 
 
-class PrefixTransformerPointer(PrefixTransformerForModel):
+class PromptTransformerPointer(PromptTransformerForModel):
     def __init__(self, config, train_args: argparse.Namespace,with_efficient=True, *args, **kwargs):
         super().__init__(config, train_args,*args, **kwargs)
         PointerLayerObject = EfficientPointerLayer if with_efficient else PointerLayer
@@ -247,7 +248,7 @@ class PrefixTransformerPointer(PrefixTransformerForModel):
         return logits
 
 
-class PrefixTransformerForCRF(PrefixTransformerForModel):
+class PrefixTransformerForCRF(PromptTransformerForModel):
     def __init__(self, config, train_args: argparse.Namespace,*args, **kwargs):
         super(PrefixTransformerForCRF, self).__init__(config, train_args, *args, **kwargs)
 

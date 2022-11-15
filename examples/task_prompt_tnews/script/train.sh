@@ -14,7 +14,7 @@ python ../train.py \
 --label_file /data/nlp/nlp_train_data/clue/tnews/labels.json \
 --learning_rate 1e-2 \
 --max_epochs 80 \
---train_batch_size 64 \
+--train_batch_size 100 \
 --test_batch_size 2 \
 --adam_epsilon 1e-8 \
 --gradient_accumulation_steps 1 \

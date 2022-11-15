@@ -84,8 +84,6 @@ class DataHelper:
         dataHelper = self
         dataset = dataHelper.load_numpy_dataset(files, cycle_length=cycle_length, block_length=block_length)
 
-
-
         collate_fn = dataHelper.collect_fn
         if isinstance(dataset, typing.Iterator):
             dataset: IterableDatasetBase
@@ -170,7 +168,7 @@ class DataHelper:
             with open(filename, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
                 for line in lines:
-                    line = line.replace('\r\n', '').replace('\n')
+                    line = line.replace('\r\n', '').replace('\n','')
                     if not line: continue
                     D.append(line)
         return D
