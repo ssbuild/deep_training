@@ -144,21 +144,6 @@ class TransformerModelUnilm(TransformerModel):
         super().__init__(config, train_args, *args, **kwargs)
         config = self.config
 
-        if train_args.model_name_or_path:
-            model_kwargs = {
-                "cache_dir": train_args.cache_dir,
-                "revision": train_args.model_revision,
-                "use_auth_token": True if train_args.use_auth_token else None,
-            }
-            model = AutoModel.from_pretrained(
-                train_args.model_name_or_path,
-                from_tf=bool(".ckpt" in train_args.model_name_or_path),
-                config=config,
-                **model_kwargs
-            )
-        else:
-            model = AutoModel.from_config(config)
-        self.model = model
         self.loss_fct = CrossEntropyLoss(ignore_index=self.config.pad_token_id)
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
