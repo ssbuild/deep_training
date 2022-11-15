@@ -69,7 +69,7 @@ def load_configure(config_name,
             config.update_from_string(config_overrides)
     else:
         raise ValueError(
-            "You are instantiating a new config from scratch. This is not supported by this script."
+            "You are instantiating a new config_gpt2 from scratch. This is not supported by this script."
             "You can do it from another script, save it, and load it from here, using --config_name."
         )
     return config

@@ -5,11 +5,11 @@
 
 ## 支持任务
 - <strong>mlm 预训练</strong>:
-  - 例子 <strong>mlm 预训练</strong> &nbsp;&nbsp;参考数据&nbsp;&nbsp;[清华NLP组提供的THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
+  - 例子 <strong>mlm bert roberta 等一些列中文预训练</strong> &nbsp;&nbsp;参考数据&nbsp;&nbsp;[清华NLP组提供的THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
 - <strong>lm 预训练</strong>:
-  - 例子 <strong>gpt2 预训练</strong> &nbsp;&nbsp;参考数据&nbsp;&nbsp;[清华NLP组提供的THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
+  - 例子 <strong>gpt2 , t5 small 等预训练</strong> &nbsp;&nbsp;参考数据&nbsp;&nbsp;[清华NLP组提供的THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
 - <strong>unilm 预训练</strong>: 
-  - 例子 <strong>unilm 预训练</strong> &nbsp;&nbsp;参考数据&nbsp;&nbsp;[清华NLP组提供的THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
+  - 例子 <strong>unilm bert roberta 等一些列中文预训练</strong> &nbsp;&nbsp;参考数据&nbsp;&nbsp;[清华NLP组提供的THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
 - <strong>中文分类</strong>:
   - 例子 <strong>tnews 中文分类</strong>
 - <strong>命名实体提取</strong>: 
@@ -27,10 +27,10 @@
   - 例子 正在调试ing</strong>
 
 ## 更新
-- <strong>2022年11月15</strong>: 增加unilm autotitle,p-tuning v2 tnews , p-tuning v2 pointer , p-tuning v2 crf
+- <strong>2022年11月15</strong>: 增加unilm autotitle,seq2seq autotitle,p-tuning v2 tnews , p-tuning v2 pointer , p-tuning v2 crf
 - <strong>2022年11月12</strong>: 增加关系任务 gplinker (全局指针提取), hphtlinker(半指针半标注提取 ,half pointer and half tages ),spliner (全指针提取 sigmoid pointer or simple pointer)
 - <strong>2022年11月11</strong>: 增加cluener_pointer 中文命名实体提取 , cluener crf ,tnews 中文分类
-- <strong>2022年11月06</strong>: 增加gpt2,mlm预训练
+- <strong>2022年11月06</strong>: 增加mlm,gpt2,t5 small等模型预训练任务
 
 ## 愿景
 创建一个模型工厂 , 让训练模型更容易，训练代码不超过100行，轻松上手。

@@ -42,10 +42,12 @@ class TransformerBase(LightningModule):
     def __init__(self, config,train_args, *args: Any, **kwargs: Any):
         super().__init__()
         save_args = train_args._get_kwargs()
+
         save_args = {
             item[0]: item[1]
             for item in save_args
         }
+
         if hasattr(config,'task_specific_params') or config.task_specific_params is None:
             config.task_specific_params = {}
         task_specific_params = config.task_specific_params
@@ -54,7 +56,7 @@ class TransformerBase(LightningModule):
             if train_args.learning_rate_for_task is not None else train_args.learning_rate
 
         print(save_args)
-        self.save_hyperparameters(save_args,ignore='config')
+        self.save_hyperparameters(save_args,ignore=['config'])
         self.config = config
 
     def configure_optimizers(self):

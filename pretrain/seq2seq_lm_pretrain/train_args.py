@@ -16,7 +16,7 @@ def train_args():
 
     parser.add_argument('--model_name_or_path', default=None, type=str, help='模型参数配置信息')
     parser.add_argument('--model_type', default=None, type=str, help='模型参数配置信息')
-    parser.add_argument('--config_overrides', default=None, type=str, help= "Override some existing default config settings when a model is trained from scratch. Example: "
+    parser.add_argument('--config_overrides', default=None, type=str, help= "Override some existing default config_gpt2 settings when a model is trained from scratch. Example: "
                 "n_embd=10,resid_pdrop=0.2,scale_attn_weights=false,summary_type=cls_index")
 
 
@@ -24,7 +24,7 @@ def train_args():
     parser.add_argument('--do_lower_case', default=True, type=bool,
                         help='Whether to lower case the input text. Should be True for uncased asmodels and False for cased asmodels.')
 
-    parser.add_argument('--config_name', default=None, type=str, help='Pretrained config name or path if not the same as model_name"')
+    parser.add_argument('--config_name', default=None, type=str, help='Pretrained config_gpt2 name or path if not the same as model_name"')
     parser.add_argument('--cache_dir', default=None, type=str,
                         help='Where do you want to store the pretrained asmodels downloaded from huggingface.co')
     parser.add_argument('--use_fast_tokenizer', default=True, type=bool,
@@ -35,7 +35,8 @@ def train_args():
                         help='The specific model version to use (can be a branch name, tag name or commit id).')
 
     parser.add_argument('--learning_rate', default=5e-5, type=float, help='模型训练时的学习率')
-    parser.add_argument('--learning_rate_for_task', default=None, type=float, help='模型任务层训练时的学习率')
+    parser.add_argument('--learning_rate_for_task', default=None, type=float, help='下游模型训练时的学习率')
+
     parser.add_argument('--max_epochs', default=-1, type=int, help='模型训练的轮数')
     parser.add_argument('--max_steps', default=-1, type=int, help='max_steps')
     parser.add_argument('--adam_epsilon', default=1e-8, type=float, help='Adam优化器的epsilon值')

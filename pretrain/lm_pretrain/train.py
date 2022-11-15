@@ -9,7 +9,7 @@ from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load
     load_tokenizer_and_config_with_args
 from transformers import AdamW,get_linear_schedule_with_warmup
 from asmodels.model.nlp.models.transformer import TransformerForCausalLM
-from data_loader import Gpt2_DataHelper as DataHelper
+from data_loader import NN_DataHelper as DataHelper
 from train_args import train_args
 
 class MyTransformer(TransformerForCausalLM):

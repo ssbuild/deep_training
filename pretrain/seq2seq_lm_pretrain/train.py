@@ -2,21 +2,44 @@
 import logging
 import os
 import sys
+
+from torch.nn import CrossEntropyLoss
+
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
-from pytorch_lightning import Trainer, seed_everything
+from pytorch_lightning import Trainer, seed_everything,LightningDataModule
 from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, \
     load_tokenizer_and_config_with_args
-from transformers import AdamW,get_linear_schedule_with_warmup
-from asmodels.model.nlp.models.transformer import TransformerModelUnilm
-
+from asmodels.model.nlp.models.transformer import TransformerForSeq2SeqLM
 from data_loader import NN_DataHelper as DataHelper
 from train_args import train_args
 
-class MyTransformer(TransformerModelUnilm):
+class MyTransformer(TransformerForSeq2SeqLM):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
+        self.loss_fct = CrossEntropyLoss(ignore_index=self.config.pad_token_id)
 
+    def training_step(self, batch, batch_idx):
+
+        outputs = self(**batch)
+        lm_logits = outputs[0]
+
+        loss = self.loss_fct(lm_logits.view(-1, lm_logits.size(-1)), labels.view(-1))
+        loss = outputs[0]
+        # self.log('train_loss', loss, prog_bar=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
+        outputs = self(**batch)
+        val_loss, logits = outputs[:2]
+        labels = batch["labels"]
+        return {"loss": val_loss, "logits": logits, "labels": labels}
+
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        # implement your own
+        out = self(x)
+        return out
 
 if __name__== '__main__':
     train_args = train_args()

@@ -9,9 +9,9 @@ def configure_optimizers(model_attrs: typing.Union[typing.List,typing.Tuple],
                          hparams: typing.Dict,
                          estimated_stepping_batches: int):
     no_decay = ["bias", "LayerNorm.weight"]
-    # attrs = [(model, self.config.task_specific_params['learning_rate']),
-    #          (self.classifier, self.config.task_specific_params['learning_rate']),
-    #          (self.crf, self.config.task_specific_params['learning_rate_for_task']), ]
+    # attrs = [(model, self.config_gpt2.task_specific_params['learning_rate']),
+    #          (self.classifier, self.config_gpt2.task_specific_params['learning_rate']),
+    #          (self.crf, self.config_gpt2.task_specific_params['learning_rate_for_task']), ]
     opt = []
     for a, lr in model_attrs:
         opt += [

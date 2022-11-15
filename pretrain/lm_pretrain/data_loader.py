@@ -8,7 +8,7 @@ import torch
 from asmodels.data_helper import DataHelper
 from transformers import BertTokenizer
 
-class Gpt2_DataHelper(DataHelper):
+class NN_DataHelper(DataHelper):
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
         tokenizer: BertTokenizer
@@ -40,8 +40,7 @@ class Gpt2_DataHelper(DataHelper):
         }
         return d
 
-        # 读取文件
-
+    # 读取文件
     @staticmethod
     def read_data_from_file(files: typing.List, mode: str):
         D = []
