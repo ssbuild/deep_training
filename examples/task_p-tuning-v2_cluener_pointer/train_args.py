@@ -34,6 +34,7 @@ def train_args():
     parser.add_argument('--use_auth_token', default=False, type=bool,
                         help='The specific model version to use (can be a branch name, tag name or commit id).')
 
+    parser.add_argument('--learning_rate', default=5e-5, type=float, help='模型训练时的学习率')
     parser.add_argument('--learning_rate_for_task', default=None, type=float, help='模型任务层训练时的学习率')
     parser.add_argument('--max_epochs', default=-1, type=int, help='模型训练的轮数')
     parser.add_argument('--max_steps', default=-1, type=int, help='max_steps')
@@ -65,5 +66,12 @@ def train_args():
 
     parser.add_argument('--output_dir', default='output_dir', type=str, help='模型输出路径')
     parser.add_argument('--seed', type=int, default=42, help='随机种子')
+
+    # prompt参数
+    parser.add_argument('--prefix_projection', action="store_true", help='prefix_projection')
+    parser.add_argument('--prefix_hidden_size', type=int, default=512,
+                        help='The hidden size of the MLP projection head in Prefix Encoder if prefix projection is used')
+    parser.add_argument('--pre_seq_len', type=int, default=16,
+                        help='The length of prompt')
 
     return preprocess_args(parser.parse_args())

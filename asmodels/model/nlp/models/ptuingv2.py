@@ -4,12 +4,15 @@ import argparse
 from typing import Any
 
 import torch
+from torch import nn
 from torch.nn import MSELoss, CrossEntropyLoss, BCEWithLogitsLoss
 from transformers import AdamW, get_linear_schedule_with_warmup
 
 from .transformer import TransformerModel
 from ..layers.prefix_encoder import PrefixEncoder
-
+from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer, loss_fn, f1_metric
+from ..layers.crf import CRF
+from ..utils import configure_optimizers
 
 
 class PrefixTransformerForModel(TransformerModel):
@@ -21,6 +24,7 @@ class PrefixTransformerForModel(TransformerModel):
         config.prefix_hidden_size = train_args.prefix_hidden_size
 
         self.num_labels = config.num_labels
+        self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
 
         for param in self.model.parameters():
             param.requires_grad = False
@@ -42,34 +46,6 @@ class PrefixTransformerForModel(TransformerModel):
         total_param = all_param - bert_param
         print('total param is {}'.format(total_param))  # 9860105
 
-    def configure_optimizers(self):
-        """Prepare optimizer and schedule (linear warmup and decay)"""
-        model = self.model
-        no_decay = ["bias", "LayerNorm.weight"]
-        attrs = [model]
-        if hasattr(self,'classifier'):
-            attrs += [self.classifier]
-        opt = []
-        for a in attrs:
-            opt += [
-                {
-                    "params": [p for n, p in a.named_parameters() if not any(nd in n for nd in no_decay)],
-                    "weight_decay": self.hparams.weight_decay, "lr": self.hparams.learning_rate,
-                },
-                {
-                    "params": [p for n, p in a.named_parameters() if any(nd in n for nd in no_decay)],
-                    "weight_decay": 0.0, "lr": self.hparams.learning_rate,
-                },
-            ]
-        optimizer = AdamW(opt, lr=self.hparams.learning_rate, eps=self.hparams.adam_epsilon)
-
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=self.hparams.warmup_steps,
-            num_training_steps=self.trainer.estimated_stepping_batches,
-        )
-        scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
-        return [optimizer], [scheduler]
 
     def get_prompt(self, batch_size):
         prefix_tokens = self.prefix_tokens.unsqueeze(0).expand(batch_size, -1).to(self.model.device)
@@ -108,9 +84,12 @@ class PrefixTransformerForModel(TransformerModel):
 class PrefixTransformerForSequenceClassification(PrefixTransformerForModel):
     def __init__(self, config, train_args: argparse.Namespace, *args: Any, **kwargs: Any):
         super().__init__(config, train_args, *args, **kwargs)
-        self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
         self.classifier = torch.nn.Linear(config.hidden_size, config.num_labels)
 
+    def configure_optimizers(self):
+        attrs = [(self.model, self.config.task_specific_params['learning_rate']),
+                 (self.classifier, self.config.task_specific_params['learning_rate_for_task'])]
+        return configure_optimizers(attrs, self.hparams, self.trainer.estimated_stepping_batches)
 
     def get_loss_and_logits(self,batch):
         labels = batch.pop('labels')
@@ -174,9 +153,12 @@ class PrefixTransformerForTokenClassification(PrefixTransformerForModel):
     def __init__(self, config, train_args: argparse.Namespace, *args: Any, **kwargs: Any):
         super().__init__(config, train_args, *args, **kwargs)
         self.num_labels = config.num_labels
-        self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
         self.classifier = torch.nn.Linear(config.hidden_size, config.num_labels)
 
+    def configure_optimizers(self):
+        attrs = [(self.model, self.config.task_specific_params['learning_rate']),
+                 (self.classifier, self.config.task_specific_params['learning_rate_for_task'])]
+        return configure_optimizers(attrs, self.hparams, self.trainer.estimated_stepping_batches)
 
     def get_loss_and_outputs(self, batch):
         labels = batch.pop('labels')
@@ -215,5 +197,102 @@ class PrefixTransformerForTokenClassification(PrefixTransformerForModel):
     def test_step(self, batch, batch_idx):
         x, y = batch
         # implement your own
-        _ ,logits = self.get_loss_and_outputs(batch)
+        _ ,logits = self.get_loss_and_outputs(x)
+        return logits
+
+
+class PrefixTransformerPointer(PrefixTransformerForModel):
+    def __init__(self, config, train_args: argparse.Namespace,with_efficient=True, *args, **kwargs):
+        super(PrefixTransformerPointer, self).__init__(config, train_args,*args, **kwargs)
+        PointerLayerObject = EfficientPointerLayer if with_efficient else PointerLayer
+        self.pointer_layer = PointerLayerObject(self.config.hidden_size, self.config.num_labels, 64)
+
+    def configure_optimizers(self):
+        attrs = [(self.model, self.config.task_specific_params['learning_rate']),
+                 (self.pointer_layer, self.config.task_specific_params['learning_rate_for_task'])]
+        return configure_optimizers(attrs, self.hparams, self.trainer.estimated_stepping_batches)
+
+
+    def get_loss_and_logits(self,batch):
+        labels = batch.pop('labels')
+        attention_mask = batch['attention_mask']
+        outputs = self.get_transformer_outputs(batch)
+        logits = outputs[0]
+        logits = self.pointer_layer(logits, attention_mask)
+
+        loss = None
+        if labels is not None:
+            loss = loss_fn(labels, logits)
+        return loss,logits
+
+    def training_step(self, batch, batch_idx):
+        labels = batch['labels']
+        loss ,logits = self.get_loss_and_logits(batch)
+        f1 = f1_metric(labels, logits)
+        self.log_dict({'train_loss': loss, 'f1': f1}, prog_bar=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
+        labels = batch['labels']
+        val_loss, logits = self.get_loss_and_logits(batch)
+        f1 = f1_metric(labels, logits)
+        return {"loss": val_loss, "logits": logits, "labels": labels}
+
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        # implement your own
+        _, logits = self.get_loss_and_outputs(x)
+        return logits
+
+
+
+class PrefixTransformerForCRF(PrefixTransformerForModel):
+    def __init__(self, config, train_args: argparse.Namespace,*args, **kwargs):
+        super(PrefixTransformerForCRF, self).__init__(config, train_args, *args, **kwargs)
+
+        self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+        self.crf = CRF(num_tags=config.num_labels)
+
+    def configure_optimizers(self):
+        attrs =[(self.model, self.config.task_specific_params['learning_rate']),
+                 (self.classifier, self.config.task_specific_params['learning_rate']),
+                 (self.crf, self.config.task_specific_params['learning_rate_for_task']), ]
+        return configure_optimizers(attrs, self.hparams, self.trainer.estimated_stepping_batches)
+
+
+
+    def get_loss_and_logits(self,batch):
+        labels = batch.pop('labels')
+        attention_mask = batch['attention_mask']
+        outputs = self.get_transformer_outputs(batch)
+        logits = outputs[0]
+        logits = self.classifier(logits)
+        loss = None
+        if labels is not None:
+            labels = torch.where(labels >= 0, labels, torch.zeros_like(labels))
+            loss = self.crf(emissions=logits, tags=labels, mask=attention_mask)
+            # outputs = (-1 * loss,) + outputs
+        # else:
+        #     # tags = self.crf.decode(logits, attention_mask)
+        #     # outputs = (tags,)
+
+        self.log_dict({'train_loss': loss}, prog_bar=True)
+        self.log_dict({'train_loss': loss}, prog_bar=True)
+        return loss,logits
+
+    def training_step(self, batch, batch_idx):
+        loss ,logits = self.get_loss_and_logits(batch)
+        self.log_dict({'train_loss': loss}, prog_bar=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
+        labels = batch['labels']
+        val_loss, logits = self.get_loss_and_logits(batch)
+        return {"loss": val_loss, "logits": logits, "labels": labels}
+
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        # implement your own
+        _, logits = self.get_loss_and_outputs(x)
         return logits

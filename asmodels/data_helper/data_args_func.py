@@ -57,6 +57,14 @@ def load_tokenizer_and_config_with_args(train_args,dataHelper,task_specific_para
                                 use_auth_token=train_args.use_auth_token,
                                )
 
+    if task_specific_params is None:
+        task_specific_params = {}
+
+    task_specific_params['learning_rate'] = train_args.learning_rate
+    task_specific_params['learning_rate_for_task'] = train_args.learning_rate_for_task \
+        if train_args.learning_rate_for_task is not None else train_args.learning_rate
+
+
     kwargs_args = {
         "bos_token_id" : tokenizer.bos_token_id,
         "pad_token_id" : tokenizer.pad_token_id,

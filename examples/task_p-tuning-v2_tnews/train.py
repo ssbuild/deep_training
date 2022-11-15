@@ -2,12 +2,11 @@
 import logging
 import os
 import sys
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 
 import torch
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
-
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
-sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 from pytorch_lightning import Trainer, seed_everything,LightningDataModule
 from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, \
     load_tokenizer_and_config_with_args
@@ -56,8 +55,6 @@ class MyTransformer(PrefixTransformerForSequenceClassification):
             'acc':acc
         }, prog_bar=True)
         return loss
-
-
 
 
 if __name__== '__main__':

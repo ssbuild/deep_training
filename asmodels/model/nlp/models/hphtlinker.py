@@ -10,8 +10,11 @@ __all__ = [
     'TransformerForHphtlinker'
 ]
 
+from ..utils import configure_optimizers
+
+
 class BCELossForLinker(nn.Module):
-    def __init__(self,i ):
+    def __init__(self,):
         super(BCELossForLinker, self).__init__()
         self.criterion = nn.BCEWithLogitsLoss(reduction='none')
 
@@ -37,38 +40,13 @@ class TransformerForHphtlinker(TransformerModel):
         self.condLayerNorm = LayerNorm(hidden_size=config.hidden_size,
                                        conditional_size=config.hidden_size*2)
 
-        # task_specific_params = config.task_specific_params
-        # self.cls_token_id = task_specific_params['cls_token_id']
-        # self.sep_token_id = task_specific_params['sep_token_id']
 
     def configure_optimizers(self):
-        """Prepare optimizer and schedule (linear warmup and decay)"""
-        model = self.model
-        no_decay = ["bias", "LayerNorm.weight"]
-        attrs = [model, self.subject, self.object]
-        opt = []
-        for a in attrs:
-            opt += [
-                {
-                    "params": [p for n, p in a.named_parameters() if not any(nd in n for nd in no_decay)],
-                    "weight_decay": self.hparams.weight_decay, "lr": self.hparams.learning_rate,
-                },
-                {
-                    "params": [p for n, p in a.named_parameters() if any(nd in n for nd in no_decay)],
-                    "weight_decay": 0.0, "lr": self.hparams.learning_rate,
-                },
-            ]
-
-        optimizer = AdamW(opt, lr=self.hparams.learning_rate, eps=self.hparams.adam_epsilon)
-
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=self.hparams.warmup_steps,
-            num_training_steps=self.trainer.estimated_stepping_batches,
-        )
-        scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
-        return [optimizer], [scheduler]
-
+        attrs = [(self.model, self.config.task_specific_params['learning_rate']),
+                 (self.subject, self.config.task_specific_params['learning_rate_for_task']),
+                 (self.object, self.config.task_specific_params['learning_rate_for_task']),
+                 ]
+        return configure_optimizers(attrs, self.hparams, self.trainer.estimated_stepping_batches)
 
 
     def extract_subject(self,inputs):
