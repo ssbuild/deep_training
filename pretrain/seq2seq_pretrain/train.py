@@ -20,13 +20,11 @@ class MyTransformer(TransformerForSeq2SeqLM):
         self.loss_fct = CrossEntropyLoss(ignore_index=self.config.pad_token_id)
 
     def training_step(self, batch, batch_idx):
-
+        labels = batch.pop('labels')
         outputs = self(**batch)
         lm_logits = outputs[0]
-
         loss = self.loss_fct(lm_logits.view(-1, lm_logits.size(-1)), labels.view(-1))
-        loss = outputs[0]
-        # self.log('train_loss', loss, prog_bar=True)
+        self.log('train_loss', loss, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):

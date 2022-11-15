@@ -47,7 +47,7 @@ def train_args():
 
 
     parser.add_argument('--max_seq_length', type=int, default=512, help='输入模型的最大长度')
-    parser.add_argument('--title_max_len', type=int, default=32, help='生成标题的最大长度，要比max_len小')
+    parser.add_argument('--max_target_length', type=int, default=32, help='生成标题的最大长度，要比max_len小')
 
     parser.add_argument('--do_train', action="store_true", help='是否训练')
     parser.add_argument('--do_eval', action="store_true", help='是否eval')

@@ -21,6 +21,6 @@ python ../train.py \
 --warmup_steps 0 \
 --output_dir './output' \
 --max_seq_length 512 \
---title_max_len 50
+--max_target_length 50
 
 

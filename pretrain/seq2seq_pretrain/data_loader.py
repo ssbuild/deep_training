@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/11/4 13:31
+import copy
 import os
 import json
 import typing
@@ -22,25 +23,34 @@ class NN_DataHelper(DataHelper):
         attention_mask = np.asarray(o1['attention_mask'], dtype=np.int64)
 
         decoder_input_ids = np.asarray(o2['input_ids'], dtype=np.int64)
-        decoder_attention_mask = np.asarray(o2['attention_mask'], dtype=np.int64)
 
         slen = np.asarray(len(input_ids), dtype=np.int64)
-        dlen = np.asarray(len(decoder_input_ids), dtype=np.int64)
+
         pad_len = max_s_len - slen
-        if slen > 0:
+        if pad_len > 0:
             pad_val = tokenizer.pad_token_id
             input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
             attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+
+
+        labels = np.asarray(decoder_input_ids[1:],dtype=np.int64)
+        decoder_input_ids = np.asarray(decoder_input_ids[:-1],dtype=np.int64)
+        decoder_attention_mask = np.asarray([1] * len(decoder_input_ids),dtype=np.int64)
+
+        dlen = np.asarray(len(decoder_input_ids), dtype=np.int64)
         pad_len = max_d_len - dlen
-        if dlen > 0:
+        if pad_len > 0:
             pad_val = tokenizer.pad_token_id
             decoder_input_ids = np.pad(decoder_input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
             decoder_attention_mask = np.pad(decoder_attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+            labels = np.pad(labels, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+
         d = {
             'input_ids': input_ids,
             'attention_mask': attention_mask,
             'decoder_input_ids': decoder_input_ids,
             'decoder_attention_mask': decoder_attention_mask,
+            'labels':labels,
             'slen': slen,
             'dlen': dlen
         }
@@ -71,6 +81,7 @@ class NN_DataHelper(DataHelper):
             else:
                 for k in b:
                     o[k].append(torch.tensor(b[k]))
+
         for k in o:
             o[k] = torch.stack(o[k])
 
@@ -83,6 +94,7 @@ class NN_DataHelper(DataHelper):
 
         o['decoder_input_ids'] = o['decoder_input_ids'][:, :dlen]
         o['decoder_attention_mask'] = o['decoder_attention_mask'][:, :dlen]
+        o['labels'] = o['labels'][:, :dlen]
         return o
 
 
