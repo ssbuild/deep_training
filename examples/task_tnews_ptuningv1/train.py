@@ -5,18 +5,19 @@ import sys
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 import torch
-from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
+from torch.nn import CrossEntropyLoss
 from pytorch_lightning import Trainer, seed_everything
 from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, \
     load_tokenizer_and_config_with_args
 from transformers import AdamW,get_linear_schedule_with_warmup
-from asmodels.model.nlp.models.prompt import PromptTransformerForSequenceClassification
+from asmodels.model.nlp.models.ptuning import PromptTransformerForSequenceClassification
 from data_loader import NN_DataHelper as DataHelper
 from train_args import train_args
 
 class MyTransformer(PromptTransformerForSequenceClassification):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
+        self.loss_fct = CrossEntropyLoss(ignore_index=self.config.pad_token_id)
 
     def training_step(self, batch, batch_idx):
         labels: torch.Tensor = batch.pop('labels')
@@ -26,8 +27,7 @@ class MyTransformer(PromptTransformerForSequenceClassification):
         logits = self.classifier(pooled_output)
         loss = None
         if labels is not None:
-            loss_fct = CrossEntropyLoss(ignore_index=self.config.pad_token_id)
-            loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
 
         acc = torch.sum(torch.eq(labels.view(-1),torch.argmax(logits,dim=1,keepdim=False))) / labels.view(-1).size()[0]
         self.log_dict({
@@ -47,9 +47,7 @@ if __name__== '__main__':
     tokenizer,config,label2id, id2label = load_tokenizer_and_config_with_args(train_args, dataHelper)
     save_fn_args = (tokenizer, train_args.max_seq_length,label2id,train_args.pre_seq_len)
 
-
-    print(label2id)
-    print(id2label)
+    print(label2id,id2label)
     print('*' * 30,config.num_labels)
 
     N = 1

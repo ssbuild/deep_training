@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
-import logging
 import os
 import sys
-
-import torch
-
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
-from pytorch_lightning import Trainer, seed_everything,LightningDataModule
+
+import torch
+import logging
+from pytorch_lightning import Trainer, seed_everything
 from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, \
     load_tokenizer_and_config_with_args
 from transformers import AdamW,get_linear_schedule_with_warmup
@@ -31,7 +30,6 @@ class MyTransformer(TransformerForSequenceClassification):
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-
         outputs = self(**batch)
         val_loss, logits = outputs[:2]
         labels = batch['labels']
@@ -56,10 +54,8 @@ if __name__== '__main__':
     tokenizer,config,label2id, id2label = load_tokenizer_and_config_with_args(train_args, dataHelper)
     save_fn_args = (tokenizer, train_args.max_seq_length,label2id)
 
-
-    print(label2id)
-    print(id2label)
-    print('*' * 30,config.num_labels)
+    print(label2id, id2label)
+    print('*' * 30, config.num_labels)
 
     N = 1
     train_files, eval_files, test_files = [], [], []

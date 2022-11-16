@@ -1,6 +1,6 @@
 # @Time    : 2022/11/15 21:28
 # @Author  : tk
-# @FileName: prompt.py
+# @FileName: ptuning.py
 
 import argparse
 from typing import Any

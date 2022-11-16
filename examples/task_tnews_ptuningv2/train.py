@@ -6,10 +6,9 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 
 import torch
-from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
-from pytorch_lightning import Trainer, seed_everything,LightningDataModule
-from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, \
-    load_tokenizer_and_config_with_args
+from torch.nn import CrossEntropyLoss
+from pytorch_lightning import Trainer, seed_everything
+from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, load_tokenizer_and_config_with_args
 from transformers import AdamW,get_linear_schedule_with_warmup
 from asmodels.model.nlp.models.ptuingv2 import PrefixTransformerForSequenceClassification
 from data_loader import NN_DataHelper as DataHelper
@@ -48,10 +47,8 @@ if __name__== '__main__':
     tokenizer,config,label2id, id2label = load_tokenizer_and_config_with_args(train_args, dataHelper)
     save_fn_args = (tokenizer, train_args.max_seq_length,label2id)
 
-
-    print(label2id)
-    print(id2label)
-    print('*' * 30,config.num_labels)
+    print(label2id, id2label)
+    print('*' * 30, config.num_labels)
 
     N = 1
     train_files, eval_files, test_files = [], [], []
