@@ -4,15 +4,23 @@
 - 当前正在重构中...，接口是不稳定的...
 
 ## 更新
-- <strong>2022年11月15</strong>: 增加unilm autotitle,
+- <strong>2022年11月15</strong>: 增加
+  - unilm autotitle,
   - seq2seq autotitle,
   - p-tuning v1 tnews 
   - p-tuning v2 tnews 
   - p-tuning v2 pointer 
   - p-tuning v2 crf
-- <strong>2022年11月12</strong>: 增加关系任务 gplinker (全局指针提取), hphtlinker(半指针半标注提取 ,half pointer and half tages ),spliner (全指针提取 sigmoid pointer or simple pointer)
-- <strong>2022年11月11</strong>: 增加cluener_pointer 中文命名实体提取 , cluener crf ,tnews 中文分类
-- <strong>2022年11月06</strong>: 增加mlm,gpt2,t5 small等模型预训练任务
+- <strong>2022年11月12</strong>: 增加
+  - gplinker (全局指针提取)
+  - hphtlinker(半指针半标注提取 
+  - half pointer and half tages )
+  - spliner (全指针提取 sigmoid pointer or simple pointer)
+- <strong>2022年11月11</strong>: 增加
+  - cluener_pointer 中文命名实体提取 
+  - cluener crf ,tnews 中文分类
+- <strong>2022年11月06</strong>: 
+  - mlm,gpt2,t5等模型预训练任务
 
 
 
