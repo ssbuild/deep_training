@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class CenterLoss(nn.Module):
-    """Center loss.
+    """Center losses.
     
     Reference:
     Wen et al. A Discriminative Feature Learning Approach for Deep Face Recognition. ECCV 2016.

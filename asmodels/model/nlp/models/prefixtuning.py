@@ -169,10 +169,10 @@ class PrefixTransformerForSequenceClassification(PrefixTransformerForModel):
                 loss = loss_fct(logits, labels)
         # if not return_dict:
         #     output = (logits,) + outputs[2:]
-        #     return ((loss,) + output) if loss is not None else output
+        #     return ((losses,) + output) if losses is not None else output
         #
         # return SequenceClassifierOutput(
-        #     loss=loss,
+        #     losses=losses,
         #     logits=logits,
         #     hidden_states=outputs.hidden_states,
         #     attentions=outputs.attentions,
@@ -187,7 +187,7 @@ class PrefixTransformerForSequenceClassification(PrefixTransformerForModel):
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         labels = batch["labels"]
         val_loss, logits = self.get_loss_and_logits(batch)
-        return {"loss": val_loss, "logits": logits, "labels": labels}
+        return {"losses": val_loss, "logits": logits, "labels": labels}
 
     def test_step(self, batch, batch_idx):
         x, y = batch
@@ -218,7 +218,7 @@ class PrefixTransformerForTokenClassification(PrefixTransformerForModel):
         loss = None
         if labels is not None:
             loss_fct = CrossEntropyLoss()
-            # Only keep active parts of the loss
+            # Only keep active parts of the losses
             if attention_mask is not None:
                 active_loss = attention_mask.view(-1) == 1
                 active_logits = logits.view(-1, self.num_labels)
@@ -239,7 +239,7 @@ class PrefixTransformerForTokenClassification(PrefixTransformerForModel):
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         labels = batch["labels"]
         val_loss, logits = self.get_loss_and_outputs(batch)
-        return {"loss": val_loss, "logits": logits, "labels": labels}
+        return {"losses": val_loss, "logits": logits, "labels": labels}
 
     def test_step(self, batch, batch_idx):
         x, y = batch
@@ -283,7 +283,7 @@ class PrefixTransformerPointer(PrefixTransformerForModel):
         labels = batch['labels']
         val_loss, logits = self.get_loss_and_logits(batch)
         f1 = f1_metric(labels, logits)
-        return {"loss": val_loss, "logits": logits, "labels": labels}
+        return {"losses": val_loss, "logits": logits, "labels": labels}
 
     def test_step(self, batch, batch_idx):
         x, y = batch
@@ -318,7 +318,7 @@ class PrefixTransformerForCRF(PrefixTransformerForModel):
         if labels is not None:
             labels = torch.where(labels >= 0, labels, torch.zeros_like(labels))
             loss = self.crf(emissions=logits, tags=labels, mask=attention_mask)
-            # outputs = (-1 * loss,) + outputs
+            # outputs = (-1 * losses,) + outputs
         # else:
         #     # tags = self.crf.decode(logits, attention_mask)
         #     # outputs = (tags,)
@@ -335,7 +335,7 @@ class PrefixTransformerForCRF(PrefixTransformerForModel):
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         labels = batch['labels']
         val_loss, logits = self.get_loss_and_logits(batch)
-        return {"loss": val_loss, "logits": logits, "labels": labels}
+        return {"losses": val_loss, "logits": logits, "labels": labels}
 
     def test_step(self, batch, batch_idx):
         x, y = batch

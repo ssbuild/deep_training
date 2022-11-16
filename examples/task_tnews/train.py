@@ -34,7 +34,7 @@ class MyTransformer(TransformerForSequenceClassification):
         val_loss, logits = outputs[:2]
         labels = batch['labels']
         acc = torch.eq(labels, torch.argmax(outputs[1], dim=1)) / labels.size()[0]
-        return {"loss": val_loss, "logits": logits, "labels": labels,'acc':acc}
+        return {"losses": val_loss, "logits": logits, "labels": labels,'acc':acc}
 
     def test_step(self, batch, batch_idx):
         x, y = batch

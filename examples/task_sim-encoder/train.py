@@ -1,58 +1,40 @@
 # -*- coding: utf-8 -*-
+import logging
 import os
 import sys
+
+from asmodels.model.nlp.layers.mask import unilm_mask
+
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
-import logging
-import numpy as np
-from typing import Union, List
-import torch
-from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from pytorch_lightning import Trainer, seed_everything
 from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, \
     load_tokenizer_and_config_with_args
-from asmodels.model.nlp.layers.seq_pointer import loss_fn,f1_metric
+from transformers import AdamW,get_linear_schedule_with_warmup
+from asmodels.model.nlp.models.transformer import TransformerModelUnilm
+
 from data_loader import NN_DataHelper as DataHelper
 from train_args import train_args
-from asmodels.model.nlp.models.gplinker import TransformerForGplinker
-from asmodels.model.nlp.metrics.pointer import metric_for_pointer
 
-class MyTransformer(TransformerForGplinker):
-    def __init__(self, *args,**kwargs):
-        super(MyTransformer, self).__init__(with_efficient=True,*args,**kwargs)
+class MyTransformer(TransformerModelUnilm):
+    def __init__(self,*args,**kwargs):
+        super(MyTransformer, self).__init__(*args,**kwargs)
 
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        labels: torch.Tensor = batch.pop('labels')
-        real_label = batch.pop("real_label")
+    def training_step(self, batch, batch_idx):
+        batch['attention_mask'] = unilm_mask(batch['token_type_ids'])
+        if 'labels' in batch:
+            labels = batch.pop('labels')
+        else:
+            labels = batch['input_ids']
         outputs = self(**batch)
-        val_loss, logits = outputs[:2]
-        f1 = f1_metric(labels,logits)
-        return {"losses": val_loss, "logits": logits.item(),"labels": real_label,'f1':f1}
+        hidden_states = outputs[0]
+        lm_logits = self.lm_head(hidden_states)
+        shift_logits = lm_logits[..., :-1, :].contiguous()
+        shift_labels = labels[..., 1:].contiguous()
+        loss = self.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
 
-    def validation_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
-        id2label = self.config.id2label
-        threshold = 1e-7
-        preds = []
-        labels = []
-        for o in outputs:
-            logits = o['logits']
-            label = o['labels']
-            for tag in logits:
-                one_result = []
-                for (l, s, e) in zip(*np.where(tag > threshold)):
-                    one_result.append((l, s, e))
-                preds.append(one_result)
-            labels.append(label)
-        m = metric_for_pointer(labels,preds,id2label)
-        print(m)
-
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        # implement your own
-        out = self(x)
-        return out
-
-
+        self.log('train_loss', loss, prog_bar=True)
+        return loss
 
 if __name__== '__main__':
     train_args = train_args()
@@ -62,19 +44,19 @@ if __name__== '__main__':
 
     dataHelper = DataHelper(train_args.data_backend)
     tokenizer,config,label2id, id2label = load_tokenizer_and_config_with_args(train_args, dataHelper)
-    save_fn_args = (tokenizer, train_args.max_seq_length,label2id)
+    save_fn_args = (tokenizer, train_args.max_seq_length)
 
 
     N = 1
     train_files, eval_files, test_files = [], [], []
     for i in range(N):
         intermediate_name = train_args.intermediate_name + '_{}'.format(i)
+        logging.info('make data {}...'.format(intermediate_name))
         train_file, eval_file, test_file = make_all_dataset_with_args(dataHelper, save_fn_args, train_args,
-                                                                      intermediate_name=intermediate_name,num_process_worker=0)
+                                                                      intermediate_name=intermediate_name)
         train_files.append(train_file)
         eval_files.append(eval_file)
         test_files.append(test_file)
-
 
     dm = load_all_dataset_with_args(dataHelper, train_args, train_files, eval_files, test_files)
 

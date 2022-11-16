@@ -78,14 +78,14 @@ class TransformerBase(LightningModule):
         outputs = self(**batch)
         val_loss, logits = outputs[:2]
         labels = batch["labels"]
-        return {"loss": val_loss, "logits": logits, "labels": labels}
+        return {"losses": val_loss, "logits": logits, "labels": labels}
 
     def test_step(self, batch, batch_idx):
         x, y = batch
         # implement your own
         out = self(x)
         return out
-        # loss = self.loss(out, y)
+        # losses = self.losses(out, y)
         #
         # # log 6 example images
         # # or generated text... or whatever
@@ -98,13 +98,13 @@ class TransformerBase(LightningModule):
         # test_acc = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
         #
         # # log the outputs!
-        # self.log_dict({'test_loss': loss, 'test_acc': test_acc})
+        # self.log_dict({'test_loss': losses, 'test_acc': test_acc})
     #
     # def validation_epoch_end(self, outputs):
     #     # logits = torch.cat([x["logits"] for x in outputs]).detach().cpu().numpy()
     #     # labels = torch.cat([x["labels"] for x in outputs]).detach().cpu().numpy()
-    #     loss = torch.stack([x["loss"] for x in outputs]).mean()
-    #     self.log("val_loss", loss, prog_bar=True)
+    #     losses = torch.stack([x["losses"] for x in outputs]).mean()
+    #     self.log("val_loss", losses, prog_bar=True)
     #     # self.log_dict(self.metric.compute(predictions=preds, references=labels), prog_bar=True)
 
 
@@ -171,7 +171,7 @@ class TransformerModelUnilm(TransformerModel):
         shift_logits = lm_logits[..., :-1, :].contiguous()
         shift_labels = labels[..., 1:].contiguous()
         val_loss = self.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
-        return {"loss": val_loss, "logits": lm_logits, "labels": labels}
+        return {"losses": val_loss, "logits": lm_logits, "labels": labels}
 
     def test_step(self, batch, batch_idx):
         x, y = batch

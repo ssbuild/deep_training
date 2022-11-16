@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 
 class FocalLoss(nn.Module):
-    '''Multi-class Focal loss implementation'''
+    '''Multi-class Focal losses implementation'''
 
     def __init__(self, gamma=2, weight=None, ignore_index=-100):
         super(FocalLoss, self).__init__()

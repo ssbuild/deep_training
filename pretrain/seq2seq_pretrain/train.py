@@ -31,7 +31,7 @@ class MyTransformer(TransformerForSeq2SeqLM):
         outputs = self(**batch)
         val_loss, logits = outputs[:2]
         labels = batch["labels"]
-        return {"loss": val_loss, "logits": logits, "labels": labels}
+        return {"losses": val_loss, "logits": logits, "labels": labels}
 
     def test_step(self, batch, batch_idx):
         x, y = batch

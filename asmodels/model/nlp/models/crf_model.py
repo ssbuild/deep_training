@@ -35,7 +35,7 @@ class TransformerForCRF(TransformerModel):
         if labels is not None:
             labels = torch.where(labels >= 0, labels, torch.zeros_like(labels))
             loss = self.crf(emissions=logits, tags=labels, mask=attention_mask)
-            # outputs = (-1 * loss,) + outputs
+            # outputs = (-1 * losses,) + outputs
         # else:
         #     # tags = self.crf.decode(logits, attention_mask)
         #     # outputs = (tags,)

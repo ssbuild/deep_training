@@ -63,7 +63,7 @@ class TransformerForSplinker(TransformerModel):
         logits = self.sigmoid(logits)
         val_loss = self.BCELoss(logits=logits, labels=labels, mask=mask)
         logits = torch.where(logits >= 0.5, torch.ones_like(logits), torch.zeros_like(logits))
-        return {"loss": val_loss, "logits": logits.item(), "labels": real_label}
+        return {"losses": val_loss, "logits": logits.item(), "labels": real_label}
 
     def test_step(self, batch, batch_idx):
         x, y = batch

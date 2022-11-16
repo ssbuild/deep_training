@@ -43,7 +43,7 @@ class MyTransformer(TransformerForMaskLM):
         # val_loss, logits = outputs[:2]
         logits = outputs[0]
         val_loss = self._compute_loss(labels, logits, weight)
-        return {"loss": val_loss, "logits": logits, "labels": labels}
+        return {"losses": val_loss, "logits": logits, "labels": labels}
 
     def test_step(self, batch, batch_idx):
         weight = batch.pop('weight')

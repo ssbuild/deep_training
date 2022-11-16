@@ -27,7 +27,7 @@ class MyTransformer(TransformerForPointer):
         outputs = self(**batch)
         val_loss, logits = outputs[:2]
         f1 = f1_metric(labels,logits)
-        return {"loss": val_loss, "logits": logits.item(),"labels": real_label,'f1':f1}
+        return {"losses": val_loss, "logits": logits.item(),"labels": real_label,'f1':f1}
 
     def validation_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
         id2label = self.config.id2label
