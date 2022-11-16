@@ -34,6 +34,7 @@ def train_args():
     parser.add_argument('--use_auth_token', default=False, type=bool,
                         help='The specific model version to use (can be a branch name, tag name or commit id).')
 
+    parser.add_argument('--learning_rate', default=5e-5, type=float, help='模型任务层训练时的学习率')
     parser.add_argument('--learning_rate_for_task', default=None, type=float, help='模型任务层训练时的学习率')
     parser.add_argument('--max_epochs', default=-1, type=int, help='模型训练的轮数')
     parser.add_argument('--max_steps', default=-1, type=int, help='max_steps')

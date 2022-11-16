@@ -10,11 +10,11 @@ from pytorch_lightning import Trainer, seed_everything
 from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, \
     load_tokenizer_and_config_with_args
 from transformers import AdamW,get_linear_schedule_with_warmup
-from asmodels.model.nlp.models.ptuning import PromptTransformerForSequenceClassification
+from asmodels.model.nlp.models.prefixtuning import PrefixTransformerForSequenceClassification
 from data_loader import NN_DataHelper as DataHelper
 from train_args import train_args
 
-class MyTransformer(PromptTransformerForSequenceClassification):
+class MyTransformer(PrefixTransformerForSequenceClassification):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(prompt_type=0,*args,**kwargs)
         self.loss_fct = CrossEntropyLoss(ignore_index=self.config.pad_token_id)

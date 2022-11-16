@@ -40,6 +40,7 @@ class PrefixTransformerForModel(TransformerModel):
 
         self.prefix_tokens = torch.arange(self.pre_seq_len).long()
 
+        self.embeddings = self.model.embeddings
         if prompt_type != 0:
             self.prefix_encoder = PrefixEncoder(config)
         else:
@@ -55,6 +56,7 @@ class PrefixTransformerForModel(TransformerModel):
         print('total param is {}'.format(total_param))  # 9860105
         #function
         self.get_prompt = self.get_prompt_0 if prompt_type == 0 else self.get_prompt_1
+        self.get_transformer_outputs = self.get_transformer_outputs_0 if prompt_type == 0 else self.get_transformer_outputs_1
 
     def get_prompt_0(self, batch_size):
         prefix_tokens = self.prefix_tokens.unsqueeze(0).expand(batch_size, -1).to(self.model.device)
@@ -80,8 +82,38 @@ class PrefixTransformerForModel(TransformerModel):
 
 
 
+    def get_transformer_outputs_0(self,batch):
+        input_ids = batch['input_ids']
+        attention_mask = batch['attention_mask']
+        batch_size = input_ids.shape[0]
 
-    def get_transformer_outputs(self,batch):
+        raw_embedding = self.embeddings(
+            input_ids=input_ids,
+            position_ids=batch.get('position_ids',None),
+            token_type_ids=batch.get('token_type_ids',None),
+        )
+        prompts = self.get_prompt(batch_size)
+        inputs_embeds = torch.cat((prompts, raw_embedding), dim=1)
+        prefix_attention_mask = torch.ones(batch_size, self.pre_seq_len).to(self.model.device)
+        attention_mask = torch.cat((prefix_attention_mask, attention_mask), dim=1)
+
+        outputs = self(
+            # input_ids,
+            attention_mask=attention_mask,
+            # token_type_ids=token_type_ids,
+            # position_ids=position_ids,
+            inputs_embeds=inputs_embeds,
+            # past_key_values=past_key_values,
+        )
+
+        sequence_output = outputs[0]
+        sequence_output = sequence_output[:, self.pre_seq_len:, :].contiguous()
+        first_token_tensor = sequence_output[:, 0]
+
+        return (sequence_output,first_token_tensor)
+
+
+    def get_transformer_outputs_1(self,batch):
         input_ids = batch['input_ids']
         attention_mask = batch.pop('attention_mask')
         batch_size = input_ids.shape[0]
