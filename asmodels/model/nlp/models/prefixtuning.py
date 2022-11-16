@@ -19,12 +19,13 @@ __all__ = [
 ]
 
 class PrefixTransformerForModel(TransformerModel):
-    def __init__(self, config, train_args: argparse.Namespace, *args: Any, **kwargs: Any):
+    def __init__(self,prompt_type, config, train_args: argparse.Namespace, *args: Any, **kwargs: Any):
         super().__init__(config, train_args, *args, **kwargs)
 
         config.pre_seq_len = train_args.pre_seq_len
-        config.prefix_projection = train_args.prefix_projection
-        config.prefix_hidden_size = train_args.prefix_hidden_size
+        if prompt_type != 0:
+            config.prefix_projection = train_args.prefix_projection
+            config.prefix_hidden_size = train_args.prefix_hidden_size
 
         self.num_labels = config.num_labels
         self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
@@ -38,7 +39,11 @@ class PrefixTransformerForModel(TransformerModel):
         self.n_embd = config.hidden_size // config.num_attention_heads
 
         self.prefix_tokens = torch.arange(self.pre_seq_len).long()
-        self.prefix_encoder = PrefixEncoder(config)
+
+        if prompt_type != 0:
+            self.prefix_encoder = PrefixEncoder(config)
+        else:
+            self.prefix_encoder = torch.nn.Embedding(self.pre_seq_len, config.hidden_size)
 
         the_model_param = 0
         for name, param in self.model.named_parameters():
@@ -48,9 +53,15 @@ class PrefixTransformerForModel(TransformerModel):
             all_param += param.numel()
         total_param = all_param - the_model_param
         print('total param is {}'.format(total_param))  # 9860105
+        #function
+        self.get_prompt = self.get_prompt_0 if prompt_type == 0 else self.get_prompt_1
 
+    def get_prompt_0(self, batch_size):
+        prefix_tokens = self.prefix_tokens.unsqueeze(0).expand(batch_size, -1).to(self.model.device)
+        prompts = self.prefix_encoder(prefix_tokens)
+        return prompts
 
-    def get_prompt(self, batch_size):
+    def get_prompt_1(self, batch_size):
         prefix_tokens = self.prefix_tokens.unsqueeze(0).expand(batch_size, -1).to(self.model.device)
         past_key_values = self.prefix_encoder(prefix_tokens)
         # bsz, seqlen, _ = past_key_values.shape
@@ -68,11 +79,13 @@ class PrefixTransformerForModel(TransformerModel):
         return past_key_values
 
 
+
+
     def get_transformer_outputs(self,batch):
         input_ids = batch['input_ids']
         attention_mask = batch.pop('attention_mask')
         batch_size = input_ids.shape[0]
-        past_key_values = self.get_prompt(batch_size=batch_size)
+        past_key_values = self.get_prompt(batch_size)
         prefix_attention_mask = torch.ones(batch_size, self.pre_seq_len).to(self.model.device)
         attention_mask = torch.cat((prefix_attention_mask, attention_mask), dim=1)
         batch['attention_mask'] = attention_mask
@@ -84,8 +97,8 @@ class PrefixTransformerForModel(TransformerModel):
 
 
 class PrefixTransformerForSequenceClassification(PrefixTransformerForModel):
-    def __init__(self, config, train_args: argparse.Namespace, *args: Any, **kwargs: Any):
-        super().__init__(config, train_args, *args, **kwargs)
+    def __init__(self, prompt_type,config, train_args: argparse.Namespace, *args: Any, **kwargs: Any):
+        super().__init__(prompt_type,config, train_args, *args, **kwargs)
         self.classifier = torch.nn.Linear(config.hidden_size, config.num_labels)
 
     def configure_optimizers(self):
@@ -152,8 +165,8 @@ class PrefixTransformerForSequenceClassification(PrefixTransformerForModel):
 
 
 class PrefixTransformerForTokenClassification(PrefixTransformerForModel):
-    def __init__(self, config, train_args: argparse.Namespace, *args: Any, **kwargs: Any):
-        super().__init__(config, train_args, *args, **kwargs)
+    def __init__(self, prompt_type,config, train_args: argparse.Namespace, *args: Any, **kwargs: Any):
+        super().__init__(prompt_type,config, train_args, *args, **kwargs)
         self.num_labels = config.num_labels
         self.classifier = torch.nn.Linear(config.hidden_size, config.num_labels)
 
@@ -204,8 +217,8 @@ class PrefixTransformerForTokenClassification(PrefixTransformerForModel):
 
 
 class PrefixTransformerPointer(PrefixTransformerForModel):
-    def __init__(self, config, train_args: argparse.Namespace,with_efficient=True, *args, **kwargs):
-        super().__init__(config, train_args,*args, **kwargs)
+    def __init__(self,prompt_type, config, train_args: argparse.Namespace,with_efficient=True, *args, **kwargs):
+        super().__init__(prompt_type,config, train_args,*args, **kwargs)
         PointerLayerObject = EfficientPointerLayer if with_efficient else PointerLayer
         self.pointer_layer = PointerLayerObject(self.config.hidden_size, self.config.num_labels, 64)
 
@@ -248,8 +261,8 @@ class PrefixTransformerPointer(PrefixTransformerForModel):
 
 
 class PrefixTransformerForCRF(PrefixTransformerForModel):
-    def __init__(self, config, train_args: argparse.Namespace,*args, **kwargs):
-        super(PrefixTransformerForCRF, self).__init__(config, train_args, *args, **kwargs)
+    def __init__(self,prompt_type, config, train_args: argparse.Namespace,*args, **kwargs):
+        super().__init__(prompt_type,config, train_args, *args, **kwargs)
 
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)

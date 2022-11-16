@@ -7,7 +7,7 @@
 - <strong>2022年11月15</strong>: 
   - unilm autotitle seq2seq autotitle
   - 普通分类,指针提取命名实体,crf提取命名实体
-  - p-tuning v1 分类 , p-tuning v2 分类 , p-tuning v2 指针提取命名实体 , p-tuning v2 crf 提取命名实体
+  - prefixtuning 分类 , prefixtuning 分类 , prefixtuning 指针提取命名实体 , prefixtuning crf 提取命名实体
 - <strong>2022年11月12</strong>: 
   - gplinker (全局指针提取)
   - hphtlinker (半指针半标注提取 half pointer and half tages)
@@ -38,13 +38,11 @@
   - 例子 <strong>gplinker 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[法研杯2022信息抽取数据](https://github.com/ssbuild/cail2022-info-extract)
   - 例子 <strong>hphtlinker 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[法研杯2022信息抽取数据](https://github.com/ssbuild/cail2022-info-extract)
   - 例子 <strong>spliner 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[法研杯2022信息抽取数据](https://github.com/ssbuild/cail2022-info-extract)
-- <strong>p-tuning v1 系列</strong>: 
-  - 例子 <strong>p-tuning v1 tnews</strong>
-- <strong>p-tuning v2 系列</strong>: 
-  - 例子 <strong>p-tuning v2 tnews 中文分类</strong>
-  - 例子 <strong>p-tuning v2 cluener 命名实体全局指针提取</strong>
-  - 例子 <strong>p-tuning v2 cluener 命名实体crf提取</strong>
-- <strong>prompt 系列</strong>:
+- <strong> prompt 系列</strong>: 
+  - 例子 <strong>prefixprompt tnews中文分类</strong>
+  - 例子 <strong>prefixtuning tnews 中文分类</strong>
+  - 例子 <strong>prefixtuning cluener 命名实体全局指针提取</strong>
+  - 例子 <strong>prefixtuning cluener 命名实体crf提取</strong>
   - 例子 <strong>prompt mlm 调试中.......</strong>
   - 例子 <strong>prompt lm  调试中.......</strong>
 

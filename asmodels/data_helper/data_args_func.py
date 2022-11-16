@@ -90,31 +90,32 @@ def load_tokenizer_and_config_with_args(train_args,dataHelper,task_specific_para
 
 def make_all_dataset_with_args(dataHelper,save_fn_args,train_args,intermediate_name,num_process_worker=0):
     dataHelper: DataHelper
-    train_file, eval_file, test_file = None, None, None
+    train_file_output, eval_file_output, test_file_output = None, None, None
     if train_args.do_train:
-        train_file = os.path.join(train_args.output_dir,intermediate_name + '-train.' + train_args.data_backend)
-        logging.info('make data {}...'.format(train_file))
-        train_file = dataHelper.make_dataset(train_args.train_file,train_file,save_fn_args + ('train',),
+        train_file_output = os.path.join(train_args.output_dir,intermediate_name + '-train.' + train_args.data_backend)
+        logging.info('make data {}...'.format(train_file_output))
+        train_file_output = dataHelper.make_dataset(train_args.train_file,train_file_output,save_fn_args + ('train',),
                                 num_process_worker=num_process_worker,
                                 shuffle=True,
                                 mode='train')
 
     if train_args.do_eval:
-        eval_file = os.path.join(train_args.output_dir,intermediate_name + '-eval.' + train_args.data_backend)
-        logging.info('make data {}...'.format(eval_file))
-        eval_file = dataHelper.make_dataset(train_args.eval_file, eval_file, save_fn_args+ ('eval',),
+        eval_file_output = os.path.join(train_args.output_dir,intermediate_name + '-eval.' + train_args.data_backend)
+        logging.info('make data {}...'.format(eval_file_output))
+        eval_file_output = dataHelper.make_dataset(train_args.eval_file, eval_file_output, save_fn_args+ ('eval',),
                                 num_process_worker=num_process_worker,
                                 shuffle=False,
                                 mode='eval')
 
     if train_args.do_test:
-        test_file = os.path.join(train_args.output_dir,intermediate_name + '-test.' + train_args.data_backend)
-        logging.info('make data {}...'.format(test_file))
-        test_file = dataHelper.make_dataset(train_args.test_file,test_file,save_fn_args+ ('test',),
+        test_file_output = os.path.join(train_args.output_dir,intermediate_name + '-test.' + train_args.data_backend)
+        logging.info('make data {}...'.format(test_file_output))
+        test_file_output = dataHelper.make_dataset(train_args.test_file,test_file_output,save_fn_args+ ('test',),
                                 num_process_worker=num_process_worker,
                                 shuffle=False,
                                 mode='test')
-    return train_file, eval_file, test_file
+    #特征数据保存至相应的文件或者内存
+    return train_file_output, eval_file_output, test_file_output
 
 
 
