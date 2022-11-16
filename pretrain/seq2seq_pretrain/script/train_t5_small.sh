@@ -5,7 +5,7 @@
 python ../train.py \
 --device '0' \
 --data_backend 'leveldb' \
---model_type gpt2 \
+--model_type t5 \
 --tokenizer_name /data/nlp/pre_models/torch/bert/bert-base-chinese \
 --config_name ../config_t5/config.json \
 --do_train \

@@ -15,8 +15,8 @@ class NN_DataHelper(DataHelper):
         tokenizer: BertTokenizer
         tokenizer,max_s_len,max_d_len,mode = user_data
         x = data
-        o1 = tokenizer(x[0], max_length=max_s_len, truncation=True, add_special_tokens=True, )
-        o2 = tokenizer(x[1], max_length=max_d_len, truncation=True, add_special_tokens=True, )
+        o1 = tokenizer.encode_plus(x[0], max_length=max_s_len, truncation=True, add_special_tokens=True, )
+        o2 = tokenizer.encode_plus(x[1], max_length=max_d_len, truncation=True, add_special_tokens=True, )
         input_ids = np.asarray(o1['input_ids'], dtype=np.int64)
         attention_mask = np.asarray(o1['attention_mask'], dtype=np.int64)
 

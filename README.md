@@ -43,8 +43,8 @@
   - 例子 <strong>prefixtuning tnews 中文分类</strong>
   - 例子 <strong>prefixtuning cluener 命名实体全局指针提取</strong>
   - 例子 <strong>prefixtuning cluener 命名实体crf提取</strong>
-  - 例子 <strong>prompt mlm 调试中.......</strong>
-  - 例子 <strong>prompt lm  调试中.......</strong>
+  - 例子 <strong>prompt mlm 自行构建数据集参考 pretrain/mlm_pretrain</strong>
+  - 例子 <strong>prompt lm  自行构建数据集参考 pretrain/seq2seq_pretrain</strong>
 
   
 ## 愿景
