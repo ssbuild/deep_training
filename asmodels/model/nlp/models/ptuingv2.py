@@ -40,13 +40,13 @@ class PrefixTransformerForModel(TransformerModel):
         self.prefix_tokens = torch.arange(self.pre_seq_len).long()
         self.prefix_encoder = PrefixEncoder(config)
 
-        bert_param = 0
+        the_model_param = 0
         for name, param in self.model.named_parameters():
-            bert_param += param.numel()
+            the_model_param += param.numel()
         all_param = 0
         for name, param in self.named_parameters():
             all_param += param.numel()
-        total_param = all_param - bert_param
+        total_param = all_param - the_model_param
         print('total param is {}'.format(total_param))  # 9860105
 
 
