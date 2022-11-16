@@ -35,10 +35,10 @@ class TransformerForSplinker(TransformerModel):
         self.BCELoss = BCELossForIE()
         self.sigmoid = nn.Sigmoid()
 
-    def configure_optimizers(self):
-        attrs = [(self.model,self.config.task_specific_params['learning_rate']),
-                 (self.classifier,self.config.task_specific_params['learning_rate_for_task']),]
-        return configure_optimizers(attrs, self.hparams,self.trainer.estimated_stepping_batches)
+    def get_model_lr(self):
+        return super(TransformerForSplinker, self).get_model_lr() + [
+            (self.classifier, self.config.task_specific_params['learning_rate']),
+        ]
 
 
     def training_step(self, batch, batch_idx):

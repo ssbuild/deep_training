@@ -3,6 +3,8 @@ import logging
 import os
 import sys
 
+from torch import nn
+
 from asmodels.model.nlp.layers.mask import unilm_mask
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
@@ -19,6 +21,12 @@ from train_args import train_args
 class MyTransformer(TransformerModelUnilm):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
+        self.sim_head = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
+
+    def get_model_lr(self):
+        return super(MyTransformer, self).get_model_lr() + [
+            (self.simlogits, self.config.task_specific_params['learning_rate_for_task'])
+        ]
 
     def training_step(self, batch, batch_idx):
         batch['attention_mask'] = unilm_mask(batch['token_type_ids'])
@@ -29,6 +37,7 @@ class MyTransformer(TransformerModelUnilm):
         outputs = self(**batch)
         hidden_states = outputs[0]
         lm_logits = self.lm_head(hidden_states)
+        sim_logits = self.sim_head(hidden_states)
         shift_logits = lm_logits[..., :-1, :].contiguous()
         shift_labels = labels[..., 1:].contiguous()
         loss = self.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))

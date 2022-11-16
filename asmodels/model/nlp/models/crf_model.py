@@ -5,7 +5,6 @@ from torch import nn
 from transformers import AdamW, get_linear_schedule_with_warmup
 from .transformer import TransformerModel
 from ..layers.crf import CRF
-from ..utils import configure_optimizers
 __all__ = [
     'TransformerForCRF'
 ]
@@ -17,12 +16,12 @@ class TransformerForCRF(TransformerModel):
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
         self.crf = CRF(num_tags=config.num_labels)
 
-    def configure_optimizers(self):
-        attrs = [(self.model,self.config.task_specific_params['learning_rate']),
-                 (self.classifier,self.config.task_specific_params['learning_rate_for_task']),
-                 (self.crf, self.config.task_specific_params['learning_rate_for_task']),
-                 ]
-        return configure_optimizers(attrs, self.hparams,self.trainer.estimated_stepping_batches)
+    def get_model_lr(self):
+        return super(TransformerForCRF, self).get_model_lr() + [
+            (self.classifier, self.config.task_specific_params['learning_rate_for_task']),
+            (self.crf, self.config.task_specific_params['learning_rate_for_task']),
+        ]
+
 
     def training_step(self, batch, batch_idx):
         labels: torch.Tensor = batch.pop('labels')

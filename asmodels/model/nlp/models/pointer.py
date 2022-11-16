@@ -9,8 +9,6 @@ __all__ = [
     'TransformerForPointer'
 ]
 
-from ..utils import configure_optimizers
-
 
 class TransformerForPointer(TransformerModel):
     def __init__(self,config, train_args,with_efficient=True, *args,**kwargs):
@@ -18,11 +16,11 @@ class TransformerForPointer(TransformerModel):
         PointerLayerObject = EfficientPointerLayer if with_efficient else PointerLayer
         self.pointer_layer = PointerLayerObject(self.config.hidden_size,self.config.num_labels,64)
 
-    def configure_optimizers(self):
-        attrs = [(self.model, self.config.task_specific_params['learning_rate']),
-                 (self.pointer_layer, self.config.task_specific_params['learning_rate_for_task']),
-                 ]
-        return configure_optimizers(attrs, self.hparams, self.trainer.estimated_stepping_batches)
+    def get_model_lr(self):
+        return super(TransformerForPointer, self).get_model_lr() + [
+            (self.pointer_layer, self.config.task_specific_params['learning_rate_for_task']),
+        ]
+
 
     def training_step(self, batch, batch_idx):
         labels: torch.Tensor = batch.pop('labels')

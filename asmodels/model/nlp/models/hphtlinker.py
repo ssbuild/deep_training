@@ -10,8 +10,6 @@ __all__ = [
     'TransformerForHphtlinker'
 ]
 
-from ..utils import configure_optimizers
-
 
 class BCELossForLinker(nn.Module):
     def __init__(self,):
@@ -41,12 +39,12 @@ class TransformerForHphtlinker(TransformerModel):
                                        conditional_size=config.hidden_size*2)
 
 
-    def configure_optimizers(self):
-        attrs = [(self.model, self.config.task_specific_params['learning_rate']),
-                 (self.subject_layer, self.config.task_specific_params['learning_rate_for_task']),
-                 (self.object_layer, self.config.task_specific_params['learning_rate_for_task']),
-                 ]
-        return configure_optimizers(attrs, self.hparams, self.trainer.estimated_stepping_batches)
+    def get_model_lr(self):
+        return super(TransformerForHphtlinker, self).get_model_lr() + [
+            (self.subject_layer, self.config.task_specific_params['learning_rate_for_task']),
+            (self.object_layer, self.config.task_specific_params['learning_rate_for_task']),
+        ]
+
 
 
     def extract_subject(self,inputs):

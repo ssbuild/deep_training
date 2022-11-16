@@ -58,6 +58,12 @@ class PrefixTransformerForModel(TransformerModel):
         self.get_prompt = self.get_prompt_0 if prompt_type == 0 else self.get_prompt_1
         self.get_transformer_outputs = self.get_transformer_outputs_0 if prompt_type == 0 else self.get_transformer_outputs_1
 
+
+    def get_model_lr(self):
+        return super(PrefixTransformerForModel, self).get_model_lr() + [
+            (self.prefix_encoder, self.config.task_specific_params['learning_rate_for_task']),
+        ]
+
     def get_prompt_0(self, batch_size):
         prefix_tokens = self.prefix_tokens.unsqueeze(0).expand(batch_size, -1).to(self.model.device)
         prompts = self.prefix_encoder(prefix_tokens)
@@ -133,10 +139,11 @@ class PrefixTransformerForSequenceClassification(PrefixTransformerForModel):
         super().__init__(prompt_type,config, train_args, *args, **kwargs)
         self.classifier = torch.nn.Linear(config.hidden_size, config.num_labels)
 
-    def configure_optimizers(self):
-        attrs = [(self.model, self.config.task_specific_params['learning_rate']),
-                 (self.classifier, self.config.task_specific_params['learning_rate_for_task'])]
-        return configure_optimizers(attrs, self.hparams, self.trainer.estimated_stepping_batches)
+    def get_model_lr(self):
+        return super(PrefixTransformerForSequenceClassification, self).get_model_lr() + [
+            (self.classifier, self.config.task_specific_params['learning_rate_for_task']),
+        ]
+
 
     def get_loss_and_logits(self,batch):
         labels = batch.pop('labels')
@@ -202,10 +209,11 @@ class PrefixTransformerForTokenClassification(PrefixTransformerForModel):
         self.num_labels = config.num_labels
         self.classifier = torch.nn.Linear(config.hidden_size, config.num_labels)
 
-    def configure_optimizers(self):
-        attrs = [(self.model, self.config.task_specific_params['learning_rate']),
-                 (self.classifier, self.config.task_specific_params['learning_rate_for_task'])]
-        return configure_optimizers(attrs, self.hparams, self.trainer.estimated_stepping_batches)
+    def get_model_lr(self):
+        return super(PrefixTransformerForTokenClassification, self).get_model_lr() + [
+            (self.classifier, self.config.task_specific_params['learning_rate_for_task']),
+        ]
+
 
     def get_loss_and_outputs(self, batch):
         labels = batch.pop('labels')
@@ -254,10 +262,10 @@ class PrefixTransformerPointer(PrefixTransformerForModel):
         PointerLayerObject = EfficientPointerLayer if with_efficient else PointerLayer
         self.pointer_layer = PointerLayerObject(self.config.hidden_size, self.config.num_labels, 64)
 
-    def configure_optimizers(self):
-        attrs = [(self.model, self.config.task_specific_params['learning_rate']),
-                 (self.pointer_layer, self.config.task_specific_params['learning_rate_for_task'])]
-        return configure_optimizers(attrs, self.hparams, self.trainer.estimated_stepping_batches)
+    def get_model_lr(self):
+        return super(PrefixTransformerPointer, self).get_model_lr() + [
+            (self.pointer_layer, self.config.task_specific_params['learning_rate_for_task']),
+        ]
 
 
     def get_loss_and_logits(self,batch):
@@ -300,12 +308,11 @@ class PrefixTransformerForCRF(PrefixTransformerForModel):
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
         self.crf = CRF(num_tags=config.num_labels)
 
-    def configure_optimizers(self):
-        attrs =[(self.model, self.config.task_specific_params['learning_rate']),
-                 (self.classifier, self.config.task_specific_params['learning_rate']),
-                 (self.crf, self.config.task_specific_params['learning_rate_for_task']), ]
-        return configure_optimizers(attrs, self.hparams, self.trainer.estimated_stepping_batches)
-
+    def get_model_lr(self):
+        return super(PrefixTransformerForCRF, self).get_model_lr() + [
+            (self.classifier, self.config.task_specific_params['learning_rate']),
+            (self.crf, self.config.task_specific_params['learning_rate_for_task']),
+        ]
 
 
     def get_loss_and_logits(self,batch):

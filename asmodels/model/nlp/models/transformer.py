@@ -59,10 +59,12 @@ class TransformerBase(LightningModule):
         self.save_hyperparameters(save_args,ignore=['config'])
         self.config = config
 
+    def get_model_lr(self):
+        return [(self.model, self.config.task_specific_params['learning_rate']), ]  if hasattr(self,'model') else []
+
     def configure_optimizers(self):
         """Prepare optimizer and schedule (linear warmup and decay)"""
-        attrs = [(self.model,self.config.task_specific_params['learning_rate']),]
-        return configure_optimizers(attrs, self.hparams,self.trainer.estimated_stepping_batches)
+        return configure_optimizers(self.get_model_lr(), self.hparams,self.trainer.estimated_stepping_batches)
 
 
     def forward(self, **inputs):
@@ -129,6 +131,9 @@ class TransformerModel(TransformerBase):
             model = AutoModel.from_config(config)
         self.model = model
 
+    def get_model_lr(self):
+        return [(self.model, self.config.task_specific_params['learning_rate'])]
+
 class TransformerModelUnilm(TransformerModel):
     def __init__(self, config, train_args: argparse.Namespace, *args: Any, **kwargs: Any):
         super().__init__(config, train_args, *args, **kwargs)
@@ -137,11 +142,9 @@ class TransformerModelUnilm(TransformerModel):
         self.loss_fct = CrossEntropyLoss(ignore_index=self.config.pad_token_id)
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
-    def configure_optimizers(self):
-        """Prepare optimizer and schedule (linear warmup and decay)"""
-        attrs = [(self.model,self.config.task_specific_params['learning_rate']),
-                 (self.lm_head,self.config.task_specific_params['learning_rate_for_task']),]
-        return configure_optimizers(attrs, self.hparams,self.trainer.estimated_stepping_batches)
+    def get_model_lr(self):
+        return super(TransformerModelUnilm, self).get_model_lr() + \
+            [(self.lm_head,self.config.task_specific_params['learning_rate_for_task']),]
 
     def training_step(self, batch, batch_idx):
         batch['attention_mask'] = unilm_mask(batch['token_type_ids'])

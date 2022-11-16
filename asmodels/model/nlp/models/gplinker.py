@@ -10,7 +10,6 @@ __all__ = [
     'TransformerForGplinker'
 ]
 
-from ..utils import configure_optimizers
 
 
 class TransformerForGplinker(TransformerModel):
@@ -21,14 +20,12 @@ class TransformerForGplinker(TransformerModel):
         self.heads_layer = PointerLayerObject(self.config.hidden_size, self.config.num_labels, 64,RoPE=False, tril_mask=False)
         self.tails_layer = PointerLayerObject(self.config.hidden_size,self.config.num_labels, 64,RoPE=False,tril_mask=False)
 
-    def configure_optimizers(self):
-        attrs = [(self.model, self.config.task_specific_params['learning_rate']),
-                 (self.entities_layer, self.config.task_specific_params['learning_rate_for_task']),
-                 (self.heads_layer, self.config.task_specific_params['learning_rate_for_task']),
-                 (self.tails_layer, self.config.task_specific_params['learning_rate_for_task']),
-                 ]
-        return configure_optimizers(attrs, self.hparams, self.trainer.estimated_stepping_batches)
-
+    def get_model_lr(self):
+        return super(TransformerForGplinker, self).get_model_lr() + [
+            (self.entities_layer, self.config.task_specific_params['learning_rate_for_task']),
+            (self.heads_layer, self.config.task_specific_params['learning_rate_for_task']),
+            (self.tails_layer, self.config.task_specific_params['learning_rate_for_task']),
+        ]
 
     def training_step(self, batch, batch_idx):
         entity_labels: torch.Tensor = batch.pop('entity_labels')
