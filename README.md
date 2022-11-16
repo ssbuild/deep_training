@@ -7,14 +7,14 @@
 - <strong>2022年11月15</strong>: 
   - unilm autotitle seq2seq autotitle
   - 普通分类,指针提取命名实体,crf提取命名实体
-  - p-tuning v1 分类 , p-tuning v2 分类 , p-tuning v2 指针提取命名实体 , p-tuning v2 crf提取命名实体
+  - p-tuning v1 分类 , p-tuning v2 分类 , p-tuning v2 指针提取命名实体 , p-tuning v2 crf 提取命名实体
 - <strong>2022年11月12</strong>: 
   - gplinker (全局指针提取)
   - hphtlinker (半指针半标注提取 half pointer and half tages)
   - spliner (全指针提取 sigmoid pointer or simple pointer)
 - <strong>2022年11月11</strong>: 
-  - cluener_pointer 中文命名实体提取 
-  - cluener crf ,tnews 中文分类
+  - cluener_pointer 中文命名实体提取 和 cluener crf 中文命名实体提取
+  - tnews 中文分类
 - <strong>2022年11月06</strong>: 
   - mlm,gpt2,t5等模型预训练任务
 
