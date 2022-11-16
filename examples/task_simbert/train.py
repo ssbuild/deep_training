@@ -2,19 +2,18 @@
 import logging
 import os
 import sys
-
-from torch import nn
-
-from asmodels.model.nlp.layers.mask import unilm_mask
-
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
+
+from torch import nn
 from pytorch_lightning import Trainer, seed_everything
 from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, \
     load_tokenizer_and_config_with_args
 from transformers import AdamW,get_linear_schedule_with_warmup
 from asmodels.model.nlp.models.transformer import TransformerModelUnilm
+from asmodels.model.nlp.losses.contrast import compute_loss_of_similarity
 
+from asmodels.model.nlp.layers.mask import unilm_mask
 from data_loader import NN_DataHelper as DataHelper
 from train_args import train_args
 
@@ -25,24 +24,27 @@ class MyTransformer(TransformerModelUnilm):
 
     def get_model_lr(self):
         return super(MyTransformer, self).get_model_lr() + [
-            (self.simlogits, self.config.task_specific_params['learning_rate_for_task'])
+            (self.sim_head, self.config.task_specific_params['learning_rate_for_task'])
         ]
 
     def training_step(self, batch, batch_idx):
         batch['attention_mask'] = unilm_mask(batch['token_type_ids'])
-        if 'labels' in batch:
-            labels = batch.pop('labels')
-        else:
-            labels = batch['input_ids']
+        labels = batch['input_ids']
+
         outputs = self(**batch)
         hidden_states = outputs[0]
         lm_logits = self.lm_head(hidden_states)
         sim_logits = self.sim_head(hidden_states)
         shift_logits = lm_logits[..., :-1, :].contiguous()
         shift_labels = labels[..., 1:].contiguous()
-        loss = self.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
-
-        self.log('train_loss', loss, prog_bar=True)
+        loss1 = self.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+        loss2 = compute_loss_of_similarity(sim_logits)
+        loss = loss1 + loss2
+        self.log_dict({
+            'unilm_loss': loss1,
+            'sim_loss': loss2,
+            'train_loss': loss
+        },prog_bar=True)
         return loss
 
 if __name__== '__main__':

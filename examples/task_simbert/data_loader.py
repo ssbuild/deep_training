@@ -15,24 +15,28 @@ class NN_DataHelper(DataHelper):
         tokenizer,max_seq_length,mode = user_data
         x = data
         assert isinstance(x,tuple)
-        o = tokenizer(text=x[0], text_pair=x[1], max_length=max_seq_length, truncation=True,
-                      add_special_tokens=True)
 
-        input_ids = np.asarray(o['input_ids'], dtype=np.int64)
-        token_type_ids = np.asarray(o['token_type_ids'], dtype=np.int64)
+        outputs = []
+        for _ in range(2):
+            o = tokenizer(text=x[0], text_pair=x[1], max_length=max_seq_length, truncation=True,
+                          add_special_tokens=True)
 
-        seqlen = np.asarray(len(input_ids), dtype=np.int64)
-        pad_len = max_seq_length - len(input_ids)
-        if pad_len > 0:
-            pad_val = tokenizer.pad_token_id
-            input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-            token_type_ids = np.pad(token_type_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-        d = {
-            'input_ids': input_ids,
-            'token_type_ids': token_type_ids,
-            'seqlen': seqlen
-        }
-        return d
+            input_ids = np.asarray(o['input_ids'], dtype=np.int64)
+            token_type_ids = np.asarray(o['token_type_ids'], dtype=np.int64)
+
+            seqlen = np.asarray(len(input_ids), dtype=np.int64)
+            pad_len = max_seq_length - len(input_ids)
+            if pad_len > 0:
+                pad_val = tokenizer.pad_token_id
+                input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+                token_type_ids = np.pad(token_type_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+            d = {
+                'input_ids': input_ids,
+                'token_type_ids': token_type_ids,
+                'seqlen': seqlen
+            }
+            outputs.append(d)
+        return outputs
 
 
     # 读取文件
