@@ -41,16 +41,13 @@ class NN_DataHelper(DataHelper):
                 head_labels_tmp[p].add((s[0], s[1]))
                 tail_labels_tmp[p].add((o[0], o[1]))
 
-        x1 = list(map(lambda x: list(x), entity_labels_tmp))
-        x2 = list(map(lambda x: list(x), head_labels_tmp))
-        x3 = list(map(lambda x: list(x), tail_labels_tmp))
         def feed_label(x,pts_list):
             for i,pts in enumerate(pts_list):
                 for p in pts:
                     x[i][p[0]][p[1]] = 1
-        feed_label(entity_labels,x1)
-        feed_label(head_labels, x2)
-        feed_label(tail_labels, x3)
+        feed_label(entity_labels,list(map(lambda x: list(x), entity_labels_tmp)))
+        feed_label(head_labels, list(map(lambda x: list(x), head_labels_tmp)))
+        feed_label(tail_labels, list(map(lambda x: list(x), tail_labels_tmp)))
 
         pad_len = max_seq_length - len(input_ids)
         if pad_len > 0:
