@@ -2,7 +2,7 @@
 # @Time    : 2022/11/4 15:23
 
 import argparse
-from asmodels.data_helper.data_args_func import preprocess_args
+from deep_training.data_helper.data_args_func import preprocess_args
 
 
 def build_args():
@@ -30,9 +30,9 @@ def train_args(parser = argparse.ArgumentParser(),is_build=True):
     #parser.add_argument('--tokenizer_name', default=None, type=str, help='Pretrained tokenizer name or path if not the same as model_name')
     parser.add_argument('--config_name', default=None, type=str, help='Pretrained config_gpt2 name or path if not the same as model_name"')
     parser.add_argument('--cache_dir', default=None, type=str,
-                        help='Where do you want to store the pretrained asmodels downloaded from huggingface.co')
+                        help='Where do you want to store the pretrained deep_training downloaded from huggingface.co')
     parser.add_argument('--use_fast_tokenizer', default=True, type=bool,
-                        help='Where do you want to store the pretrained asmodels downloaded from huggingface.co')
+                        help='Where do you want to store the pretrained deep_training downloaded from huggingface.co')
     parser.add_argument('--model_revision', default="main", type=str,
                         help='The specific model version to use (can be a branch name, tag name or commit id).')
     parser.add_argument('--use_auth_token', default=False, type=bool,
@@ -81,7 +81,7 @@ def data_args(parser = argparse.ArgumentParser(),is_build=True):
                         help='Pretrained tokenizer name or path if not the same as model_name')
     # parser.add_argument('--input_file', default=None, type=str, help='Input raw text file (or comma-separated list of files)')
     parser.add_argument('--output_dir', default=None, type=str, help='output_dir path')
-    parser.add_argument('--do_lower_case', default=False, type=bool, help="Whether to lower case the input text. Should be True for uncased asmodels and False for cased asmodels.")
+    parser.add_argument('--do_lower_case', default=False, type=bool, help="Whether to lower case the input text. Should be True for uncased deep_training and False for cased deep_training.")
     parser.add_argument('--do_whole_word_mask', default=True, type=bool, help='Whether to use whole word masking rather than per-WordPiece masking.')
     parser.add_argument('--max_seq_length', default=512, type=int, help='Maximum sequence length.')
     parser.add_argument('--max_predictions_per_seq', default=20, type=int, help='Maximum number of masked LM predictions per sequence.')

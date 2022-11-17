@@ -8,13 +8,13 @@ from typing import Union, List
 import torch
 import numpy as np
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
-from asmodels.model.nlp.layers.seq_pointer import f1_metric
+from deep_training.model.nlp.layers.seq_pointer import f1_metric
 from pytorch_lightning import Trainer, seed_everything,LightningDataModule
-from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, \
+from deep_training.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, \
     load_tokenizer_and_config_with_args
 from data_loader import NN_DataHelper as DataHelper
 from train_args import train_args
-from asmodels.model.nlp.models.crf_model import TransformerForCRF
+from deep_training.model.nlp.models.crf_model import TransformerForCRF
 
 class MyTransformer(TransformerForCRF):
     def __init__(self, *args,**kwargs):

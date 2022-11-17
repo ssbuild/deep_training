@@ -9,9 +9,9 @@ import json
 import typing
 import torch
 import numpy as np
-from asmodels.data_helper import DataHelper
+from deep_training.data_helper import DataHelper
 from transformers import BertTokenizerFast
-from asmodels.utils.nlpfn import make_mlm_wwm_sample
+from deep_training.utils.nlpfn import make_mlm_wwm_sample
 
 
 class MLM_DataHelper(DataHelper):

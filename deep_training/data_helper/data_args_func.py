@@ -102,7 +102,7 @@ def make_all_dataset_with_args(dataHelper,save_fn_args,train_args,intermediate_n
         save_fn_args: tuple param for DataHelper.on_data_process
         train_args: args
         intermediate_name: str
-        allow_train_shuffle: bool read data is allow shuffle
+        allow_train_shuffle: bool， read data is allow shuffle ， but write are in order
         num_process_worker: int , num of process data
     '''
     dataHelper: DataHelper

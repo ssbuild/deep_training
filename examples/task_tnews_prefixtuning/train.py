@@ -8,9 +8,9 @@ sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..')
 import torch
 from torch.nn import CrossEntropyLoss
 from pytorch_lightning import Trainer, seed_everything
-from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, load_tokenizer_and_config_with_args
+from deep_training.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, load_tokenizer_and_config_with_args
 from transformers import AdamW,get_linear_schedule_with_warmup
-from asmodels.model.nlp.models.prefixtuning import PrefixTransformerForSequenceClassification
+from deep_training.model.nlp.models.prefixtuning import PrefixTransformerForSequenceClassification
 from data_loader import NN_DataHelper as DataHelper
 from train_args import train_args
 

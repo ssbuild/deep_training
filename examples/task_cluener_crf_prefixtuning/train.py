@@ -4,11 +4,11 @@ import sys
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 from pytorch_lightning import Trainer, seed_everything,LightningDataModule
-from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, \
+from deep_training.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, \
     load_tokenizer_and_config_with_args
 from data_loader import NN_DataHelper as DataHelper
 from train_args import train_args
-from asmodels.model.nlp.models.prefixtuning import PrefixTransformerForCRF
+from deep_training.model.nlp.models.prefixtuning import PrefixTransformerForCRF
 
 class MyTransformer(PrefixTransformerForCRF):
     def __init__(self, *args,**kwargs):

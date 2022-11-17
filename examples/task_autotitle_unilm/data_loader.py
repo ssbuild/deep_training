@@ -5,7 +5,7 @@ import json
 import typing
 import numpy as np
 import torch
-from asmodels.data_helper import DataHelper
+from deep_training.data_helper import DataHelper
 from transformers import BertTokenizer
 
 class NN_DataHelper(DataHelper):

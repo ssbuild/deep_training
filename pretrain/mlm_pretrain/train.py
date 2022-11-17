@@ -9,9 +9,9 @@ import logging
 from torch.nn import CrossEntropyLoss
 from pytorch_lightning import LightningDataModule, Trainer, seed_everything
 from transformers import AdamW,get_linear_schedule_with_warmup
-from asmodels.model.nlp.models.transformer import TransformerForMaskLM
+from deep_training.model.nlp.models.transformer import TransformerForMaskLM
 from data_loader import MLM_DataHelper as DataHelper
-from asmodels.data_helper.data_args_func import load_tokenizer_and_config_with_args, make_all_dataset_with_args, \
+from deep_training.data_helper.data_args_func import load_tokenizer_and_config_with_args, make_all_dataset_with_args, \
     load_all_dataset_with_args
 from train_args import build_args
 

@@ -3,7 +3,7 @@
 
 import argparse
 
-from asmodels.data_helper.data_args_func import preprocess_args
+from deep_training.data_helper.data_args_func import preprocess_args
 
 
 def train_args():
@@ -22,13 +22,13 @@ def train_args():
 
     parser.add_argument('--tokenizer_name', default=None, type=str, help='Pretrained tokenizer name or path if not the same as model_name')
     parser.add_argument('--do_lower_case', default=True, type=bool,
-                        help='Whether to lower case the input text. Should be True for uncased asmodels and False for cased asmodels.')
+                        help='Whether to lower case the input text. Should be True for uncased deep_training and False for cased deep_training.')
 
     parser.add_argument('--config_name', default=None, type=str, help='Pretrained config_gpt2 name or path if not the same as model_name"')
     parser.add_argument('--cache_dir', default=None, type=str,
-                        help='Where do you want to store the pretrained asmodels downloaded from huggingface.co')
+                        help='Where do you want to store the pretrained deep_training downloaded from huggingface.co')
     parser.add_argument('--use_fast_tokenizer', default=True, type=bool,
-                        help='Where do you want to store the pretrained asmodels downloaded from huggingface.co')
+                        help='Where do you want to store the pretrained deep_training downloaded from huggingface.co')
     parser.add_argument('--model_revision', default="main", type=str,
                         help='The specific model version to use (can be a branch name, tag name or commit id).')
     parser.add_argument('--use_auth_token', default=False, type=bool,

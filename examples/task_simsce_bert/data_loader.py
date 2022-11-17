@@ -5,9 +5,9 @@ import json
 import typing
 import numpy as np
 import torch
-from asmodels.data_helper import DataHelper
+from deep_training.data_helper import DataHelper
 from transformers import BertTokenizer
-from asmodels.utils.nlpfn import make_mlm_wwm_sample
+from deep_training.utils.nlpfn import make_mlm_wwm_sample
 
 
 class NN_DataHelper(DataHelper):
