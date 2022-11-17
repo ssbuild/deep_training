@@ -29,7 +29,7 @@ class NN_DataHelper(DataHelper):
         tokenizer: BertTokenizer
         tokenizer,max_seq_length,label2id,mode = user_data
         sentence1,sentence2,label_str = data
-        labels = np.asarray(1-label2id[label_str] if label_str is not None else 0, dtype=np.int64)
+        labels = np.asarray(1 - label2id[label_str] if label_str is not None else 0, dtype=np.int64)
 
         input_ids, attention_mask,seqlen = pad_to_seqlength(sentence1,tokenizer,max_seq_length)
         input_ids_2, attention_mask_2, seqlen_2 = pad_to_seqlength(sentence1, tokenizer, max_seq_length)

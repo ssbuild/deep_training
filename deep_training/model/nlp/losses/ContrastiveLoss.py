@@ -46,11 +46,10 @@ class ContrastiveLoss(nn.Module):
     def forward(self,reps, labels: Tensor):
         rep_anchor, rep_other = reps
         distances = self.distance_metric(rep_anchor, rep_other)
-        distances = distances.unsqueeze(dim=1)
-        loss = torch.nn.functional.binary_cross_entropy(distances,labels)
-        return loss
-        # losses = 0.5 * (labels.float() * distances.pow(2) + (1 - labels).float() * F.relu(self.margin - distances).pow(2))
-        # return losses.mean() if self.size_average else losses.sum()
+        distances = distances.view(-1)
+        labels = labels.view(-1)
+        losses = 0.5 * (labels.float() * distances.pow(2) + (1 - labels).float() * F.relu(self.margin - distances).pow(2))
+        return losses.mean() if self.size_average else losses.sum()
 
 
 

@@ -10,8 +10,9 @@ __all__ = [
 ]
 
 class TransformerForCRF(TransformerModel):
-    def __init__(self,config, train_args,with_efficient=True, *args,**kwargs):
-        super(TransformerForCRF, self).__init__(config, train_args,*args,**kwargs)
+    def __init__(self, *args,**kwargs):
+        super(TransformerForCRF, self).__init__(*args,**kwargs)
+        config = self.config
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
         self.crf = CRF(num_tags=config.num_labels)

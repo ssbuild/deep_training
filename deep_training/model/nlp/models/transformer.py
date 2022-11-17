@@ -10,6 +10,7 @@ from pytorch_lightning import LightningModule
 from torch import nn
 from torch.nn import CrossEntropyLoss
 
+from deep_training.data_helper.training_args import TrainingArguments, ModelArguments
 from ..layers.mask import lm_mask,unilm_mask
 
 from transformers import (
@@ -39,25 +40,23 @@ from ..utils import configure_optimizers
 
 
 class TransformerBase(LightningModule):
-    def __init__(self, config,train_args, *args: Any, **kwargs: Any):
+    def __init__(self, config,model_args:ModelArguments, training_args:TrainingArguments, *args: Any, **kwargs: Any):
         super().__init__()
-        save_args = train_args._get_kwargs()
 
-        save_args = {
-            item[0]: item[1]
-            for item in save_args
-        }
 
         if hasattr(config,'task_specific_params') or config.task_specific_params is None:
             config.task_specific_params = {}
         task_specific_params = config.task_specific_params
-        task_specific_params['learning_rate'] = train_args.learning_rate
-        task_specific_params['learning_rate_for_task'] = train_args.learning_rate_for_task \
-            if train_args.learning_rate_for_task is not None else train_args.learning_rate
+        task_specific_params['learning_rate'] = training_args.learning_rate
+        task_specific_params['learning_rate_for_task'] = training_args.learning_rate_for_task \
+            if training_args.learning_rate_for_task is not None else training_args.learning_rate
 
-        print(save_args)
-        self.save_hyperparameters(save_args,ignore=['config'])
+        print(training_args)
+        print(model_args)
+        self.save_hyperparameters(ignore=['config'])
         self.config = config
+        self.model_args = model_args
+        self.training_args = training_args
 
     def get_model_lr(self):
         return [(self.model, self.config.task_specific_params['learning_rate']), ]  if hasattr(self,'model') else []
@@ -111,19 +110,19 @@ class TransformerBase(LightningModule):
 
 
 class TransformerModel(TransformerBase):
-    def __init__(self, config, train_args: argparse.Namespace, *args: Any, **kwargs: Any):
-        super().__init__(config, train_args, *args, **kwargs)
+    def __init__(self, config,model_args:ModelArguments, training_args:TrainingArguments, *args: Any, **kwargs: Any):
+        super().__init__(config, model_args,training_args, *args, **kwargs)
         config = self.config
 
-        if train_args.model_name_or_path:
+        if model_args.model_name_or_path:
             model_kwargs = {
-                "cache_dir": train_args.cache_dir,
-                "revision": train_args.model_revision,
-                "use_auth_token": True if train_args.use_auth_token else None,
+                "cache_dir": model_args.cache_dir,
+                "revision": model_args.model_revision,
+                "use_auth_token": True if model_args.use_auth_token else None,
             }
             model = AutoModel.from_pretrained(
-                train_args.model_name_or_path,
-                from_tf=bool(".ckpt" in train_args.model_name_or_path),
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 **model_kwargs
             )
@@ -135,8 +134,8 @@ class TransformerModel(TransformerBase):
         return [(self.model, self.config.task_specific_params['learning_rate'])]
 
 class TransformerModelUnilm(TransformerModel):
-    def __init__(self, config, train_args: argparse.Namespace, *args: Any, **kwargs: Any):
-        super().__init__(config, train_args, *args, **kwargs)
+    def __init__(self, config,model_args:ModelArguments, training_args:TrainingArguments, *args: Any, **kwargs: Any):
+        super().__init__(config, model_args,training_args, *args, **kwargs)
         config = self.config
 
         self.loss_fct = CrossEntropyLoss(ignore_index=self.config.pad_token_id)
@@ -185,19 +184,19 @@ class TransformerModelUnilm(TransformerModel):
         return lm_logits
 
 class TransformerForPreTraining(TransformerBase):
-    def __init__(self, config, train_args: argparse.Namespace, *args: Any, **kwargs: Any):
-        super().__init__(config, train_args, *args, **kwargs)
+    def __init__(self, config,model_args:ModelArguments, training_args:TrainingArguments, *args: Any, **kwargs: Any):
+        super().__init__(config, model_args,training_args, *args, **kwargs)
         config = self.config
 
-        if train_args.model_name_or_path:
+        if model_args.model_name_or_path:
             model_kwargs = {
-                "cache_dir": train_args.cache_dir,
-                "revision": train_args.model_revision,
-                "use_auth_token": True if train_args.use_auth_token else None,
+                "cache_dir": model_args.cache_dir,
+                "revision": model_args.model_revision,
+                "use_auth_token": True if model_args.use_auth_token else None,
             }
             model = AutoModelForPreTraining.from_pretrained(
-                train_args.model_name_or_path,
-                from_tf=bool(".ckpt" in train_args.model_name_or_path),
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 **model_kwargs
             )
@@ -206,20 +205,20 @@ class TransformerForPreTraining(TransformerBase):
         self.model = model
 
 class TransformerForCausalLM(TransformerBase):
-    def __init__(self,config,train_args: argparse.Namespace, *args: Any, **kwargs: Any):
-        super().__init__(config,train_args, *args, **kwargs)
+    def __init__(self, config,model_args:ModelArguments, training_args:TrainingArguments, *args: Any, **kwargs: Any):
+        super().__init__(config,model_args,training_args, *args, **kwargs)
         config = self.config
         
 
-        if train_args.model_name_or_path:
+        if model_args.model_name_or_path:
             model_kwargs = {
-                "cache_dir": train_args.cache_dir,
-                "revision": train_args.model_revision,
-                "use_auth_token": True if train_args.use_auth_token else None,
+                "cache_dir": model_args.cache_dir,
+                "revision": model_args.model_revision,
+                "use_auth_token": True if model_args.use_auth_token else None,
             }
             model = AutoModelForCausalLM.from_pretrained(
-                train_args.model_name_or_path,
-                from_tf=bool(".ckpt" in train_args.model_name_or_path),
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 **model_kwargs
             )
@@ -231,18 +230,18 @@ class TransformerForCausalLM(TransformerBase):
 
 
 class TransformerForMaskLM(TransformerBase):
-    def __init__(self,config,train_args: argparse.Namespace, *args: Any, **kwargs: Any):
-        super().__init__(config,train_args,*args,**kwargs)
+    def __init__(self, config,model_args:ModelArguments, training_args:TrainingArguments, *args: Any, **kwargs: Any):
+        super().__init__(config,model_args,training_args, *args, **kwargs)
         config = self.config
-        if train_args.model_name_or_path:
+        if model_args.model_name_or_path:
             model_kwargs = {
-                "cache_dir": train_args.cache_dir,
-                "revision": train_args.model_revision,
-                "use_auth_token": True if train_args.use_auth_token else None,
+                "cache_dir": model_args.cache_dir,
+                "revision": model_args.model_revision,
+                "use_auth_token": True if model_args.use_auth_token else None,
             }
             model = AutoModelForMaskedLM.from_pretrained(
-                train_args.model_name_or_path,
-                from_tf=bool(".ckpt" in train_args.model_name_or_path),
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 **model_kwargs
             )
@@ -253,19 +252,19 @@ class TransformerForMaskLM(TransformerBase):
 
 
 class TransformerForSeq2SeqLM(TransformerBase):
-    def __init__(self,config,train_args: argparse.Namespace, *args: Any, **kwargs: Any):
-        super().__init__(config,train_args,*args,**kwargs)
+    def __init__(self, config,model_args:ModelArguments, training_args:TrainingArguments, *args: Any, **kwargs: Any):
+        super().__init__(config,model_args,training_args, *args, **kwargs)
         config = self.config
-        if train_args.model_name_or_path:
+        if model_args.model_name_or_path:
             model_kwargs = {
-                "cache_dir": train_args.cache_dir,
-                "revision": train_args.model_revision,
-                "use_auth_token": True if train_args.use_auth_token else None,
+                "cache_dir": model_args.cache_dir,
+                "revision": model_args.model_revision,
+                "use_auth_token": True if model_args.use_auth_token else None,
             }
 
             model = AutoModelForSeq2SeqLM.from_pretrained(
-                train_args.model_name_or_path,
-                from_tf=bool(".ckpt" in train_args.model_name_or_path),
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 **model_kwargs,
             )
@@ -275,19 +274,19 @@ class TransformerForSeq2SeqLM(TransformerBase):
 
 
 class TransformerForSequenceClassification(TransformerBase):
-    def __init__(self,config,train_args: argparse.Namespace, *args: Any, **kwargs: Any):
-        super().__init__(config,train_args,*args,**kwargs)
+    def __init__(self, config,model_args:ModelArguments, training_args:TrainingArguments, *args: Any, **kwargs: Any):
+        super().__init__(config,model_args,training_args, *args, **kwargs)
         config = self.config
         
-        if train_args.model_name_or_path:
+        if model_args.model_name_or_path:
             model_kwargs = {
-                "cache_dir": train_args.cache_dir,
-                "revision": train_args.model_revision,
-                "use_auth_token": True if train_args.use_auth_token else None,
+                "cache_dir": model_args.cache_dir,
+                "revision": model_args.model_revision,
+                "use_auth_token": True if model_args.use_auth_token else None,
             }
             model = AutoModelForSequenceClassification.from_pretrained(
-                train_args.model_name_or_path,
-                from_tf=bool(".ckpt" in train_args.model_name_or_path),
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 **model_kwargs,
             )
@@ -297,19 +296,19 @@ class TransformerForSequenceClassification(TransformerBase):
 
 
 class TransformerForQuestionAnswering(TransformerBase):
-    def __init__(self,config,train_args: argparse.Namespace, *args: Any, **kwargs: Any):
-        super().__init__(config,train_args,*args,**kwargs)
+    def __init__(self, config,model_args:ModelArguments, training_args:TrainingArguments, *args: Any, **kwargs: Any):
+        super().__init__(config,model_args,training_args, *args, **kwargs)
         config = self.config
         
-        if train_args.model_name_or_path:
+        if model_args.model_name_or_path:
             model_kwargs = {
-                "cache_dir": train_args.cache_dir,
-                "revision": train_args.model_revision,
-                "use_auth_token": True if train_args.use_auth_token else None,
+                "cache_dir": model_args.cache_dir,
+                "revision": model_args.model_revision,
+                "use_auth_token": True if model_args.use_auth_token else None,
             }
             model = AutoModelForQuestionAnswering.from_pretrained(
-                train_args.model_name_or_path,
-                from_tf=bool(".ckpt" in train_args.model_name_or_path),
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 **model_kwargs
             )
@@ -319,19 +318,19 @@ class TransformerForQuestionAnswering(TransformerBase):
 
 
 class TransformerForVisualQuestionAnswering(TransformerBase):
-    def __init__(self,config,train_args: argparse.Namespace, *args: Any, **kwargs: Any):
-        super().__init__(config,train_args,*args,**kwargs)
+    def __init__(self, config,model_args:ModelArguments, training_args:TrainingArguments, *args: Any, **kwargs: Any):
+        super().__init__(config,model_args,training_args, *args, **kwargs)
         config = self.config
         
-        if train_args.model_name_or_path:
+        if model_args.model_name_or_path:
             model_kwargs = {
-                "cache_dir": train_args.cache_dir,
-                "revision": train_args.model_revision,
-                "use_auth_token": True if train_args.use_auth_token else None,
+                "cache_dir": model_args.cache_dir,
+                "revision": model_args.model_revision,
+                "use_auth_token": True if model_args.use_auth_token else None,
             }
             model = AutoModelForVisualQuestionAnswering.from_pretrained(
-                train_args.model_name_or_path,
-                from_tf=bool(".ckpt" in train_args.model_name_or_path),
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 **model_kwargs
             )
@@ -345,19 +344,19 @@ class TransformerForVisualQuestionAnswering(TransformerBase):
 
 
 class TransformerForTokenClassification(TransformerBase):
-    def __init__(self,config,train_args: argparse.Namespace, *args: Any, **kwargs: Any):
-        super().__init__(config,train_args,*args,**kwargs)
+    def __init__(self, config,model_args:ModelArguments, training_args:TrainingArguments, *args: Any, **kwargs: Any):
+        super().__init__(config,model_args,training_args, *args, **kwargs)
         config = self.config
         
-        if train_args.model_name_or_path:
+        if model_args.model_name_or_path:
             model_kwargs = {
-                "cache_dir": train_args.cache_dir,
-                "revision": train_args.model_revision,
-                "use_auth_token": True if train_args.use_auth_token else None,
+                "cache_dir": model_args.cache_dir,
+                "revision": model_args.model_revision,
+                "use_auth_token": True if model_args.use_auth_token else None,
             }
             model = AutoModelForTokenClassification.from_pretrained(
-                train_args.model_name_or_path,
-                from_tf=bool(".ckpt" in train_args.model_name_or_path),
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 **model_kwargs,
             )
@@ -367,19 +366,19 @@ class TransformerForTokenClassification(TransformerBase):
 
 
 class TransformerForMultipleChoice(TransformerBase):
-    def __init__(self,config,train_args: argparse.Namespace, *args: Any, **kwargs: Any):
-        super().__init__(config,train_args,*args,**kwargs)
+    def __init__(self, config,model_args:ModelArguments, training_args:TrainingArguments, *args: Any, **kwargs: Any):
+        super().__init__(config,model_args,training_args, *args, **kwargs)
         config = self.config
         
-        if train_args.model_name_or_path:
+        if model_args.model_name_or_path:
             model_kwargs = {
-                "cache_dir": train_args.cache_dir,
-                "revision": train_args.model_revision,
-                "use_auth_token": True if train_args.use_auth_token else None,
+                "cache_dir": model_args.cache_dir,
+                "revision": model_args.model_revision,
+                "use_auth_token": True if model_args.use_auth_token else None,
             }
             model = AutoModelForMultipleChoice.from_pretrained(
-                train_args.model_name_or_path,
-                from_tf=bool(".ckpt" in train_args.model_name_or_path),
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 **model_kwargs,
             )
@@ -388,19 +387,19 @@ class TransformerForMultipleChoice(TransformerBase):
         self.model = model
 
 class TransformerForNextSentencePrediction(TransformerBase):
-    def __init__(self,config,train_args: argparse.Namespace, *args: Any, **kwargs: Any):
-        super().__init__(config,train_args,*args,**kwargs)
+    def __init__(self, config,model_args:ModelArguments, training_args:TrainingArguments, *args: Any, **kwargs: Any):
+        super().__init__(config,model_args,training_args, *args, **kwargs)
         config = self.config
         
-        if train_args.model_name_or_path:
+        if model_args.model_name_or_path:
             model_kwargs = {
-                "cache_dir": train_args.cache_dir,
-                "revision": train_args.model_revision,
-                "use_auth_token": True if train_args.use_auth_token else None,
+                "cache_dir": model_args.cache_dir,
+                "revision": model_args.model_revision,
+                "use_auth_token": True if model_args.use_auth_token else None,
             }
             model = AutoModelForNextSentencePrediction.from_pretrained(
-                train_args.model_name_or_path,
-                from_tf=bool(".ckpt" in train_args.model_name_or_path),
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 **model_kwargs,
             )
@@ -410,19 +409,19 @@ class TransformerForNextSentencePrediction(TransformerBase):
 
 
 class TransformerForImageClassification(TransformerBase):
-    def __init__(self,config,train_args: argparse.Namespace, *args: Any, **kwargs: Any):
-        super().__init__(config,train_args,*args,**kwargs)
+    def __init__(self, config,model_args:ModelArguments, training_args:TrainingArguments, *args: Any, **kwargs: Any):
+        super().__init__(config,model_args,training_args, *args, **kwargs)
         config = self.config
         
-        if train_args.model_name_or_path:
+        if model_args.model_name_or_path:
             model_kwargs = {
-                "cache_dir": train_args.cache_dir,
-                "revision": train_args.model_revision,
-                "use_auth_token": True if train_args.use_auth_token else None,
+                "cache_dir": model_args.cache_dir,
+                "revision": model_args.model_revision,
+                "use_auth_token": True if model_args.use_auth_token else None,
             }
             model = AutoModelForImageClassification.from_pretrained(
-                train_args.model_name_or_path,
-                from_tf=bool(".ckpt" in train_args.model_name_or_path),
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 **model_kwargs
             )
@@ -432,19 +431,19 @@ class TransformerForImageClassification(TransformerBase):
 
 
 class TransformerForImageSegmentation(TransformerBase):
-    def __init__(self,config,train_args: argparse.Namespace, *args: Any, **kwargs: Any):
-        super().__init__(config,train_args,*args,**kwargs)
+    def __init__(self, config,model_args:ModelArguments, training_args:TrainingArguments, *args: Any, **kwargs: Any):
+        super().__init__(config,model_args,training_args, *args, **kwargs)
         config = self.config
         
-        if train_args.model_name_or_path:
+        if model_args.model_name_or_path:
             model_kwargs = {
-                "cache_dir": train_args.cache_dir,
-                "revision": train_args.model_revision,
-                "use_auth_token": True if train_args.use_auth_token else None,
+                "cache_dir": model_args.cache_dir,
+                "revision": model_args.model_revision,
+                "use_auth_token": True if model_args.use_auth_token else None,
             }
             model = AutoModelForImageSegmentation.from_pretrained(
-                train_args.model_name_or_path,
-                from_tf=bool(".ckpt" in train_args.model_name_or_path),
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 **model_kwargs
             )
@@ -455,19 +454,19 @@ class TransformerForImageSegmentation(TransformerBase):
 
 
 class TransformerForSemanticSegmentation(TransformerBase):
-    def __init__(self,config,train_args: argparse.Namespace, *args: Any, **kwargs: Any):
-        super().__init__(config,train_args,*args,**kwargs)
+    def __init__(self, config,model_args:ModelArguments, training_args:TrainingArguments, *args: Any, **kwargs: Any):
+        super().__init__(config,model_args,training_args, *args, **kwargs)
         config = self.config
         
-        if train_args.model_name_or_path:
+        if model_args.model_name_or_path:
             model_kwargs = {
-                "cache_dir": train_args.cache_dir,
-                "revision": train_args.model_revision,
-                "use_auth_token": True if train_args.use_auth_token else None,
+                "cache_dir": model_args.cache_dir,
+                "revision": model_args.model_revision,
+                "use_auth_token": True if model_args.use_auth_token else None,
             }
             model = AutoModelForSemanticSegmentation.from_pretrained(
-                train_args.model_name_or_path,
-                from_tf=bool(".ckpt" in train_args.model_name_or_path),
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 **model_kwargs
             )
@@ -476,19 +475,19 @@ class TransformerForSemanticSegmentation(TransformerBase):
         self.model = model
 
 class TransformerForObjectDetection(TransformerBase):
-    def __init__(self,config,train_args: argparse.Namespace, *args: Any, **kwargs: Any):
-        super().__init__(config,train_args,*args,**kwargs)
+    def __init__(self, config,model_args:ModelArguments, training_args:TrainingArguments, *args: Any, **kwargs: Any):
+        super().__init__(config,model_args,training_args, *args, **kwargs)
         config = self.config
         
-        if train_args.model_name_or_path:
+        if model_args.model_name_or_path:
             model_kwargs = {
-                "cache_dir": train_args.cache_dir,
-                "revision": train_args.model_revision,
-                "use_auth_token": True if train_args.use_auth_token else None,
+                "cache_dir": model_args.cache_dir,
+                "revision": model_args.model_revision,
+                "use_auth_token": True if model_args.use_auth_token else None,
             }
             model = AutoModelForObjectDetection.from_pretrained(
-                train_args.model_name_or_path,
-                from_tf=bool(".ckpt" in train_args.model_name_or_path),
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 **model_kwargs,
             )
@@ -499,19 +498,19 @@ class TransformerForObjectDetection(TransformerBase):
 
 
 class TransformerForAudioClassification(TransformerBase):
-    def __init__(self,config,train_args: argparse.Namespace, *args: Any, **kwargs: Any):
-        super().__init__(config,train_args,*args,**kwargs)
+    def __init__(self, config,model_args:ModelArguments, training_args:TrainingArguments, *args: Any, **kwargs: Any):
+        super().__init__(config,model_args,training_args, *args, **kwargs)
         config = self.config
         
-        if train_args.model_name_or_path:
+        if model_args.model_name_or_path:
             model_kwargs = {
-                "cache_dir": train_args.cache_dir,
-                "revision": train_args.model_revision,
-                "use_auth_token": True if train_args.use_auth_token else None,
+                "cache_dir": model_args.cache_dir,
+                "revision": model_args.model_revision,
+                "use_auth_token": True if model_args.use_auth_token else None,
             }
             model = AutoModelForAudioClassification.from_pretrained(
-                train_args.model_name_or_path,
-                from_tf=bool(".ckpt" in train_args.model_name_or_path),
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 **model_kwargs,
             )
@@ -521,19 +520,19 @@ class TransformerForAudioClassification(TransformerBase):
 
 
 class TransformerForMaskedImageModeling(TransformerBase):
-    def __init__(self,config,train_args: argparse.Namespace, *args: Any, **kwargs: Any):
-        super().__init__(config,train_args,*args,**kwargs)
+    def __init__(self, config,model_args:ModelArguments, training_args:TrainingArguments, *args: Any, **kwargs: Any):
+        super().__init__(config,model_args,training_args, *args, **kwargs)
         config = self.config
         
-        if train_args.model_name_or_path:
+        if model_args.model_name_or_path:
             model_kwargs = {
-                "cache_dir": train_args.cache_dir,
-                "revision": train_args.model_revision,
-                "use_auth_token": True if train_args.use_auth_token else None,
+                "cache_dir": model_args.cache_dir,
+                "revision": model_args.model_revision,
+                "use_auth_token": True if model_args.use_auth_token else None,
             }
             model = AutoModelForMaskedImageModeling.from_pretrained(
-                train_args.model_name_or_path,
-                from_tf=bool(".ckpt" in train_args.model_name_or_path),
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 **model_kwargs,
             )
