@@ -26,9 +26,9 @@
 - <strong>mlm 预训练</strong>:
   - 例子 <strong>mlm bert roberta 等一些列中文预训练</strong> &nbsp;&nbsp;参考数据&nbsp;&nbsp;[THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
 - <strong>lm 预训练</strong>:
-  - 例子 <strong>gpt2 等预训练</strong> &nbsp;&nbsp;参考数据&nbsp;&nbsp;[THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
+  - 例子 <strong>gpt2 等一些列中文预训练</strong> &nbsp;&nbsp;参考数据&nbsp;&nbsp;[THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
 - <strong>seq2seq 预训练</strong>:
-  - 例子 <strong>t5 small 等预训练</strong> &nbsp;&nbsp;参考数据&nbsp;&nbsp;[THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
+  - 例子 <strong>t5 small 等一些列中文预训练</strong> &nbsp;&nbsp;参考数据&nbsp;&nbsp;[THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
 - <strong>unilm 预训练</strong>: 
   - 例子 <strong>unilm bert roberta 等一些列中文预训练</strong> &nbsp;&nbsp;参考数据&nbsp;&nbsp;[THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
 - <strong>中文分类</strong>:
@@ -45,8 +45,8 @@
   - 例子 <strong>prefixtuning tnews 中文分类</strong>
   - 例子 <strong>prefixtuning cluener 命名实体全局指针提取</strong>
   - 例子 <strong>prefixtuning cluener 命名实体crf提取</strong>
-  - 例子 <strong>prompt mlm 自行构建数据集参考 pretrain/mlm_pretrain</strong>
-  - 例子 <strong>prompt lm  自行构建数据集参考 pretrain/seq2seq_pretrain</strong>
+  - 例子 <strong>prompt mlm 自行构建数据模板集，训练参考 pretrain/mlm_pretrain</strong>
+  - 例子 <strong>prompt lm  自行构建数据模板集，训练参考 pretrain/seq2seq_pretrain ,  pretrain/lm_pretrain</strong>
 
   
 ## 愿景
