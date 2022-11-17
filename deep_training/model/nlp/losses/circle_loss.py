@@ -9,17 +9,7 @@ __all__ = [
  'CircleLoss'
 ]
 
-def convert_label_to_similarity(normed_feature: Tensor, label: Tensor) -> Tuple[Tensor, Tensor]:
-    similarity_matrix = normed_feature @ normed_feature.transpose(1, 0)
-    label_matrix = label.unsqueeze(1) == label.unsqueeze(0)
 
-    positive_matrix = label_matrix.triu(diagonal=1)
-    negative_matrix = label_matrix.logical_not().triu(diagonal=1)
-
-    similarity_matrix = similarity_matrix.view(-1)
-    positive_matrix = positive_matrix.view(-1)
-    negative_matrix = negative_matrix.view(-1)
-    return similarity_matrix[positive_matrix], similarity_matrix[negative_matrix]
 
 
 class CircleLoss(nn.Module):
@@ -29,7 +19,19 @@ class CircleLoss(nn.Module):
         self.gamma = gamma
         self.soft_plus = nn.Softplus()
 
-    def forward(self, sp: Tensor, sn: Tensor) -> Tensor:
+    def forward(self,normed_feature: Tensor, label: Tensor) -> Tuple[Tensor, Tensor]:
+        similarity_matrix = normed_feature @ normed_feature.transpose(1, 0)
+        label_matrix = label.unsqueeze(1) == label.unsqueeze(0)
+
+        positive_matrix = label_matrix.triu(diagonal=1)
+        negative_matrix = label_matrix.logical_not().triu(diagonal=1)
+
+        similarity_matrix = similarity_matrix.view(-1)
+        positive_matrix = positive_matrix.view(-1)
+        negative_matrix = negative_matrix.view(-1)
+        sp,sn = similarity_matrix[positive_matrix], similarity_matrix[negative_matrix]
+
+
         ap = torch.clamp_min(- sp.detach() + 1 + self.m, min=0.)
         an = torch.clamp_min(sn.detach() + self.m, min=0.)
 
@@ -44,13 +46,13 @@ class CircleLoss(nn.Module):
         return loss
 
 
-if __name__ == "__main__":
-    feat = nn.functional.normalize(torch.rand(256, 64, requires_grad=True))
-    lbl = torch.randint(high=10, size=(256,))
-
-    inp_sp, inp_sn = convert_label_to_similarity(feat, lbl)
-
-    criterion = CircleLoss(m=0.25, gamma=256)
-    circle_loss = criterion(inp_sp, inp_sn)
-
-    print(circle_loss)
+# if __name__ == "__main__":
+#     feat = nn.functional.normalize(torch.rand(256, 64, requires_grad=True))
+#     lbl = torch.randint(high=10, size=(256,))
+#
+#     inp_sp, inp_sn = convert_label_to_similarity(feat, lbl)
+#
+#     criterion = CircleLoss(m=0.25, gamma=256)
+#     circle_loss = criterion(inp_sp, inp_sn)
+#
+#     print(circle_loss)
