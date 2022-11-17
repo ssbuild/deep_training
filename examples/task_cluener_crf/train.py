@@ -24,10 +24,6 @@ class MyTransformer(TransformerForCRF):
 
 if __name__== '__main__':
     train_args = train_args()
-    seed_everything(train_args.seed)
-    if not os.path.exists(train_args.output_dir):
-        os.mkdir(train_args.output_dir)
-
     dataHelper = DataHelper(train_args.data_backend)
     tokenizer,config,label2id, id2label = load_tokenizer_and_config_with_args(train_args, dataHelper)
     save_fn_args = (tokenizer, train_args.max_seq_length,label2id)

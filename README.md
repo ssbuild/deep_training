@@ -5,7 +5,7 @@
 
 ## 更新
 - <strong>2022年11月17</strong>: 
-  - simcse
+  - simcse-unilm,simces-bert-wwm
 - <strong>2022年11月15</strong>: 
   - unilm autotitle seq2seq autotitle
   - 普通分类,指针提取命名实体,crf提取命名实体
@@ -47,6 +47,9 @@
   - 例子 <strong>prefixtuning cluener 命名实体crf提取</strong>
   - 例子 <strong>prompt mlm 自行构建数据模板集，训练参考 pretrain/mlm_pretrain</strong>
   - 例子 <strong>prompt lm  自行构建数据模板集，训练参考 pretrain/seq2seq_pretrain ,  pretrain/lm_pretrain</strong>
+- <strong> simcse 系列</strong>: 
+    - simcse-unilm  unilm+simce
+    - simces-bert-wwm mlm+simcse
 
   
 ## 愿景

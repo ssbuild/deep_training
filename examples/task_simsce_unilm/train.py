@@ -19,10 +19,12 @@ from train_args import train_args
 class MyTransformer(TransformerModelUnilm):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
-        self.sim_head = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
+        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        self.sim_head = nn.Linear(config.hidden_size, 512, bias=False)
 
     def get_model_lr(self):
         return super(MyTransformer, self).get_model_lr() + [
+            (self.lm_head, self.config.task_specific_params['learning_rate_for_task']),
             (self.sim_head, self.config.task_specific_params['learning_rate_for_task'])
         ]
 
@@ -46,10 +48,6 @@ class MyTransformer(TransformerModelUnilm):
 
 if __name__== '__main__':
     train_args = train_args()
-    seed_everything(train_args.seed)
-    if not os.path.exists(train_args.output_dir):
-        os.mkdir(train_args.output_dir)
-
     dataHelper = DataHelper(train_args.data_backend)
     tokenizer,config,label2id, id2label = load_tokenizer_and_config_with_args(train_args, dataHelper)
     save_fn_args = (tokenizer, train_args.max_seq_length)

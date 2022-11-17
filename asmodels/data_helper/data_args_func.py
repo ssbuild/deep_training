@@ -4,6 +4,8 @@
 import logging
 import os
 from pytorch_lightning import LightningDataModule
+from pytorch_lightning.utilities.seed import seed_everything
+
 from .data_helper import DataHelper
 from ..utils.utils_func import is_chinese_char
 from .data_module import load_tokenizer,load_configure
@@ -40,6 +42,10 @@ def preprocess_args(train_args):
         train_args.label_file = train_args.label_file.split(',')
     else:
         train_args.label_file = []
+
+    seed_everything(train_args.seed)
+    if not os.path.exists(train_args.output_dir):
+        os.mkdir(train_args.output_dir)
     return train_args
 
 

@@ -63,9 +63,9 @@ def get_wwm_cand_indexes(text:str,tokens:typing.List[str],offset_mapping:typing.
     return cand_indexes
 
 
-def make_mlm_wwm_sample(text : str ,user_data):
+def make_mlm_wwm_sample(text : str ,tokenizer,max_seq_length, rng, do_whole_word_mask, max_predictions_per_seq, masked_lm_prob):
     tokenizer: BertTokenizerFast
-    tokenizer, max_seq_length, rng, do_whole_word_mask, max_predictions_per_seq, masked_lm_prob = user_data
+    # tokenizer, max_seq_length, rng, do_whole_word_mask, max_predictions_per_seq, masked_lm_prob = user_data
     vocab_words = tokenizer.get_vocab()
 
     o = tokenizer(text, add_special_tokens=False, truncation=True, max_length=max_seq_length - 2,

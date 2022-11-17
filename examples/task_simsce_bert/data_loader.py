@@ -1,25 +1,21 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/11/4 13:31
-# -*- coding: utf-8 -*-
-# @Time    : 2022/11/4 13:31
-import copy
-import logging
 import os
 import json
 import typing
-import torch
 import numpy as np
+import torch
 from asmodels.data_helper import DataHelper
-from transformers import BertTokenizerFast
+from transformers import BertTokenizer
 from asmodels.utils.nlpfn import make_mlm_wwm_sample
 
 
-class MLM_DataHelper(DataHelper):
+class NN_DataHelper(DataHelper):
     # 切分词
-    def on_data_process(self, data: typing.Any, user_data: typing.Any):
-        tokenizer: BertTokenizerFast
+    def on_data_process(self, data: typing.Any, user_data: tuple):
+        tokenizer: BertTokenizer
         tokenizer,max_seq_length, rng, do_whole_word_mask, max_predictions_per_seq, masked_lm_prob,mode = user_data
-
+        # assert isinstance(data,tuple)
         documents = data
         document_text_string = ''.join(documents)
         document_texts = []
@@ -28,17 +24,16 @@ class MLM_DataHelper(DataHelper):
             text = document_text_string[pos:pos + max_seq_length - 2]
             pos += len(text)
             document_texts.append(text)
-        #返回多个文档
+        # 返回多个文档
         document_nodes = []
         for text in document_texts:
-            node = make_mlm_wwm_sample(text, tokenizer,max_seq_length, rng, do_whole_word_mask, max_predictions_per_seq, masked_lm_prob)
-            document_nodes.append(node)
+            for _ in range(2):
+                node = make_mlm_wwm_sample(text, tokenizer,max_seq_length, rng, do_whole_word_mask, max_predictions_per_seq, masked_lm_prob)
+                document_nodes.append(node)
         return document_nodes
 
-
-    # 读取文件
     @staticmethod
-    def read_data_from_file(input_files: typing.List,mode:str):
+    def read_data_from_file(input_files: typing.List, mode: str):
         D = []
         line_no = 0
         for input_file in input_files:
@@ -60,6 +55,7 @@ class MLM_DataHelper(DataHelper):
                         print('read_line', line_no)
                         print(D[-1])
         return D
+
 
     @staticmethod
     def collect_fn(batch):
@@ -84,3 +80,5 @@ class MLM_DataHelper(DataHelper):
         o['labels'] = o['labels'][:, :max_len]
         o['weight'] = o['weight'][:, :max_len]
         return o
+
+
