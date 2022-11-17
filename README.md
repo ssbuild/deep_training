@@ -4,8 +4,8 @@
 - 当前正在重构中...，接口是不稳定的...
 
 ## 更新
-- <strong>2022年11月15</strong>: 
-  - simbert
+- <strong>2022年11月17</strong>: 
+  - simcse
 - <strong>2022年11月15</strong>: 
   - unilm autotitle seq2seq autotitle
   - 普通分类,指针提取命名实体,crf提取命名实体

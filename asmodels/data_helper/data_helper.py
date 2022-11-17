@@ -133,7 +133,8 @@ class DataHelper:
         if not os.path.exists(outfile) or overwrite:
             data = self.read_data_from_file(input_files,mode)
             fw = DataWriteHelper(self.on_data_process, input_fn_args,
-                                 outfile, self.backend, num_process_worker=num_process_worker,shuffle=shuffle)
+                                 outfile, self.backend, num_process_worker=num_process_worker,
+                                 shuffle=shuffle)
             outfile = fw.save(data)
         return outfile
 

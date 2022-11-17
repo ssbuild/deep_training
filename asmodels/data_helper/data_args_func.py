@@ -88,7 +88,17 @@ def load_tokenizer_and_config_with_args(train_args,dataHelper,task_specific_para
 
     return  tokenizer,config,label2id, id2label
 
-def make_all_dataset_with_args(dataHelper,save_fn_args,train_args,intermediate_name,num_process_worker=0):
+
+
+def make_all_dataset_with_args(dataHelper,save_fn_args,train_args,intermediate_name,allow_train_shuffle=True,num_process_worker=0):
+    '''
+        dataHelper: DataHelper
+        save_fn_args: tuple param for DataHelper.on_data_process
+        train_args: args
+        intermediate_name: str
+        allow_train_shuffle: bool read data is allow shuffle
+        num_process_worker: int , num of process data
+    '''
     dataHelper: DataHelper
     train_file_output, eval_file_output, test_file_output = None, None, None
     if train_args.do_train:
@@ -96,7 +106,7 @@ def make_all_dataset_with_args(dataHelper,save_fn_args,train_args,intermediate_n
         logging.info('make data {}...'.format(train_file_output))
         train_file_output = dataHelper.make_dataset(train_args.train_file,train_file_output,save_fn_args + ('train',),
                                 num_process_worker=num_process_worker,
-                                shuffle=True,
+                                shuffle=allow_train_shuffle,
                                 mode='train')
 
     if train_args.do_eval:
@@ -119,10 +129,16 @@ def make_all_dataset_with_args(dataHelper,save_fn_args,train_args,intermediate_n
 
 
 
-def load_all_dataset_with_args(dataHelper,train_args,train_file,eval_file,test_file):
+def load_all_dataset_with_args(dataHelper,train_args,train_file,eval_file,test_file,allow_train_shuffle=True):
+    '''
+       dataHelper: DataHelper
+       train_args: args
+       allow_train_shuffle: shuffle data for load dataset
+   '''
+
     dataHelper: DataHelper
     dm = LightningDataModule()
-    train_dataloader = dataHelper.load_dataset(train_file, batch_size=train_args.train_batch_size, shuffle=True,
+    train_dataloader = dataHelper.load_dataset(train_file, batch_size=train_args.train_batch_size, shuffle=allow_train_shuffle,
                                     infinite=True)
     val_dataloader = dataHelper.load_dataset(eval_file, batch_size=train_args.eval_batch_size)
     test_dataloader = dataHelper.load_dataset(test_file, batch_size=train_args.test_batch_size)

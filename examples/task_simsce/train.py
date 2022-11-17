@@ -11,8 +11,7 @@ from asmodels.data_helper.data_args_func import make_all_dataset_with_args, load
     load_tokenizer_and_config_with_args
 from transformers import AdamW,get_linear_schedule_with_warmup
 from asmodels.model.nlp.models.transformer import TransformerModelUnilm
-from asmodels.model.nlp.losses.contrast import compute_loss_of_similarity
-
+from asmodels.model.nlp.losses.contrast import compute_simcse_loss
 from asmodels.model.nlp.layers.mask import unilm_mask
 from data_loader import NN_DataHelper as DataHelper
 from train_args import train_args
@@ -30,19 +29,17 @@ class MyTransformer(TransformerModelUnilm):
     def training_step(self, batch, batch_idx):
         batch['attention_mask'] = unilm_mask(batch['token_type_ids'])
         labels = batch['input_ids']
-
         outputs = self(**batch)
-        hidden_states = outputs[0]
-        lm_logits = self.lm_head(hidden_states)
-        sim_logits = self.sim_head(hidden_states)
+        lm_logits = self.lm_head(outputs[0])
+        simcse_logits = self.sim_head(outputs[1])
         shift_logits = lm_logits[..., :-1, :].contiguous()
         shift_labels = labels[..., 1:].contiguous()
         loss1 = self.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
-        loss2 = compute_loss_of_similarity(sim_logits)
+        loss2 = compute_simcse_loss(simcse_logits)
         loss = loss1 + loss2
         self.log_dict({
             'unilm_loss': loss1,
-            'sim_loss': loss2,
+            'simcse_loss': loss2,
             'train_loss': loss
         },prog_bar=True)
         return loss
@@ -69,7 +66,7 @@ if __name__== '__main__':
         eval_files.append(eval_file)
         test_files.append(test_file)
 
-    dm = load_all_dataset_with_args(dataHelper, train_args, train_files, eval_files, test_files)
+    dm = load_all_dataset_with_args(dataHelper, train_args, train_files, eval_files, test_files,allow_train_shuffle=False)
 
     dm.setup("fit")
     model = MyTransformer(config=config,train_args=train_args)
