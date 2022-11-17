@@ -31,10 +31,11 @@ class MyTransformer(TransformerModel):
         ]
 
     def training_step(self, batch, batch_idx):
-        labels = batch.pop('labels')
+        labels : torch.Tensor = batch.pop('labels')
+        labels = torch.squeeze(labels,dim=1)
         outputs = self(**batch)
-        logits = self.classify_head(outputs[0][:,0,:])
-        logits = torch.softmax(self.feat_head(logits),dim=1)
+        logits = self.feat_head(outputs[0][:, 0, :])
+        logits = torch.tan(logits)
         loss = self.loss_fn(logits,labels)
         self.log('train_Loss',loss,prog_bar=True)
         return loss

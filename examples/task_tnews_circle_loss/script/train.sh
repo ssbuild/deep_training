@@ -15,7 +15,7 @@ python ../train.py \
 --do_eval \
 --learning_rate 5e-5 \
 --max_epochs 3 \
---train_batch_size 10 \
+--train_batch_size 32 \
 --test_batch_size 2 \
 --adam_epsilon 1e-8 \
 --gradient_accumulation_steps 1 \
