@@ -8,6 +8,7 @@
   - simcse-unilm 系列
   - simcse-bert-wwm 系列 
   - tnews circle loss
+  - afqmc siamese net similar
 - <strong>2022年11月15</strong>: 
   - unilm autotitle seq2seq autotitle
   - 普通分类,指针提取命名实体,crf提取命名实体
@@ -53,7 +54,9 @@
   - <strong>simcse-unilm 系列</strong>  例子 unilm+simce  &nbsp;&nbsp;参考数据&nbsp;&nbsp;[THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
   - <strong>simcse-bert-wwm 系列</strong> 例子 mlm+simcse &nbsp;&nbsp;参考数据&nbsp;&nbsp;[THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
 - <strong> sentense embeding</strong>: 
-  - <strong>nlp circle loss </strong> 例子 tnews circle loss
+  - <strong>circle loss </strong> 例子 tnews circle loss
+  - <strong>siamese net </strong> 例子 afqmc siamese net similar
+
   
 ## 愿景
 创建一个模型工厂, 轻量且高效的训练程序，让训练模型更容易,更轻松上手。

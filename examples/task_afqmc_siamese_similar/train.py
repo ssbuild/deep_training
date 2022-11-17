@@ -14,16 +14,16 @@ from deep_training.data_helper.data_args_func import make_all_dataset_with_args,
     load_tokenizer_and_config_with_args
 from transformers import AdamW,get_linear_schedule_with_warmup
 from deep_training.model.nlp.models.transformer import TransformerModel
-from deep_training.model.nlp.losses.circle_loss import CircleLoss
+from deep_training.model.nlp.losses.ContrastiveLoss import ContrastiveLoss
 from data_loader import NN_DataHelper as DataHelper
 from train_args import train_args
 
 class MyTransformer(TransformerModel):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
-
         self.feat_head = nn.Linear(config.hidden_size, 512, bias=False)
-        self.loss_fn = CircleLoss(m=0.25, gamma=32)
+        self.loss_fn = ContrastiveLoss(size_average=False)
+
 
     def get_model_lr(self):
         return super(MyTransformer, self).get_model_lr() + [
@@ -32,11 +32,19 @@ class MyTransformer(TransformerModel):
 
     def training_step(self, batch, batch_idx):
         labels : torch.Tensor = batch.pop('labels')
-        labels = torch.squeeze(labels,dim=1)
-        outputs = self(**batch)
-        logits = self.feat_head(outputs[0][:, 0, :])
-        logits = torch.tan(logits)
-        loss = self.loss_fn(logits,labels)
+        labels = labels.float()
+        x1 = {
+            "input_ids": batch['input_ids'],
+            "attention_mask": batch['attention_mask'],
+        }
+        x2 = {
+            "input_ids": batch['input_ids_2'],
+            "attention_mask": batch['attention_mask_2'],
+        }
+
+        logits1 = torch.tan(self.feat_head(self(**x1)[0][:, 0, :]))
+        logits2 = torch.tan(self.feat_head(self(**x2)[0][:, 0, :]))
+        loss = self.loss_fn([logits1,logits2],labels)
         self.log('train_Loss',loss,prog_bar=True)
         return loss
 

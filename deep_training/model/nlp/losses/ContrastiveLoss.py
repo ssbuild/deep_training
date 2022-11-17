@@ -1,5 +1,7 @@
 from enum import Enum
 from typing import Iterable, Dict
+
+import torch.nn.functional
 import torch.nn.functional as F
 from torch import nn, Tensor
 
@@ -42,11 +44,13 @@ class ContrastiveLoss(nn.Module):
         return {'distance_metric': distance_metric_name, 'margin': self.margin, 'size_average': self.size_average}
 
     def forward(self,reps, labels: Tensor):
-        assert len(reps) == 2
         rep_anchor, rep_other = reps
         distances = self.distance_metric(rep_anchor, rep_other)
-        losses = 0.5 * (labels.float() * distances.pow(2) + (1 - labels).float() * F.relu(self.margin - distances).pow(2))
-        return losses.mean() if self.size_average else losses.sum()
+        distances = distances.unsqueeze(dim=1)
+        loss = torch.nn.functional.binary_cross_entropy(distances,labels)
+        return loss
+        # losses = 0.5 * (labels.float() * distances.pow(2) + (1 - labels).float() * F.relu(self.margin - distances).pow(2))
+        # return losses.mean() if self.size_average else losses.sum()
 
 
 
