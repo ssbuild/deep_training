@@ -5,6 +5,7 @@ import sys
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 import typing
 import numpy as np
+from pytorch_lightning.callbacks import ModelCheckpoint
 from deep_training.data_helper import DataHelper
 import torch
 from pytorch_lightning import Trainer

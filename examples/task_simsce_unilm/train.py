@@ -101,23 +101,33 @@ class MyTransformer(TransformerModelUnilm):
             (self.sim_head, self.config.task_specific_params['learning_rate_for_task'])
         ]
 
-    def training_step(self, batch, batch_idx):
+    def compute_loss(self,batch):
+        labels = None
+        if 'labels' in batch:
+            labels = batch.pop('labels')
+
         batch['attention_mask'] = unilm_mask(batch['token_type_ids'])
-        labels = batch['input_ids']
         outputs = self(**batch)
         lm_logits = self.lm_head(outputs[0])
         simcse_logits = self.sim_head(outputs[1])
-        shift_logits = lm_logits[..., :-1, :].contiguous()
-        shift_labels = labels[..., 1:].contiguous()
-        loss1 = self.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
-        loss2 = compute_simcse_loss(simcse_logits)
-        loss = loss1 + loss2
-        self.log_dict({
-            'unilm_loss': loss1,
-            'simcse_loss': loss2,
-            'train_loss': loss
-        },prog_bar=True)
-        return loss
+
+        if labels is not None:
+            shift_logits = lm_logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            loss1 = self.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            loss2 = compute_simcse_loss(simcse_logits)
+            loss = loss1 + loss2
+            loss_dict = {
+                'unilm_loss': loss1,
+                'simcse_loss': loss2,
+                'train_loss': loss
+            }
+            outputs = (loss_dict,lm_logits,simcse_logits)
+        else:
+            outputs = (lm_logits,simcse_logits)
+        return outputs
+
+
 
 if __name__== '__main__':
     parser = HfArgumentParser((ModelArguments, TrainingArguments, DataArguments))

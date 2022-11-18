@@ -111,26 +111,20 @@ class MyTransformer(TransformerForSequenceClassification):
 
     def training_step(self, batch, batch_idx):
         outputs = self(**batch)
-        loss,logits = outputs[0:2]
-        labels: torch.Tensor = batch['labels']
-        acc = torch.sum(torch.eq(labels.view(-1),torch.argmax(logits,dim=1,keepdim=False))) / labels.view(-1).size()[0]
-        self.log_dict({
-            'train_loss': loss,
-            'acc':acc
-        }, prog_bar=True)
-        return loss
+        if 'labels' in batch:
+            loss,logits = outputs[0:2]
+            labels: torch.Tensor = batch['labels']
+            acc = torch.sum(torch.eq(labels.view(-1),torch.argmax(logits,dim=1,keepdim=False))) / labels.view(-1).size()[0]
+            loss_dict = {
+                'train_loss': loss,
+                'acc':acc
+            }
+            outputs = (loss_dict,logits)
+        else:
+            outputs = (outputs[0],)
+        return outputs
 
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        outputs = self(**batch)
-        val_loss, logits = outputs[:2]
-        labels = batch['labels']
-        acc = torch.eq(labels, torch.argmax(outputs[1], dim=1)) / labels.size()[0]
-        return {"losses": val_loss, "logits": logits, "labels": labels,'acc':acc}
 
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        # implement your own
-        out = self(x)
         return out
 
 

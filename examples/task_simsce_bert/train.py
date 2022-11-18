@@ -108,28 +108,39 @@ class MyTransformer(TransformerModel):
             (self.sim_head, self.config.task_specific_params['learning_rate_for_task'])
         ]
 
-    def _compute_loss(self, y_trues, y_preds, weight):
+    def comput_loss_mlm(self,y_trues, y_preds, weight):
         y_preds = torch.transpose(y_preds, 1, 2)
         loss = self.loss_fct(y_preds, y_trues)
         loss = loss * weight
         loss = torch.sum(loss, dtype=torch.float) / (torch.sum(weight, dtype=torch.float) + 1e-8)
         return loss
 
-    def training_step(self, batch, batch_idx):
-        labels = batch.pop('labels')
-        weight = batch.pop('weight')
+    def compute_loss(self, batch):
+        labels,weight = None,None
+        if 'labels' in batch:
+            labels = batch.pop('labels')
+            weight = batch.pop('weight')
+
         outputs = self(**batch)
         mlm_logits = self.mlm_head(outputs[0])
         simcse_logits = self.sim_head(outputs[1])
-        loss1 = self._compute_loss(labels,mlm_logits,weight)
-        loss2 = compute_simcse_loss(simcse_logits)
-        loss = loss1 + loss2
-        self.log_dict({
-            'mlm_loss': loss1,
-            'simcse_loss': loss2,
-            'train_loss': loss
-        },prog_bar=True)
-        return loss
+        if labels is not None:
+            loss1 = self.comput_loss_mlm(labels, mlm_logits, weight)
+            loss2 = compute_simcse_loss(simcse_logits)
+            loss = loss1 + loss2
+            loss_dict = {
+                'mlm_loss': loss1,
+                'simcse_loss': loss2,
+                'train_loss': loss
+            }
+            outputs = (loss_dict,mlm_logits,simcse_logits)
+        else:
+            outputs = (mlm_logits,simcse_logits)
+        return outputs
+
+
+
+
 
 if __name__== '__main__':
     parser = HfArgumentParser((ModelArguments, TrainingArguments, DataArguments,MlmDataArguments))

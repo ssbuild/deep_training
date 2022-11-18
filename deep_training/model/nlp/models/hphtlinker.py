@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/11/11 17:15
+import numpy as np
 import torch
 from torch import nn
 from transformers import AdamW, get_linear_schedule_with_warmup
@@ -78,6 +79,26 @@ class TransformerForHphtlinker(TransformerModel):
             object_preds = torch.reshape(object_preds, shape=(*object_preds.shape[:2], self.config.num_labels, 2))
 
             loss = self.BCELoss(subject_preds, subject_labels) + self.BCELoss(object_preds, object_labels)
+
+            outputs = (loss,(subject_preds,object_preds))
         else:
+            subject_preds[:, [0, -1]] *= 0
+            start = np.where(subject_preds[0, :, 0] > 0.6)[0]
+            end = np.where(subject_preds[0, :, 1] > 0.5)[0]
+            subjects = []
+            for i in start:
+                j = end[end >= i]
+                if len(j) > 0:
+                    j = j[0]
+                    subjects.append((i, j))
 
+            subject_ids = torch.tensor(subjects,dtype=torch.int64).to(subject_preds.device)
 
+            subject_output = self.__extract_subject([last_hidden, subject_ids])
+            subject_output = self.condLayerNorm([last_hidden, subject_output])
+
+            object_preds = self.sigmoid(self.object_layer(subject_output)) ** 4
+            object_preds = torch.reshape(object_preds, shape=(*object_preds.shape[:2], self.config.num_labels, 2))
+            outputs = ((subject_preds, object_preds),)
+
+        return outputs

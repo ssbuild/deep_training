@@ -37,40 +37,20 @@ class TransformerForSplinker(TransformerModel):
             (self.classifier, self.config.task_specific_params['learning_rate']),
         ]
 
-
-    def training_step(self, batch, batch_idx):
-        labels: torch.Tensor = batch.pop('labels')
+    def compute_loss(self,batch) -> tuple:
+        labels = None
+        if 'labels' in batch:
+            labels: torch.Tensor = batch.pop('labels')
         mask = batch.pop('mask')
         outputs = self(**batch)
         logits = outputs[0]
         logits = self.dropout(logits)
         logits = self.sigmoid(self.classifier(logits))
-        loss = self.BCELoss(logits=logits, labels=labels, mask=mask)
-        self.log_dict({'train_loss': loss}, prog_bar=True)
-        return loss
-
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        labels: torch.Tensor = batch.pop('labels')
-        real_label = batch.pop("real_label")
-        mask = batch.pop("mask")
-        outputs = self(**batch)
-        logits = outputs[0]
-        logits = self.dropout(logits)
-        logits = self.classifier(logits)
-        logits = self.sigmoid(logits)
-        val_loss = self.BCELoss(logits=logits, labels=labels, mask=mask)
-        logits = torch.where(logits >= 0.5, torch.ones_like(logits), torch.zeros_like(logits))
-        return {"losses": val_loss, "logits": logits.item(), "labels": real_label}
-
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        # implement your own
-        outputs = self(x)
-        logits = outputs[0]
-
-        logits = self.dropout(logits)
-        logits = self.classifier(logits)
-
-        logits = self.sigmoid(logits)
-        logits = torch.where(logits >= 0.5, torch.ones_like(logits), torch.zeros_like(logits))
-        return logits
+        if labels is not None:
+            loss = self.BCELoss(logits=logits, labels=labels, mask=mask)
+            logits = torch.where(logits >= 0.5, torch.ones_like(logits), torch.zeros_like(logits))
+            outputs = (loss,logits)
+        else:
+            logits = torch.where(logits >= 0.5, torch.ones_like(logits), torch.zeros_like(logits))
+            outputs = (logits,)
+        return outputs
