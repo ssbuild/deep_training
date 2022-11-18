@@ -16,7 +16,7 @@ from transformers import BertTokenizer
 from deep_training.model.nlp.models.transformer import TransformerModelUnilm
 from transformers import HfArgumentParser
 from deep_training.data_helper import ModelArguments, DataArguments, TrainingArguments
-
+from deep_training.utils.func import seq_pading
 
 class NN_DataHelper(DataHelper):
     # 切分词
@@ -25,18 +25,10 @@ class NN_DataHelper(DataHelper):
         tokenizer,max_seq_length,mode = user_data
         x = data
         assert isinstance(x,tuple)
-        o = tokenizer(text=x[0], text_pair=x[1], max_length=max_seq_length, truncation=True,
-                      add_special_tokens=True)
-
-        input_ids = np.asarray(o['input_ids'], dtype=np.int64)
-        token_type_ids = np.asarray(o['token_type_ids'], dtype=np.int64)
-
-        seqlen = np.asarray(len(input_ids), dtype=np.int64)
-        pad_len = max_seq_length - len(input_ids)
-        if pad_len > 0:
-            pad_val = tokenizer.pad_token_id
-            input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-            token_type_ids = np.pad(token_type_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+        o = tokenizer.encode_plus(text=x[0], text_pair=x[1], max_length=max_seq_length, truncation=True)
+        input_array = [o['input_ids'],o['token_type_ids']]
+        seqlen = np.asarray(input_array[0],dtype=np.int64)
+        input_ids ,token_type_ids = seq_pading(input_array,max_seq_length=max_seq_length,pad_val=tokenizer.pad_token_id)
         d = {
             'input_ids': input_ids,
             'token_type_ids': token_type_ids,

@@ -7,12 +7,12 @@ python ./train.py \
 --model_name_or_path /data/nlp/pre_models/torch/bert/bert-base-chinese \
 --tokenizer_name /data/nlp/pre_models/torch/bert/bert-base-chinese \
 --config_name /data/nlp/pre_models/torch/bert/bert-base-chinese/config.json \
+--do_train true \
+--do_eval true \
 --train_file /data/nlp/nlp_train_data/clue/tnews/train.json \
 --eval_file /data/nlp/nlp_train_data/clue/tnews/dev.json \
 --test_file /data/nlp/nlp_train_data/clue/tnews/test.json \
 --label_file /data/nlp/nlp_train_data/clue/tnews/labels.json \
---do_train true \
---do_eval true \
 --learning_rate 5e-5 \
 --max_epochs 3 \
 --train_batch_size 10 \

@@ -3,7 +3,6 @@ import json
 import os
 import sys
 import typing
-
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 from deep_training.data_helper import DataHelper
 import torch
