@@ -1,8 +1,11 @@
 # @Time    : 2022/11/17 22:18
 # @Author  : tk
 # @FileName: training_args.py
+import os
 from dataclasses import dataclass, field
 from typing import Optional
+
+from pytorch_lightning.utilities.seed import seed_everything
 
 
 @dataclass
@@ -160,6 +163,9 @@ class TrainingArguments:
         metadata={"help": "模型任务层训练时的学习率"},
     )
 
+    def __post_init__(self):
+        seed_everything(self.seed)
+
 
 @dataclass
 class DataArguments:
@@ -187,7 +193,7 @@ class DataArguments:
         default=None, metadata={"help": "标签文件，多个文件“,”分割"}
     )
     intermediate_name: Optional[str] = field(
-        default=None, metadata={"help": "dataset文件名前缀"}
+        default='dataset', metadata={"help": "dataset文件名前缀"}
     )
     output_dir: Optional[str] = field(
         default=None, metadata={"help": "模型输出路径"}
@@ -225,7 +231,18 @@ class DataArguments:
     )
 
     def __post_init__(self):
-        pass
+        if self.train_file:
+            self.train_file = self.train_file.split(',')
+        if self.eval_file:
+            self.eval_file = self.eval_file.split(',')
+        if self.test_file:
+            self.test_file = self.test_file.split(',')
+        if self.label_file:
+            self.label_file = self.label_file.split(',')
+
+
+        if not os.path.exists(self.output_dir):
+            os.mkdir(self.output_dir)
 
 
 @dataclass
@@ -254,3 +271,4 @@ class MlmDataArguments:
             "help": "Number of times to duplicate the input data (with different masks)."
         }
     )
+

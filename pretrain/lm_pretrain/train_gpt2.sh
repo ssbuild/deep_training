@@ -2,8 +2,8 @@
 #--model_name_or_path /data/nlp/pre_models/torch/bert/bert-base-chinese \
 #--max_epochs 5 \
 #--max_steps 100000 \
-python ../train.py \
---device '0' \
+python ./train.py \
+--device '1' \
 --data_backend 'leveldb' \
 --model_type gpt2 \
 --tokenizer_name /data/nlp/pre_models/torch/bert/bert-base-chinese \

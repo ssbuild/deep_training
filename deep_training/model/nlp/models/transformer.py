@@ -58,6 +58,7 @@ class TransformerBase(LightningModule):
         self.model_args = model_args
         self.training_args = training_args
 
+
     def get_model_lr(self):
         return [(self.model, self.config.task_specific_params['learning_rate']), ]  if hasattr(self,'model') else []
 

@@ -45,8 +45,8 @@ def preprocess_args(training_args):
         training_args.label_file = []
 
     seed_everything(training_args.seed)
-    if not os.path.exists(training_args.output_dir):
-        os.mkdir(training_args.output_dir)
+    if not os.path.exists(data_args.output_dir):
+        os.mkdir(data_args.output_dir)
     return training_args
 
 

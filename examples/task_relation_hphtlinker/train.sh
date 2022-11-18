@@ -1,7 +1,7 @@
 
 
-python ../train.py \
---device '0' \
+python ./train.py \
+--device '1' \
 --data_backend 'memory_raw' \
 --model_type bert \
 --model_name_or_path /data/nlp/pre_models/torch/bert/bert-base-chinese \

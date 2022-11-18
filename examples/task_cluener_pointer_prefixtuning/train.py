@@ -35,8 +35,7 @@ if __name__== '__main__':
         model_args, training_args, data_args, prompt_args = parser.parse_args_into_dataclasses()
 
     dataHelper = DataHelper(data_args.data_backend)
-    tokenizer, config, label2id, id2label = load_tokenizer_and_config_with_args(dataHelper, model_args, data_args,
-                                                                                training_args)
+    tokenizer, config, label2id, id2label = load_tokenizer_and_config_with_args(dataHelper, model_args, training_args,data_args)
     save_fn_args = (tokenizer, data_args.max_seq_length,label2id)
 
 
@@ -51,7 +50,7 @@ if __name__== '__main__':
         test_files.append(test_file)
 
 
-    dm = load_all_dataset_with_args(dataHelper, data_args, train_files, eval_files, test_files)
+    dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
     dm.setup("fit")
 
@@ -63,16 +62,16 @@ if __name__== '__main__':
         accelerator="gpu",
         devices=data_args.devices,  # limiting got iPython runs
         enable_progress_bar=True,
-        default_root_dir=training_args.output_dir,
+        default_root_dir=data_args.output_dir,
         gradient_clip_val=training_args.max_grad_norm,
         accumulate_grad_batches = training_args.gradient_accumulation_steps
     )
 
-    if training_args.do_train:
+    if data_args.do_train:
         trainer.fit(model, datamodule=dm)
 
-    if training_args.do_eval:
+    if data_args.do_eval:
         trainer.validate(model, datamodule=dm)
 
-    if training_args.do_test:
+    if data_args.do_test:
         trainer.test(model, datamodule=dm)

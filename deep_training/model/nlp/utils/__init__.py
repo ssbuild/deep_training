@@ -17,18 +17,18 @@ def configure_optimizers(model_attrs: typing.Union[typing.List,typing.Tuple],
         opt += [
             {
                 "params": [p for n, p in a.named_parameters() if not any(nd in n for nd in no_decay)],
-                "weight_decay": hparams.weight_decay, "lr": lr,
+                "weight_decay": hparams.training_args.weight_decay, "lr": lr,
             },
             {
                 "params": [p for n, p in a.named_parameters() if any(nd in n for nd in no_decay)],
                 "weight_decay": 0.0, "lr": lr,
             },
         ]
-    optimizer = AdamW(opt, lr=hparams.learning_rate, eps=hparams.adam_epsilon)
+    optimizer = AdamW(opt, lr=hparams.training_args.learning_rate, eps=hparams.training_args.adam_epsilon)
 
     scheduler = get_linear_schedule_with_warmup(
         optimizer,
-        num_warmup_steps=hparams.warmup_steps,
+        num_warmup_steps=hparams.training_args.warmup_steps,
         num_training_steps=estimated_stepping_batches
         # num_training_steps=self.trainer.estimated_stepping_batches,
     )
