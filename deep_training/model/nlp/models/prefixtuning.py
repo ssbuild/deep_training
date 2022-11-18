@@ -6,7 +6,7 @@ import torch
 from torch import nn
 from torch.nn import MSELoss, CrossEntropyLoss, BCEWithLogitsLoss
 
-from deep_training.data_helper.training_args import PrefixModelArguments
+from deep_training.data_helper import PrefixModelArguments
 from .transformer import TransformerModel
 from ..layers.prefix_encoder import PrefixEncoder
 from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer, loss_fn, f1_metric

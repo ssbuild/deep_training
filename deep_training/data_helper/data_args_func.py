@@ -4,11 +4,10 @@
 import logging
 import os
 from pytorch_lightning import LightningDataModule
-from pytorch_lightning.utilities.seed import seed_everything
 
 from .data_helper import DataHelper
 from .training_args import ModelArguments, DataArguments, TrainingArguments
-from ..utils.utils_func import is_chinese_char
+from ..utils.func import is_chinese_char
 from .data_module import load_tokenizer,load_configure
 
 __all__ = [
@@ -18,6 +17,7 @@ __all__ = [
     'make_all_dataset_with_args',
     'load_all_dataset_with_args',
     'DataHelper',
+    'load_tokenizer_and_config_with_args'
 ]
 
 
@@ -27,27 +27,6 @@ def get_filename_no_ext(filename):
     if pos >= 0:
         filename = filename[:pos]
     return filename
-
-
-def preprocess_args(training_args):
-    if training_args.train_file is not None:
-        training_args.train_file = training_args.train_file.split(',')
-
-    if training_args.eval_file is not None:
-        training_args.eval_file = training_args.eval_file.split(',')
-
-    if training_args.test_file is not None:
-        training_args.test_file = training_args.test_file.split(',')
-
-    if training_args.label_file is not None:
-        training_args.label_file = training_args.label_file.split(',')
-    else:
-        training_args.label_file = []
-
-    seed_everything(training_args.seed)
-    if not os.path.exists(data_args.output_dir):
-        os.mkdir(data_args.output_dir)
-    return training_args
 
 
 def get_filename_replace_dir(filename,new_path_dir,ext=None):

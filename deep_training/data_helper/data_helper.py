@@ -14,7 +14,7 @@ from fastdatasets.torch_dataset import IterableDataset as torch_IterableDataset,
 from fastdatasets.common.iterable_dataset import IterableDatasetBase
 from fastdatasets.common.random_dataset import RandomDatasetBase
 from .data_writer import DataWriteHelper
-from ..utils.nlpfn import make_gpt2_sample
+from ..utils.wwm import make_gpt2_sample
 
 __all__ = [
     'DataHelper',

@@ -1,11 +1,11 @@
 # @Time    : 2022/11/9 22:29
 # @Author  : tk
-# @FileName: nlpfn.py
+# @FileName: wwm.py
 import numpy as np
 import logging
 import typing
 from transformers import BertTokenizerFast
-from .utils_func import is_chinese_char
+from .func import is_chinese_char
 import jieba
 import copy
 jieba.setLogLevel(log_level=logging.WARNING)

@@ -1,23 +1,118 @@
 # -*- coding: utf-8 -*-
+import json
 import os
 import sys
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+import typing
+
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
-import logging
+from deep_training.data_helper import DataHelper
 from typing import Union, List
 import torch
 import numpy as np
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from deep_training.model.nlp.layers.seq_pointer import f1_metric
 from pytorch_lightning import Trainer
-from deep_training.data_helper.data_args_func import make_all_dataset_with_args, load_all_dataset_with_args, \
+from deep_training.data_helper import make_all_dataset_with_args, load_all_dataset_with_args, \
     load_tokenizer_and_config_with_args
-from data_loader import NN_DataHelper as DataHelper
 
 from deep_training.model.nlp.models.pointer import TransformerForPointer
 from deep_training.model.nlp.metrics.pointer import metric_for_pointer
-from transformers import HfArgumentParser
-from deep_training.data_helper.training_args import ModelArguments, DataArguments, TrainingArguments
+from transformers import HfArgumentParser, BertTokenizer
+from deep_training.data_helper import ModelArguments, DataArguments, TrainingArguments
+
+
+
+class NN_DataHelper(DataHelper):
+    # 切分词
+    def on_data_process(self, data: typing.Any, user_data: tuple):
+
+        tokenizer: BertTokenizer
+        tokenizer,max_seq_length,label2id,mode = user_data
+        sentence,label_dict = data
+
+        input_ids = tokenizer.convert_tokens_to_ids(list(sentence))
+        if len(input_ids) > max_seq_length - 2:
+            input_ids = input_ids[:max_seq_length - 2]
+        input_ids = [tokenizer.cls_token_id] + input_ids + [tokenizer.sep_token_id]
+        attention_mask = [1] * len(input_ids)
+
+        input_ids = np.asarray(input_ids, dtype=np.int64)
+        attention_mask = np.asarray(attention_mask, dtype=np.int64)
+        seqlen = np.asarray(len(input_ids), dtype=np.int64)
+
+        labels = np.zeros(shape=(len(label2id),max_seq_length,max_seq_length),dtype=np.int32)
+        real_label = []
+        for label_str, o in label_dict.items():
+            pts = list(o.values())[0]
+            labelid = label2id[label_str]
+            for pt in pts:
+                if pt[1] < max_seq_length:
+                    labels[labelid, pt[0], pt[1]] = 1
+                real_label.append((labelid, pt[0], pt[1]))
+
+        pad_len = max_seq_length - len(input_ids)
+        if pad_len > 0:
+            pad_val = tokenizer.pad_token_id
+            input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+            attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+        d = {
+            'input_ids': input_ids,
+            'attention_mask': attention_mask,
+            'labels': labels,
+            'seqlen': seqlen,
+        }
+        if mode == 'eval':
+            d['real_label'] = np.asarray(bytes(json.dumps(real_label,ensure_ascii=False),encoding='utf-8'))
+        return d
+
+    #读取标签
+    @staticmethod
+    def read_labels_from_file(label_fname: str):
+        labels = [
+            'address','book','company','game','government','movie','name','organization','position','scene'
+        ]
+        label2id = {label: i for i, label in enumerate(labels)}
+        id2label = {i: label for i, label in enumerate(labels)}
+        return label2id, id2label
+
+    # 读取文件
+    @staticmethod
+    def read_data_from_file(files: typing.List,mode:str):
+        D = []
+        for filename in files:
+            with open(filename, mode='r', encoding='utf-8') as f:
+                lines = f.readlines()
+                for line in lines:
+                    jd = json.loads(line)
+                    if not jd:
+                        continue
+                    D.append((jd['text'], jd.get('label',None)))
+        return D
+
+
+    @staticmethod
+    def collect_fn(batch):
+        o = {}
+        for i, b in enumerate(batch):
+            if i == 0:
+                for k in b:
+                    o[k] = [torch.tensor(b[k])]
+            else:
+                for k in b:
+                    o[k].append(torch.tensor(b[k]))
+        for k in o:
+            o[k] = torch.stack(o[k])
+
+        seqlen = o.pop('seqlen')
+        max_len = torch.max(seqlen)
+
+        o['input_ids'] = o['input_ids'][:, :max_len]
+        o['attention_mask'] = o['attention_mask'][:, :max_len]
+        if 'token_type_ids' in o:
+            o['token_type_ids'] = o['token_type_ids'][:, :max_len]
+
+        o['labels'] = o['labels'][:,:, :max_len,:max_len]
+        return o
 
 
 class MyTransformer(TransformerForPointer):
@@ -63,7 +158,7 @@ if __name__== '__main__':
     else:
         model_args, training_args, data_args = parser.parse_args_into_dataclasses()
 
-    dataHelper = DataHelper(data_args.data_backend)
+    dataHelper = NN_DataHelper(data_args.data_backend)
     tokenizer, config, label2id, id2label = load_tokenizer_and_config_with_args(dataHelper, model_args, training_args,data_args)
     save_fn_args = (tokenizer, data_args.max_seq_length,label2id)
 

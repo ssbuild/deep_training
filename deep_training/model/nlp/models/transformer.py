@@ -10,7 +10,7 @@ from pytorch_lightning import LightningModule
 from torch import nn
 from torch.nn import CrossEntropyLoss
 
-from deep_training.data_helper.training_args import TrainingArguments, ModelArguments
+from deep_training.data_helper import TrainingArguments, ModelArguments
 from ..layers.mask import lm_mask,unilm_mask
 
 from transformers import (

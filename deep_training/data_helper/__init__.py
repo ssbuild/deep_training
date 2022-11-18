@@ -3,3 +3,5 @@
 
 from .data_module import load_tokenizer,load_configure
 from .data_helper import make_dataset,DataHelper
+from .training_args import *
+from .data_args_func import *
