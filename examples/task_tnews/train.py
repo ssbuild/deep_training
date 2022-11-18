@@ -125,10 +125,6 @@ class MyTransformer(TransformerForSequenceClassification):
         return outputs
 
 
-        return out
-
-
-
 if __name__== '__main__':
     parser = HfArgumentParser((ModelArguments, TrainingArguments, DataArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):

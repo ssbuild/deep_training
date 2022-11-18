@@ -118,28 +118,20 @@ class MyTransformer(TransformerModel):
             (self.feat_head, self.config.task_specific_params['learning_rate_for_task'])
         ]
 
-    def training_step(self, batch, batch_idx):
-        labels : torch.Tensor = batch.pop('labels')
-        labels = torch.squeeze(labels,dim=1)
+    def compute_loss(self,batch) -> tuple:
+        labels = None
+        if 'labels' in batch:
+            labels : torch.Tensor = batch.pop('labels')
+            labels = torch.squeeze(labels,dim=1)
         outputs = self(**batch)
         logits = self.feat_head(outputs[0][:, 0, :])
         logits = torch.tan(logits)
-        loss = self.loss_fn(logits,labels)
-        self.log('train_Loss',loss,prog_bar=True)
-        return loss
-
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        outputs = self(**batch)
-        val_loss, logits = outputs[:2]
-        labels = batch['labels']
-        acc = torch.eq(labels, torch.argmax(outputs[1], dim=1)) / labels.size()[0]
-        return {"losses": val_loss, "logits": logits, "labels": labels,'acc':acc}
-
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        # implement your own
-        out = self(x)
-        return out
+        if labels is not None:
+            loss = self.loss_fn(logits,labels)
+            outputs = (loss,logits,)
+        else:
+            outputs = (logits,)
+        return outputs
 
 
 

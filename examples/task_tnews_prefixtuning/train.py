@@ -109,23 +109,27 @@ class MyTransformer(PrefixTransformerForSequenceClassification):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(prompt_type=1,*args,**kwargs)
 
-    def training_step(self, batch, batch_idx):
-        labels: torch.Tensor = batch.pop('labels')
+    def compute_loss(self, batch) -> tuple:
+        labels = None
+        if 'labels' in batch:
+            labels: torch.Tensor = batch.pop('labels')
         outputs = self.get_transformer_outputs(batch)
         pooled_output = outputs[1]
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
         loss = None
         if labels is not None:
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-
-        acc = torch.sum(torch.eq(labels.view(-1),torch.argmax(logits,dim=1,keepdim=False))) / labels.view(-1).size()[0]
-        self.log_dict({
-            'train_loss': loss,
-            'acc':acc
-        }, prog_bar=True)
-        return loss
+            loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            acc = torch.sum(torch.eq(labels.view(-1), torch.argmax(logits, dim=1, keepdim=False))) / \
+                  labels.view(-1).size()[0]
+            loss_dict = {
+                'train_loss': loss,
+                'acc': acc
+            }
+            outputs = (loss_dict, logits)
+        else:
+            outputs = (logits,)
+        return outputs
 
 
 if __name__== '__main__':

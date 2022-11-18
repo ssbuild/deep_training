@@ -109,25 +109,17 @@ class MyTransformer(TransformerForSeq2SeqLM):
         super(MyTransformer, self).__init__(*args,**kwargs)
         self.loss_fct = CrossEntropyLoss(ignore_index=self.config.pad_token_id)
 
-    def training_step(self, batch, batch_idx):
-        labels = batch.pop('labels')
+    def compute_loss(self,batch) -> tuple:
+        labels = None
+        if 'labels' in batch:
+            labels = batch.pop('labels')
         outputs = self(**batch)
-        lm_logits = outputs[0]
-        loss = self.loss_fct(lm_logits.view(-1, lm_logits.size(-1)), labels.view(-1))
-        self.log('train_loss', loss, prog_bar=True)
-        return loss
+        if labels is not None:
+            lm_logits = outputs[0]
+            loss = self.loss_fct(lm_logits.view(-1, lm_logits.size(-1)), labels.view(-1))
+            outputs = (loss,*outputs)
+        return outputs
 
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        outputs = self(**batch)
-        val_loss, logits = outputs[:2]
-        labels = batch["labels"]
-        return {"losses": val_loss, "logits": logits, "labels": labels}
-
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        # implement your own
-        out = self(x)
-        return out
 
 if __name__== '__main__':
     parser = HfArgumentParser((ModelArguments,  TrainingArguments,DataArguments))

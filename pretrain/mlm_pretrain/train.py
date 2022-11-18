@@ -98,38 +98,25 @@ class MyTransformer(TransformerForMaskLM):
         super(MyTransformer, self).__init__(*args,**kwargs)
         self.loss_fct = CrossEntropyLoss(reduction='none',ignore_index=self.config.pad_token_id)
 
-    def _compute_loss(self,y_trues,y_preds,weight):
+    def compute_loss_mlm(self,y_trues,y_preds,weight):
         y_preds = torch.transpose(y_preds, 1, 2)
         loss = self.loss_fct(y_preds,y_trues)
         loss = loss * weight
         loss = torch.sum(loss, dtype=torch.float) / (torch.sum(weight, dtype=torch.float) + 1e-8)
         return loss
 
-    def training_step(self, batch, batch_idx):
-        weight = batch.pop('weight')
-        labels = batch.pop('labels')
-        outputs = self(**batch)
-        logits = outputs[0]
-        loss = self._compute_loss(labels,logits,weight)
-        self.log('batch_idx',batch_idx,prog_bar=True)
-        return loss
-
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        weight = batch.pop('weight')
-        labels = batch.pop('labels')
-        outputs = self(**batch)
-        # val_loss, logits = outputs[:2]
-        logits = outputs[0]
-        val_loss = self._compute_loss(labels, logits, weight)
-        return {"losses": val_loss, "logits": logits, "labels": labels}
-
-    def test_step(self, batch, batch_idx):
-        weight = batch.pop('weight')
+    def compute_loss(self,batch, batch_idx) -> tuple:
+        labels,weight = None,None
         if 'labels' in batch:
-            batch.pop('labels')
-        x, y = batch
-        out = self(x)
-        return out
+            weight = batch.pop('weight')
+            labels = batch.pop('labels')
+        outputs = self(**batch)
+        if labels is None:
+            logits = outputs[0]
+            loss = self._compute_loss(labels,logits,weight)
+            outputs = (loss,*outputs)
+        return outputs
+
 
 if __name__== '__main__':
     parser = HfArgumentParser((ModelArguments, TrainingArguments, DataArguments, MlmDataArguments))

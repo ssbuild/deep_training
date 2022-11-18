@@ -72,7 +72,7 @@ class TransformerBase(LightningModule):
 
 
     def compute_loss(self,batch) -> tuple:
-        raise NotImplemented
+        return self(**batch)
 
     def training_step(self, batch, batch_idx):
         outputs = self.compute_loss(batch)

@@ -93,23 +93,7 @@ class MyTransformer(TransformerForCausalLM):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
 
-    def training_step(self, batch, batch_idx):
-        outputs = self(**batch)
-        loss = outputs[0]
-        self.log('train_loss', loss, prog_bar=True)
-        return loss
 
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        outputs = self(**batch)
-        val_loss, logits = outputs[:2]
-        labels = batch["labels"]
-        return {"losses": val_loss, "logits": logits, "labels": labels}
-
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        # implement your own
-        out = self(x)
-        return out
 
 if __name__== '__main__':
     parser = HfArgumentParser((ModelArguments, TrainingArguments, DataArguments))
