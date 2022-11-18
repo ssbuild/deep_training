@@ -3,6 +3,9 @@ import json
 import os
 import sys
 import typing
+
+from pytorch_lightning.callbacks import ModelCheckpoint
+
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 from deep_training.data_helper import DataHelper
 import torch
@@ -13,7 +16,6 @@ from deep_training.data_helper import make_all_dataset_with_args, load_all_datas
 from deep_training.model.nlp.models.crf_model import TransformerForCRF
 from transformers import HfArgumentParser, BertTokenizer
 from deep_training.data_helper import ModelArguments, DataArguments, TrainingArguments
-
 
 
 class NN_DataHelper(DataHelper):
@@ -43,7 +45,6 @@ class NN_DataHelper(DataHelper):
                     continue
                 pt[0] += 1
                 pt[1] += 1
-
                 span_len = pt[1] - pt[0] + 1
                 if span_len == 1:
                     labels[pt[0]] = label2id['S_' + label_str]
@@ -150,11 +151,11 @@ if __name__== '__main__':
 
     dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
-    dm.setup("fit")
-
     model = MyTransformer(config=config,model_args=model_args,training_args=training_args)
+    checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True,every_n_epochs=1)
     trainer = Trainer(
-        # callbacks=[progress_bar],
+        callbacks=[checkpoint_callback],
+        check_val_every_n_epoch=1 if data_args.do_eval else None,
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",

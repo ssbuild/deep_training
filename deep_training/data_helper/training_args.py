@@ -240,12 +240,25 @@ class DataArguments:
     def __post_init__(self):
         if self.train_file:
             self.train_file = self.train_file.split(',')
+
         if self.eval_file:
             self.eval_file = self.eval_file.split(',')
+
         if self.test_file:
             self.test_file = self.test_file.split(',')
+
+
         if self.label_file:
             self.label_file = self.label_file.split(',')
+
+        if not self.train_file:
+            self.do_train = False
+
+        if not self.eval_file:
+            self.do_eval = False
+
+        if not self.test_file:
+            self.do_test = False
 
 
         if not os.path.exists(self.output_dir):

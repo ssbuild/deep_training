@@ -27,16 +27,22 @@ class TransformerForGplinker(TransformerModel):
             (self.tails_layer, self.config.task_specific_params['learning_rate_for_task']),
         ]
 
-    def training_step(self, batch, batch_idx):
-        entity_labels: torch.Tensor = batch.pop('entity_labels')
-        head_labels: torch.Tensor = batch.pop('head_labels')
-        tail_labels: torch.Tensor = batch.pop('tail_labels')
+    def comput_loss(self,batch):
+        entity_labels,head_labels,tail_labels = None,None,None
+        if 'entity_labels' in batch:
+            entity_labels: torch.Tensor = batch.pop('entity_labels')
+            head_labels: torch.Tensor = batch.pop('head_labels')
+            tail_labels: torch.Tensor = batch.pop('tail_labels')
         outputs = self(**batch)
         logits = outputs[0]
         logits1 = self.entities_layer(logits, batch['attention_mask'])
         logits2 = self.heads_layer(logits, batch['attention_mask'])
         logits3 = self.tails_layer(logits, batch['attention_mask'])
-        loss = (loss_fn(entity_labels, logits1) +loss_fn(head_labels, logits2) + loss_fn(tail_labels, logits3)) / 3
-        f1 = (f1_metric(entity_labels, logits1) +f1_metric(head_labels, logits2) + f1_metric(tail_labels, logits3)) / 3
-        self.log_dict({'train_loss': loss, 'f1': f1}, prog_bar=True)
-        return loss
+        if entity_labels is not None:
+            loss = (loss_fn(entity_labels, logits1) + loss_fn(head_labels, logits2) + loss_fn(tail_labels, logits3)) / 3
+            f1 = (f1_metric(entity_labels, logits1) + f1_metric(head_labels, logits2) + f1_metric(tail_labels, logits3)) / 3
+            self.log_dict({'train_loss': loss, 'f1': f1}, prog_bar=True)
+            outputs = (loss,(logits1,logits2,logits3))
+        else:
+            outputs = ((logits1, logits2, logits3),)
+        return outputs

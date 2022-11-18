@@ -43,11 +43,12 @@ class TransformerForHphtlinker(TransformerModel):
         return super(TransformerForHphtlinker, self).get_model_lr() + [
             (self.subject_layer, self.config.task_specific_params['learning_rate_for_task']),
             (self.object_layer, self.config.task_specific_params['learning_rate_for_task']),
+            (self.condLayerNorm, self.config.task_specific_params['learning_rate_for_task'])
         ]
 
 
 
-    def extract_subject(self,inputs):
+    def __extract_subject(self,inputs):
         """根据subject_ids从output中取出subject的向量表征
         """
         output, subject_ids = inputs
@@ -57,50 +58,26 @@ class TransformerForHphtlinker(TransformerModel):
         subject = torch.cat([start, end], 2)
         return subject[:, 0]
 
-
-    def training_step(self, batch, batch_idx):
-        subject_labels: torch.Tensor = batch.pop('subject_labels')
-        subject_ids: torch.Tensor = batch.pop('subject_ids')
-        object_labels: torch.Tensor = batch.pop('object_labels')
+    def compute_loss(self,batch) -> tuple:
+        subject_labels,subject_ids,object_labels = None,None,None
+        if 'subject_labels' in batch:
+            subject_labels: torch.Tensor = batch.pop('subject_labels')
+            subject_ids: torch.Tensor = batch.pop('subject_ids')
+            object_labels: torch.Tensor = batch.pop('object_labels')
 
         outputs = self(**batch)
         last_hidden = outputs[0]
         logits = self.dropout(last_hidden)
         subject_preds = self.sigmoid(self.subject_layer(logits)) ** 2
 
+        if subject_labels is not None:
+            subject_output = self.__extract_subject([last_hidden, subject_ids])
+            subject_output = self.condLayerNorm([last_hidden, subject_output])
 
-        subject_output = self.extract_subject([last_hidden,subject_ids])
-        subject_output = self.condLayerNorm([last_hidden,subject_output])
-        object_preds = self.sigmoid(self.object_layer(subject_output)) ** 4
-        object_preds = torch.reshape(object_preds,shape=(*object_preds.shape[:2],self.config.num_labels,2))
+            object_preds = self.sigmoid(self.object_layer(subject_output)) ** 4
+            object_preds = torch.reshape(object_preds, shape=(*object_preds.shape[:2], self.config.num_labels, 2))
 
-        loss = self.BCELoss(subject_preds,subject_labels) + self.BCELoss(object_preds,object_labels)
+            loss = self.BCELoss(subject_preds, subject_labels) + self.BCELoss(object_preds, object_labels)
+        else:
 
-        self.log_dict({'train_loss': loss}, prog_bar=True)
-        return loss
 
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        labels: torch.Tensor = batch.pop('labels')
-        real_label = batch.pop("real_label")
-        mask = batch.pop("mask")
-        outputs = self(**batch)
-        logits = outputs[0]
-        logits = self.dropout(logits)
-        logits = self.classifier(logits)
-        logits = self.sigmoid(logits)
-        val_loss = self.BCELoss(logits=logits, labels=labels, mask=mask)
-        logits = torch.where(logits >= 0.5, torch.ones_like(logits), torch.zeros_like(logits))
-        return {"losses": val_loss, "logits": logits.item(), "labels": real_label}
-
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        # implement your own
-        outputs = self(x)
-        logits = outputs[0]
-
-        logits = self.dropout(logits)
-        logits = self.classifier(logits)
-
-        logits = self.sigmoid(logits)
-        logits = torch.where(logits >= 0.5, torch.ones_like(logits), torch.zeros_like(logits))
-        return logits

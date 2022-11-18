@@ -2,6 +2,11 @@
 import json
 import os
 import sys
+
+
+import pytorch_lightning as pl
+from pytorch_lightning.callbacks import ModelCheckpoint
+
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 import typing
 import numpy as np
@@ -109,32 +114,43 @@ class MyTransformer(TransformerModel):
             (self.feat_head, self.config.task_specific_params['learning_rate_for_task'])
         ]
 
-    def training_step(self, batch, batch_idx):
-        labels : torch.Tensor = batch.pop('labels')
-        labels = labels.float()
-        batch2 = {
-            "input_ids": batch.pop('input_ids_2'),
-            "attention_mask": batch.pop('attention_mask_2'),
-        }
+    def compute_loss(self,batch):
+        labels = None
+        if 'labels' in batch:
+            labels: torch.Tensor = batch.pop('labels')
+            labels = labels.float()
         logits1 = self.feat_head(self(**batch)[0][:, 0, :])
-        logits2 = self.feat_head(self(**batch2)[0][:, 0, :])
-        loss = self.loss_fn([logits1,logits2],labels)
-        self.log('train_Loss',loss,prog_bar=True)
-        return loss
+        if labels is not None:
+            batch2 = {
+                "input_ids": batch.pop('input_ids_2'),
+                "attention_mask": batch.pop('attention_mask_2'),
+            }
+            logits2 = self.feat_head(self(**batch2)[0][:, 0, :])
+            loss = self.loss_fn([logits1, logits2], labels)
+            outputs = (loss,logits1,logits2)
+        else:
+            outputs = (logits1, )
+        return outputs
 
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        outputs = self(**batch)
-        val_loss, logits = outputs[:2]
-        labels = batch['labels']
-        acc = torch.eq(labels, torch.argmax(outputs[1], dim=1)) / labels.size()[0]
-        return {"losses": val_loss, "logits": logits, "labels": labels,'acc':acc}
 
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        # implement your own
-        out = self(x)
-        return out
 
+
+class MyModelCheckpoint(ModelCheckpoint):
+    def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
+        """Save a checkpoint at the end of the training epoch."""
+        if not self._should_skip_saving_checkpoint(trainer) and self._save_on_train_epoch_end:
+            monitor_candidates = self._monitor_candidates(trainer)
+            if self._every_n_epochs >= 1 and (trainer.current_epoch + 1) % self._every_n_epochs == 0:
+                self._save_topk_checkpoint(trainer, monitor_candidates)
+            self._save_last_checkpoint(trainer, monitor_candidates)
+
+    def on_validation_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
+        """Save a checkpoint at the end of the validation stage."""
+        if not self._should_skip_saving_checkpoint(trainer) and not self._save_on_train_epoch_end:
+            monitor_candidates = self._monitor_candidates(trainer)
+            if self._every_n_epochs >= 1 and (trainer.current_epoch + 1) % self._every_n_epochs == 0:
+                self._save_topk_checkpoint(trainer, monitor_candidates)
+            self._save_last_checkpoint(trainer, monitor_candidates)
 
 
 if __name__== '__main__':
@@ -163,10 +179,12 @@ if __name__== '__main__':
     print(train_files, eval_files, test_files)
     dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
-    dm.setup("fit")
+    
     model = MyTransformer(config=config, model_args=model_args, training_args=training_args)
+    checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True,every_n_epochs=1)
     trainer = Trainer(
-        # callbacks=[progress_bar],
+        callbacks=[checkpoint_callback],
+        check_val_every_n_epoch=1 if data_args.do_eval else None,
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",

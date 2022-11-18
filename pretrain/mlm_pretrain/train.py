@@ -2,6 +2,9 @@
 import json
 import os
 import sys
+
+from pytorch_lightning.callbacks import ModelCheckpoint
+
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 import typing
 from deep_training.data_helper import DataHelper
@@ -156,10 +159,12 @@ if __name__== '__main__':
 
     print(train_files, eval_files, test_files)
     dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
-    dm.setup("fit")
+    
     model = MyTransformer(config=config,model_args=model_args,training_args=training_args)
+    checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_top_k=5, every_n_train_steps=1000)
     trainer = Trainer(
-        # callbacks=[progress_bar],
+        callbacks=[checkpoint_callback],
+        check_val_every_n_epoch=1 if data_args.do_eval else None,
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",

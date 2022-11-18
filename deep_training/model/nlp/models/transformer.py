@@ -70,44 +70,25 @@ class TransformerBase(LightningModule):
     def forward(self, **inputs):
         return self.model(**inputs)
 
+
+    def compute_loss(self,batch) -> tuple:
+        raise NotImplemented
+
     def training_step(self, batch, batch_idx):
-        outputs = self(**batch)
+        outputs = self.compute_loss(batch)
         loss = outputs[0]
-        self.log('train_loss',loss,prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        outputs = self(**batch)
-        val_loss, logits = outputs[:2]
-        labels = batch["labels"]
-        return {"losses": val_loss, "logits": logits, "labels": labels}
+        outputs = self.compute_loss(batch)
+        loss = outputs[0]
+        return {"val_loss": loss}
 
     def test_step(self, batch, batch_idx):
         x, y = batch
-        # implement your own
-        out = self(x)
-        return out
-        # losses = self.losses(out, y)
-        #
-        # # log 6 example images
-        # # or generated text... or whatever
-        # sample_imgs = x[:6]
-        # grid = torchvision.utils.make_grid(sample_imgs)
-        # self.logger.experiment.add_image('example_images', grid, 0)
-        #
-        # # calculate acc
-        # labels_hat = torch.argmax(out, dim=1)
-        # test_acc = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
-        #
-        # # log the outputs!
-        # self.log_dict({'test_loss': losses, 'test_acc': test_acc})
-    #
-    # def validation_epoch_end(self, outputs):
-    #     # logits = torch.cat([x["logits"] for x in outputs]).detach().cpu().numpy()
-    #     # labels = torch.cat([x["labels"] for x in outputs]).detach().cpu().numpy()
-    #     losses = torch.stack([x["losses"] for x in outputs]).mean()
-    #     self.log("val_loss", losses, prog_bar=True)
-    #     # self.log_dict(self.metric.compute(predictions=preds, references=labels), prog_bar=True)
+        outputs = self.compute_loss(x)
+        return outputs
+
 
 
 class TransformerModel(TransformerBase):
@@ -146,43 +127,24 @@ class TransformerModelUnilm(TransformerModel):
         return super(TransformerModelUnilm, self).get_model_lr() + \
             [(self.lm_head,self.config.task_specific_params['learning_rate_for_task']),]
 
-    def training_step(self, batch, batch_idx):
+    def compute_loss(self,batch):
         batch['attention_mask'] = unilm_mask(batch['token_type_ids'])
+        labels = None
         if 'labels' in batch:
             labels = batch.pop('labels')
+        outputs = self(**batch)
+        hidden_states = outputs[0]
+        lm_logits = self.lm_head(hidden_states)
+
+        if labels is not None:
+            shift_logits = lm_logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            loss = self.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            outputs = (loss,lm_logits)
         else:
-            labels = batch['input_ids']
-        outputs = self(**batch)
-        hidden_states = outputs[0]
-        lm_logits = self.lm_head(hidden_states)
-        shift_logits = lm_logits[..., :-1, :].contiguous()
-        shift_labels = labels[..., 1:].contiguous()
-        loss = self.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            outputs = (lm_logits,)
+        return outputs
 
-        self.log('train_loss',loss,prog_bar=True)
-        return loss
-
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        batch['attention_mask'] = unilm_mask(batch['token_type_ids'])
-        if 'labels' in batch:
-            labels = batch.pop('labels')
-        else:
-            labels = batch['input_ids']
-        outputs = self(**batch)
-        hidden_states = outputs[0]
-        lm_logits = self.lm_head(hidden_states)
-        shift_logits = lm_logits[..., :-1, :].contiguous()
-        shift_labels = labels[..., 1:].contiguous()
-        val_loss = self.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
-        return {"losses": val_loss, "logits": lm_logits, "labels": labels}
-
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        x['attention_mask'] = unilm_mask(x['token_type_ids'])
-        outputs = self(**batch)
-        hidden_states = outputs[0]
-        lm_logits = self.lm_head(hidden_states)
-        return lm_logits
 
 class TransformerForPreTraining(TransformerBase):
     def __init__(self, config,model_args:ModelArguments, training_args:TrainingArguments, *args: Any, **kwargs: Any):

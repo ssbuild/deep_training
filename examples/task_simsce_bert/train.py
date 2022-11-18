@@ -4,6 +4,9 @@ import logging
 import os
 import random
 import sys
+
+from pytorch_lightning.callbacks import ModelCheckpoint
+
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 import typing
 import torch
@@ -154,10 +157,11 @@ if __name__== '__main__':
 
     dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files,allow_train_shuffle=False)
 
-    dm.setup("fit")
     model = MyTransformer(config=config,model_args=model_args,training_args=training_args)
+    checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True, every_n_epochs=1)
     trainer = Trainer(
-        # callbacks=[progress_bar],
+        callbacks=[checkpoint_callback],
+        check_val_every_n_epoch=1 if data_args.do_eval else None,
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",

@@ -145,4 +145,5 @@ def load_all_dataset_with_args(dataHelper,training_args: TrainingArguments,train
         dm.val_dataset = lambda: val_dataloader
     if test_dataloader is not None:
         dm.test_dataset = lambda: test_dataloader
+    dm.setup("fit")
     return dm
