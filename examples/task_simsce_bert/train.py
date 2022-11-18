@@ -3,16 +3,12 @@ import logging
 import os
 import random
 import sys
+sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 import typing
 
 import torch
 from torch.nn import CrossEntropyLoss
-
 from deep_training.data_helper import DataHelper
-
-
-sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
-
 from torch import nn
 from pytorch_lightning import Trainer
 from deep_training.data_helper import make_all_dataset_with_args, load_all_dataset_with_args, \
@@ -21,7 +17,6 @@ from deep_training.model.nlp.models.transformer import TransformerModel
 from deep_training.model.nlp.losses.contrast import compute_simcse_loss
 from transformers import HfArgumentParser, BertTokenizer
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments,MlmDataArguments
-
 from deep_training.utils.wwm import make_mlm_wwm_sample
 
 

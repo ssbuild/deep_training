@@ -3,7 +3,6 @@ import json
 import os
 import sys
 import typing
-
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 import numpy as np
 import torch

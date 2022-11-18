@@ -2,18 +2,11 @@
 import json
 import os
 import sys
-import typing
-
-import numpy as np
-
-from deep_training.data_helper import DataHelper
-
-
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
-import logging
-from typing import Union, List
+import typing
+import numpy as np
+from deep_training.data_helper import DataHelper
 import torch
-from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from pytorch_lightning import Trainer
 from deep_training.data_helper import make_all_dataset_with_args, load_all_dataset_with_args, \
     load_tokenizer_and_config_with_args

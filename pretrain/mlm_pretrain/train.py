@@ -2,23 +2,19 @@
 import json
 import os
 import sys
+sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 import typing
-
 from deep_training.data_helper import DataHelper
 from deep_training.utils.wwm import make_mlm_wwm_sample
-
-
-sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 import random
 import torch
 import logging
 from torch.nn import CrossEntropyLoss
-from pytorch_lightning import LightningDataModule, Trainer, seed_everything
-from transformers import AdamW, get_linear_schedule_with_warmup, BertTokenizerFast
+from pytorch_lightning import Trainer
+from transformers import BertTokenizerFast,HfArgumentParser
 from deep_training.model.nlp.models.transformer import TransformerForMaskLM
 from deep_training.data_helper import load_tokenizer_and_config_with_args, make_all_dataset_with_args, \
     load_all_dataset_with_args
-from transformers import HfArgumentParser
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments,MlmDataArguments
 
 

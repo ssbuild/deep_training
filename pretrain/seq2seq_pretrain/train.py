@@ -3,21 +3,16 @@ import json
 import logging
 import os
 import sys
+sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 import typing
-
 import numpy as np
 import torch
-
 from deep_training.data_helper import DataHelper
-
-
-sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 from torch.nn import CrossEntropyLoss
 from pytorch_lightning import Trainer
 from deep_training.data_helper import make_all_dataset_with_args, load_all_dataset_with_args, \
     load_tokenizer_and_config_with_args
 from deep_training.model.nlp.models.transformer import TransformerForSeq2SeqLM
-
 from transformers import HfArgumentParser, BertTokenizer
 from deep_training.data_helper import ModelArguments, DataArguments, TrainingArguments
 
