@@ -82,7 +82,7 @@ class TransformerBase(LightningModule):
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         outputs = self.compute_loss(batch)
         loss = outputs[0]
-        return {"val_loss": loss}
+        return {"val_loss": loss,"outputs": outputs[1:]}
 
     def test_step(self, batch, batch_idx):
         x, y = batch

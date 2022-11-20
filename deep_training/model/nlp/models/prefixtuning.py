@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/11/15 10:13
 import argparse
+import typing
 from typing import Any
 import torch
 from torch import nn
@@ -57,8 +58,8 @@ class PrefixTransformerForModel(TransformerModel):
         total_param = all_param - the_model_param
         print('total param is {}'.format(total_param))  # 9860105
         #function
-        self.get_prompt = self.get_prompt_0 if prompt_args.prompt_type == 0 else self.get_prompt_1
-        self.get_transformer_outputs = self.get_transformer_outputs_0 if prompt_args.prompt_type == 0 else self.get_transformer_outputs_1
+        self.get_prompt : typing.Callable = self.get_prompt_0 if prompt_args.prompt_type == 0 else self.get_prompt_1
+        self.get_transformer_outputs : typing.Callable = self.get_transformer_outputs_0 if prompt_args.prompt_type == 0 else self.get_transformer_outputs_1
 
 
     def get_model_lr(self):
@@ -147,7 +148,7 @@ class PrefixTransformerForSequenceClassification(PrefixTransformerForModel):
         ]
 
 
-    def get_loss_and_logits(self,batch):
+    def compute_loss(self,batch):
         labels = batch.pop('labels')
         outputs = self.get_transformer_outputs(batch)
         pooled_output = outputs[1]
@@ -176,33 +177,13 @@ class PrefixTransformerForSequenceClassification(PrefixTransformerForModel):
             elif self.config.problem_type == "multi_label_classification":
                 loss_fct = BCEWithLogitsLoss()
                 loss = loss_fct(logits, labels)
-        # if not return_dict:
-        #     output = (logits,) + outputs[2:]
-        #     return ((losses,) + output) if losses is not None else output
-        #
-        # return SequenceClassifierOutput(
-        #     losses=losses,
-        #     logits=logits,
-        #     hidden_states=outputs.hidden_states,
-        #     attentions=outputs.attentions,
-        # )
-        return loss,logits
 
-    def training_step(self, batch, batch_idx):
-        loss ,_ = self.get_loss_and_logits(batch)
-        return loss
+            outputs = (loss,logits,)
+        else:
+            outputs = (logits,)
+        return outputs
 
 
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        labels = batch["labels"]
-        val_loss, logits = self.get_loss_and_logits(batch)
-        return {"losses": val_loss, "logits": logits, "labels": labels}
-
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        # implement your own
-        _ ,logits = self.get_loss_and_logits(x)
-        return logits
 
 
 class PrefixTransformerForTokenClassification(PrefixTransformerForModel):
@@ -217,8 +198,8 @@ class PrefixTransformerForTokenClassification(PrefixTransformerForModel):
         ]
 
 
-    def get_loss_and_outputs(self, batch):
-        labels = batch.pop('labels')
+    def compute_loss(self, batch):
+        labels = batch.pop('labels',None)
         attention_mask = batch['attention_mask']
         outputs = self.get_transformer_outputs(batch)
         pooled_output = outputs[1]
@@ -239,23 +220,12 @@ class PrefixTransformerForTokenClassification(PrefixTransformerForModel):
             else:
                 loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
 
-        return loss,logits
+            outputs = (loss,logits)
+        else:
+            outputs = (logits,)
+        return outputs
 
-    def training_step(self, batch, batch_idx):
-        loss ,_ = self.get_loss_and_outputs(batch)
-        return loss
 
-
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        labels = batch["labels"]
-        val_loss, logits = self.get_loss_and_outputs(batch)
-        return {"losses": val_loss, "logits": logits, "labels": labels}
-
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        # implement your own
-        _ ,logits = self.get_loss_and_outputs(x)
-        return logits
 
 
 class PrefixTransformerPointer(PrefixTransformerForModel):
@@ -271,16 +241,18 @@ class PrefixTransformerPointer(PrefixTransformerForModel):
 
 
     def get_loss_and_logits(self,batch):
-        labels = batch.pop('labels')
+        labels = batch.pop('labels',None)
         attention_mask = batch['attention_mask']
         outputs = self.get_transformer_outputs(batch)
         logits = outputs[0]
         logits = self.pointer_layer(logits, attention_mask)
 
-        loss = None
         if labels is not None:
             loss = loss_fn(labels, logits)
-        return loss,logits
+            outputs = (loss,logits)
+        else:
+            outputs = (logits,)
+        return outputs
 
     def training_step(self, batch, batch_idx):
         labels = batch['labels']
@@ -318,7 +290,7 @@ class PrefixTransformerForCRF(PrefixTransformerForModel):
 
 
     def get_loss_and_logits(self,batch):
-        labels = batch.pop('labels')
+        labels = batch.pop('labels',None)
         attention_mask = batch['attention_mask']
         outputs = self.get_transformer_outputs(batch)
         logits = outputs[0]
@@ -327,27 +299,9 @@ class PrefixTransformerForCRF(PrefixTransformerForModel):
         if labels is not None:
             labels = torch.where(labels >= 0, labels, torch.zeros_like(labels))
             loss = self.crf(emissions=logits, tags=labels, mask=attention_mask)
-            # outputs = (-1 * losses,) + outputs
-        # else:
-        #     # tags = self.crf.decode(logits, attention_mask)
-        #     # outputs = (tags,)
+            outputs = (loss) + outputs
+        else:
+            tags = self.crf.decode(logits, attention_mask)
+            outputs = (tags,)
 
-        self.log_dict({'train_loss': loss}, prog_bar=True)
-        self.log_dict({'train_loss': loss}, prog_bar=True)
-        return loss,logits
-
-    def training_step(self, batch, batch_idx):
-        loss ,logits = self.get_loss_and_logits(batch)
-        self.log_dict({'train_loss': loss}, prog_bar=True)
-        return loss
-
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        labels = batch['labels']
-        val_loss, logits = self.get_loss_and_logits(batch)
-        return {"losses": val_loss, "logits": logits, "labels": labels}
-
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        # implement your own
-        _, logits = self.get_loss_and_outputs(x)
-        return logits
+        return outputs

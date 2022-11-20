@@ -2,12 +2,10 @@
 import json
 import os
 import sys
-
+sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
-
-sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 import typing
 import numpy as np
 from deep_training.data_helper import DataHelper
@@ -115,12 +113,10 @@ class MyTransformer(TransformerModel):
         ]
 
     def compute_loss(self,batch):
-        labels = None
-        if 'labels' in batch:
-            labels: torch.Tensor = batch.pop('labels')
-            labels = labels.float()
+        labels: torch.Tensor = batch.pop('labels',None)
         logits1 = self.feat_head(self(**batch)[0][:, 0, :])
         if labels is not None:
+            labels = labels.float()
             batch2 = {
                 "input_ids": batch.pop('input_ids_2'),
                 "attention_mask": batch.pop('attention_mask_2'),

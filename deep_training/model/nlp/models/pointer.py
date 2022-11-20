@@ -19,12 +19,14 @@ class TransformerForPointer(TransformerModel):
             (self.pointer_layer, self.config.task_specific_params['learning_rate_for_task']),
         ]
 
-    def training_step(self, batch, batch_idx):
-        labels: torch.Tensor = batch.pop('labels')
+    def compute_loss(self,batch) -> tuple:
         outputs = self(**batch)
         logits = self.pointer_layer(outputs[0], batch['attention_mask'])
-        loss = loss_fn(labels, logits)
-        f1 = f1_metric(labels, logits)
-        self.log_dict({'train_loss': loss, 'f1': f1}, prog_bar=True)
-        return loss
+        if 'labels' in batch:
+            labels: torch.Tensor = batch.pop('labels')
+            loss = loss_fn(labels, logits)
+            f1 = f1_metric(labels, logits)
+            loss_dict = {'train_loss': loss, 'f1': f1}
+            outputs = (loss_dict,logits)
+        return outputs
 

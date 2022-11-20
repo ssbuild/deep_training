@@ -80,7 +80,7 @@ class TransformerForHphtlinker(TransformerModel):
 
             loss = self.BCELoss(subject_preds, subject_labels) + self.BCELoss(object_preds, object_labels)
 
-            outputs = (loss,(subject_preds,object_preds))
+            outputs = (loss,subject_preds,object_preds)
         else:
             subject_preds[:, [0, -1]] *= 0
             start = np.where(subject_preds[0, :, 0] > 0.6)[0]
@@ -99,6 +99,6 @@ class TransformerForHphtlinker(TransformerModel):
 
             object_preds = self.sigmoid(self.object_layer(subject_output)) ** 4
             object_preds = torch.reshape(object_preds, shape=(*object_preds.shape[:2], self.config.num_labels, 2))
-            outputs = ((subject_preds, object_preds),)
+            outputs = (subject_preds, object_preds)
 
         return outputs

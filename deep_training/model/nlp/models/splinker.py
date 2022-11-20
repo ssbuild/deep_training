@@ -38,9 +38,7 @@ class TransformerForSplinker(TransformerModel):
         ]
 
     def compute_loss(self,batch) -> tuple:
-        labels = None
-        if 'labels' in batch:
-            labels: torch.Tensor = batch.pop('labels')
+        labels: torch.Tensor = batch.pop('labels',None)
         mask = batch.pop('mask')
         outputs = self(**batch)
         logits = outputs[0]
