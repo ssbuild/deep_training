@@ -4,11 +4,14 @@ import os
 import sys
 import typing
 
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, Checkpoint, LambdaCallback
+from pytorch_lightning.callbacks.callback import Callback
+from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 from deep_training.data_helper import DataHelper
 import torch
+import pytorch_lightning as pl
 import numpy as np
 from pytorch_lightning import Trainer
 from deep_training.data_helper import make_all_dataset_with_args, load_all_dataset_with_args, \
@@ -124,6 +127,18 @@ class MyTransformer(TransformerForCRF):
         super(MyTransformer, self).__init__(with_efficient=True,*args,**kwargs)
 
 
+class MyModelCheckpoint(Callback):
+    def __init__(self,model,eval_dm,*args,**kwargs):
+        self.model = model
+        self.eval_dm = eval_dm
+        super(Callback, self).__init__(*args,**kwargs)
+
+    def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") :
+        pass
+        # result = trainer.validate(self.model,self.eval_dm)
+        # print(result)
+        # print('*' * 30)
+
 
 if __name__== '__main__':
     parser = HfArgumentParser((ModelArguments, TrainingArguments, DataArguments))
@@ -144,18 +159,27 @@ if __name__== '__main__':
         intermediate_name = data_args.intermediate_name + '_{}'.format(i)
         train_file, eval_file, test_file = make_all_dataset_with_args(dataHelper, save_fn_args, data_args,
                                                                       intermediate_name=intermediate_name,num_process_worker=0)
-        train_files.append(train_file)
-        eval_files.append(eval_file)
+        train_files.append(train_file[:1000])
+        eval_files.append(eval_file[:100])
         test_files.append(test_file)
 
-
-    dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
-
+    train_dm,eval_dm,test_dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
     model = MyTransformer(config=config,model_args=model_args,training_args=training_args)
-    checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True,every_n_epochs=1)
+    #checkpoint_callback = MyModelCheckpoint(eval_dm,save_top_k=0,every_n_epochs=1)
+    # checkpoint_callback = MyModelCheckpoint(model,eval_dm)
+
+    #[batch, seq] , [batch, seq]
+    #[batch * num_tags, seq] , [batch* num_tags, seq]
+    def on_train_epoch_end(trainer: "pl.Trainer", pl_module: "pl.LightningModule"):
+        pl_module.eval()
+        result = trainer.validate(model, eval_dm)
+        print(result)
+
+    checkpoint_callback = LambdaCallback(on_train_epoch_end=on_train_epoch_end)
     trainer = Trainer(
+        log_every_n_steps = 10,
         callbacks=[checkpoint_callback],
-        check_val_every_n_epoch=1 if data_args.do_eval else None,
+        # check_val_every_n_epoch=1 if data_args.do_eval else None,
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",
@@ -166,11 +190,13 @@ if __name__== '__main__':
         accumulate_grad_batches = training_args.gradient_accumulation_steps
     )
 
-    if data_args.do_train:
-        trainer.fit(model, datamodule=dm)
+    #【batch,num_label,seq,seq】
+    #[batch,num_label *  seq * 2 ]
+    if data_args.do_train and train_dm:
+        trainer.fit(model, datamodule=train_dm)
 
-    if data_args.do_eval:
-        trainer.validate(model, datamodule=dm)
+    if data_args.do_eval and eval_dm:
+        trainer.validate(model, datamodule=eval_dm)
 
-    if data_args.do_test:
-        trainer.test(model, datamodule=dm)
+    if data_args.do_test and test_dm:
+        trainer.test(model, datamodule=test_dm)

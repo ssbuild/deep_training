@@ -2,7 +2,6 @@
 # @Author  : tk
 # @FileName: gp_linker.py
 import torch
-from transformers import AdamW, get_linear_schedule_with_warmup
 from .transformer import TransformerModel
 from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer, loss_fn, f1_metric
 

@@ -72,6 +72,7 @@ class NN_DataHelper(DataHelper):
 
         o['input_ids'] = o['input_ids'][:, :max_len]
         o['token_type_ids'] = o['token_type_ids'][:, :max_len]
+        o['labels'] =  o['input_ids']
         return o
 
 

@@ -77,17 +77,29 @@ class TransformerBase(LightningModule):
     def training_step(self, batch, batch_idx):
         outputs = self.compute_loss(batch)
         loss = outputs[0]
+
+        self.log('train_loss',loss,prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         outputs = self.compute_loss(batch)
         loss = outputs[0]
-        return {"val_loss": loss,"outputs": outputs[1:]}
+        self.log('val_loss',loss,prog_bar=False)
+
+        o = {
+            "val_loss": loss,
+        }
+        out = outputs[1:]
+        if isinstance(out,(tuple,list)):
+            o['outputs'] = [t.cpu().numpy() for t in out]
+        else:
+            o['outputs'] = [out.cpu().numpy()]
+        return o
 
     def test_step(self, batch, batch_idx):
         x, y = batch
         outputs = self.compute_loss(x)
-        return outputs
+        return [t.cpu().numpy() for t in outputs]
 
 
 

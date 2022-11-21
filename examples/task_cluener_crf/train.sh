@@ -15,7 +15,7 @@ python ./train.py \
 --learning_rate 5e-5 \
 --learning_rate_for_task 1e-4 \
 --max_epochs 3 \
---train_batch_size 10 \
+--train_batch_size 32 \
 --eval_batch_size 2 \
 --test_batch_size 2 \
 --adam_epsilon 1e-8 \

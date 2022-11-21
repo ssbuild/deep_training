@@ -133,17 +133,22 @@ def load_all_dataset_with_args(dataHelper,training_args: TrainingArguments,train
    '''
 
     dataHelper: DataHelper
-    dm = LightningDataModule()
+    train_dm,eval_dm,test_dm = None,None,None
     train_dataloader = dataHelper.load_dataset(train_file, batch_size=training_args.train_batch_size, shuffle=allow_train_shuffle,
                                     infinite=True)
     val_dataloader = dataHelper.load_dataset(eval_file, batch_size=training_args.eval_batch_size)
     test_dataloader = dataHelper.load_dataset(test_file, batch_size=training_args.test_batch_size)
 
     if train_dataloader is not None:
-        dm.train_dataloader = lambda: train_dataloader
+        train_dm = LightningDataModule()
+        train_dm.train_dataloader = lambda: train_dataloader
     if val_dataloader is not None:
-        dm.val_dataset = lambda: val_dataloader
+        eval_dm = LightningDataModule()
+        eval_dm.val_dataloader = lambda: val_dataloader
+
+        eval_dm.val_dataloader = lambda: val_dataloader
+
     if test_dataloader is not None:
-        dm.test_dataset = lambda: test_dataloader
-    dm.setup("fit")
-    return dm
+        test_dm = LightningDataModule()
+        test_dm.test_dataloader = lambda: test_dataloader
+    return train_dm,eval_dm,test_dm

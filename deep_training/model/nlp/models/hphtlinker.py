@@ -3,7 +3,6 @@
 import numpy as np
 import torch
 from torch import nn
-from transformers import AdamW, get_linear_schedule_with_warmup
 from .transformer import TransformerModel
 from ..layers.norm import LayerNorm
 

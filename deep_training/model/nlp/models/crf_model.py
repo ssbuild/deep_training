@@ -2,7 +2,6 @@
 # @Time    : 2022/11/15 12:26
 import torch
 from torch import nn
-from transformers import AdamW, get_linear_schedule_with_warmup
 from .transformer import TransformerModel
 from ..layers.crf import CRF
 __all__ = [
@@ -33,7 +32,7 @@ class TransformerForCRF(TransformerModel):
         if labels is not None:
             labels = torch.where(labels >= 0, labels, torch.zeros_like(labels))
             loss = self.crf(emissions=logits, tags=labels, mask=attention_mask)
-            outputs = (loss,logits) + outputs
+            outputs = (loss,logits)
         else:
             tags = self.crf.decode(logits, attention_mask)
             outputs = (tags,)
