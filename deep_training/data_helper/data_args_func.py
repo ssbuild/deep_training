@@ -146,7 +146,7 @@ def load_all_dataset_with_args(dataHelper,training_args: TrainingArguments,train
         eval_dm = LightningDataModule()
         eval_dm.val_dataloader = lambda: val_dataloader
 
-        eval_dm.val_dataloader = lambda: val_dataloader
+        train_dm.val_dataloader = lambda: val_dataloader
 
     if test_dataloader is not None:
         test_dm = LightningDataModule()

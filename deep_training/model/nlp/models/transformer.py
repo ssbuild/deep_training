@@ -87,7 +87,7 @@ class TransformerBase(LightningModule):
         self.log('val_loss',loss,prog_bar=False)
 
         o = {
-            "val_loss": loss,
+            "val_loss": loss.cpu().numpy(),
         }
         out = outputs[1:]
         if isinstance(out,(tuple,list)):

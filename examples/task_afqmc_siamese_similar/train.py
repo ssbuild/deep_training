@@ -2,6 +2,9 @@
 import json
 import os
 import sys
+
+from pytorch_lightning.utilities.types import EPOCH_OUTPUT
+
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 
 import pytorch_lightning as pl

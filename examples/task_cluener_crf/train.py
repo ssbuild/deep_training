@@ -126,6 +126,10 @@ class MyTransformer(TransformerForCRF):
     def __init__(self, *args,**kwargs):
         super(MyTransformer, self).__init__(with_efficient=True,*args,**kwargs)
 
+    def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
+        print('*' * 50)
+        print(outputs)
+
 
 class MyModelCheckpoint(Callback):
     def __init__(self,model,eval_dm,*args,**kwargs):
@@ -133,11 +137,7 @@ class MyModelCheckpoint(Callback):
         self.eval_dm = eval_dm
         super(Callback, self).__init__(*args,**kwargs)
 
-    def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") :
-        pass
-        # result = trainer.validate(self.model,self.eval_dm)
-        # print(result)
-        # print('*' * 30)
+
 
 
 if __name__== '__main__':
@@ -171,15 +171,16 @@ if __name__== '__main__':
     #[batch, seq] , [batch, seq]
     #[batch * num_tags, seq] , [batch* num_tags, seq]
     def on_train_epoch_end(trainer: "pl.Trainer", pl_module: "pl.LightningModule"):
-        pl_module.eval()
-        result = trainer.validate(model, eval_dm)
-        print(result)
+        print('!!!!!!!!!!!!!')
+        # pl_module.eval()
+        # result = trainer.validate(model, eval_dm)
+        # print(result)
 
     checkpoint_callback = LambdaCallback(on_train_epoch_end=on_train_epoch_end)
     trainer = Trainer(
         log_every_n_steps = 10,
         callbacks=[checkpoint_callback],
-        # check_val_every_n_epoch=1 if data_args.do_eval else None,
+        check_val_every_n_epoch=1 if data_args.do_eval else None,
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",
