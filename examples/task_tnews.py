@@ -1,23 +1,51 @@
 # -*- coding: utf-8 -*-
 import json
-import logging
 import os
 import sys
-
-from pytorch_lightning.callbacks import ModelCheckpoint
-
-sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 import typing
+sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
+from sklearn.metrics import f1_score, classification_report
+from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.utilities.types import EPOCH_OUTPUT
+
+
 import numpy as np
 from deep_training.data_helper import DataHelper
 import torch
-from torch.nn import CrossEntropyLoss
+import logging
 from pytorch_lightning import Trainer
-from deep_training.data_helper import make_all_dataset_with_args, load_all_dataset_with_args, load_tokenizer_and_config_with_args
+from deep_training.data_helper import make_all_dataset_with_args, load_all_dataset_with_args, \
+    load_tokenizer_and_config_with_args
 from transformers import HfArgumentParser, BertTokenizer
-from deep_training.model.nlp.models.prefixtuning import PrefixTransformerForSequenceClassification
-from deep_training.data_helper import ModelArguments, TrainingArguments, PrefixModelArguments, \
-    DataArguments
+from deep_training.model.nlp.models.transformer import TransformerForSequenceClassification
+from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
+
+
+train_info_args = {
+    'device': '1',
+    'data_backend': 'leveldb',
+    'model_type': 'bert',
+    'model_name_or_path': '/data/nlp/pre_models/torch/bert/bert-base-chinese',
+    'tokenizer_name': '/data/nlp/pre_models/torch/bert/bert-base-chinese',
+    'config_name': '/data/nlp/pre_models/torch/bert/bert-base-chinese/config.json',
+    'do_train': True,
+    'do_eval': True,
+    'train_file': '/data/nlp/nlp_train_data/clue/tnews/train.json',
+    'eval_file': '/data/nlp/nlp_train_data/clue/tnews/dev.json',
+    'test_file': '/data/nlp/nlp_train_data/clue/tnews/test.json',
+    'label_file': '/data/nlp/nlp_train_data/clue/tnews/labels.json',
+    'learning_rate': 5e-5,
+    'max_epochs': 3,
+    'train_batch_size': 10,
+    'test_batch_size': 2,
+    'adam_epsilon': 1e-8,
+    'gradient_accumulation_steps': 1,
+    'max_grad_norm': 1.0,
+    'weight_decay': 0,
+    'warmup_steps': 0,
+    'output_dir': './output',
+    'max_seq_length': 512
+}
 
 
 class NN_DataHelper(DataHelper):
@@ -46,24 +74,23 @@ class NN_DataHelper(DataHelper):
         }
         return d
 
-    #读取标签
+    # 读取标签
     @staticmethod
     def read_labels_from_file(files: str):
-        if not files:
+        if files is None:
             return None, None
-
+        label_fname = files[0]
+        is_json_file = label_fname.endswith('.json')
         D = set()
-        for label_fname in files:
-            is_json_file = label_fname.endswith('.json')
-            with open(label_fname, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-                for line in lines:
-                    line = line.replace('\r\n', '').replace('\n', '')
-                    if not line: continue
-                    if is_json_file:
-                        jd = json.loads(line)
-                        line = jd['label']
-                    D.add(line)
+        with open(label_fname, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            for line in lines:
+                line = line.replace('\r\n', '').replace('\n', '')
+                if not line: continue
+                if is_json_file:
+                    jd = json.loads(line)
+                    line = jd['label']
+                D.add(line)
         label2id = {label: i for i, label in enumerate(D)}
         id2label = {i: label for i, label in enumerate(D)}
         return label2id, id2label
@@ -80,7 +107,7 @@ class NN_DataHelper(DataHelper):
                     if not jd:
                         continue
                     D.append((jd['sentence'], jd.get('label',None)))
-        return D
+        return D[0:1000] if mode == 'train' else D[:100]
 
 
     @staticmethod
@@ -105,44 +132,57 @@ class NN_DataHelper(DataHelper):
             o['token_type_ids'] = o['token_type_ids'][:, :max_len]
         return o
 
-class MyTransformer(PrefixTransformerForSequenceClassification):
-    def __init__(self,*args,**kwargs):
-        super(MyTransformer, self).__init__(prompt_type=1,*args,**kwargs)
 
-    def compute_loss(self, batch) -> tuple:
-        labels = None
-        if 'labels' in batch:
-            labels: torch.Tensor = batch.pop('labels')
-        outputs = self.get_transformer_outputs(batch)
-        pooled_output = outputs[1]
-        pooled_output = self.dropout(pooled_output)
-        logits = self.classifier(pooled_output)
-        loss = None
+
+class MyTransformer(TransformerForSequenceClassification):
+    def __init__(self,*args,**kwargs):
+        super(MyTransformer, self).__init__(*args,**kwargs)
+
+    def compute_loss(self,batch) -> tuple:
+        outputs = self(**batch)
+        labels = batch.get('batch',None)
         if labels is not None:
-            loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            loss, logits = outputs[0:2]
             acc = torch.sum(torch.eq(labels.view(-1), torch.argmax(logits, dim=1, keepdim=False))) / \
                   labels.view(-1).size()[0]
             loss_dict = {
-                'train_loss': loss,
+                'loss': loss,
                 'acc': acc
             }
-            outputs = (loss_dict, logits)
+            outputs = (loss_dict, logits, labels)
         else:
-            outputs = (logits,)
+            outputs = (outputs[0],)
         return outputs
+
+    def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
+        preds_all, labels_all = [], []
+        for output in outputs:
+            preds, labels = output['outputs']
+            preds = np.argmax(preds,-1)
+            for p, l in zip(preds, labels):
+                preds_all.append(p)
+                labels_all.append(int(l))
+
+        preds_all = np.asarray(preds_all,dtype=np.int32)
+        labels_all = np.asarray(labels_all, dtype=np.int32)
+        f1 = f1_score(labels_all, preds_all, average='micro')
+        report = classification_report(labels_all, preds_all, digits=4,
+                                       labels=list(self.config.label2id.values()),target_names=list(self.config.label2id.keys()))
+
+        print(f1, report)
+        self.log('val_f1', f1)
 
 
 if __name__== '__main__':
-    parser = HfArgumentParser((ModelArguments, TrainingArguments, DataArguments, PrefixModelArguments))
-    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        model_args, training_args, data_args, prompt_args = parser.parse_json_file(
-            json_file=os.path.abspath(sys.argv[1]))
-    else:
-        model_args, training_args, data_args, prompt_args = parser.parse_args_into_dataclasses()
+    parser = HfArgumentParser((ModelArguments, TrainingArguments, DataArguments))
+    model_args, training_args, data_args = parser.parse_dict(train_info_args)
 
     dataHelper = NN_DataHelper(data_args.data_backend)
     tokenizer, config, label2id, id2label = load_tokenizer_and_config_with_args(dataHelper, model_args, training_args,data_args)
     save_fn_args = (tokenizer, data_args.max_seq_length,label2id)
+
+    print(label2id, id2label)
+    print('*' * 30, config.num_labels)
 
     N = 1
     train_files, eval_files, test_files = [], [], []
@@ -158,9 +198,8 @@ if __name__== '__main__':
     print(train_files, eval_files, test_files)
     dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
-    
-    model = MyTransformer(prompt_args=prompt_args,config=config,model_args=model_args,training_args=training_args)
-    checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True, every_n_epochs=1)
+    model = MyTransformer(config=config,model_args=model_args,training_args=training_args)
+    checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
         check_val_every_n_epoch=1 if data_args.do_eval else None,

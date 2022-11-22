@@ -22,6 +22,28 @@ from deep_training.model.nlp.layers.mask import unilm_mask
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
 
 
+train_info_args = {
+    'device' '1' 
+    'data_backend': 'leveldb',
+    'model_type': 'bert',
+    'model_name_or_path': '/data/nlp/pre_models/torch/bert/bert-base-chinese',
+    'tokenizer_name': '/data/nlp/pre_models/torch/bert/bert-base-chinese',
+    'config_name': '/data/nlp/pre_models/torch/bert/bert-base-chinese/config.json',
+    'do_train': True,
+    'train_file': '/data/nlp/nlp_train_data/thucnews/train.json',
+    'max_steps': 100000,
+    'train_batch_size': 10,
+    'test_batch_size': 2,
+    'adam_epsilon': 1e-8,
+    'gradient_accumulation_steps': 1,
+    'max_grad_norm': 1.0,
+    'weight_decay': 0,
+    'warmup_steps': 0,
+    'output_dir' : './output',
+    'max_seq_length' : 512,
+    'max_target_length' : 50
+}
+
 class NN_DataHelper(DataHelper):
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
@@ -47,6 +69,7 @@ class NN_DataHelper(DataHelper):
             d = {
                 'input_ids': input_ids,
                 'token_type_ids': token_type_ids,
+                'labels': input_ids,
                 'seqlen': seqlen
             }
             outputs.append(d)
@@ -63,9 +86,7 @@ class NN_DataHelper(DataHelper):
                 for i,line in enumerate(lines):
                     jd = json.loads(line)
                     D.append((jd['content'], jd['title']))
-                    if i > 1000:
-                        break
-        return D
+        return D[0:1000] if mode == 'train' else D[:100]
 
 
     @staticmethod
@@ -86,26 +107,22 @@ class NN_DataHelper(DataHelper):
 
         o['input_ids'] = o['input_ids'][:, :max_len]
         o['token_type_ids'] = o['token_type_ids'][:, :max_len]
+        o['labels'] = o['labels'][:, :max_len]
         return o
 
 
 class MyTransformer(TransformerModelUnilm):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
-        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
         self.sim_head = nn.Linear(config.hidden_size, 512, bias=False)
 
     def get_model_lr(self):
         return super(MyTransformer, self).get_model_lr() + [
-            (self.lm_head, self.config.task_specific_params['learning_rate_for_task']),
             (self.sim_head, self.config.task_specific_params['learning_rate_for_task'])
         ]
 
     def compute_loss(self,batch):
-        labels = None
-        if 'labels' in batch:
-            labels = batch.pop('labels')
-
+        labels = batch.pop('labels',None)
         batch['attention_mask'] = unilm_mask(batch['token_type_ids'])
         outputs = self(**batch)
         lm_logits = self.lm_head(outputs[0])
@@ -118,11 +135,12 @@ class MyTransformer(TransformerModelUnilm):
             loss2 = compute_simcse_loss(simcse_logits)
             loss = loss1 + loss2
             loss_dict = {
+                'loss': loss,
                 'unilm_loss': loss1,
                 'simcse_loss': loss2,
-                'train_loss': loss
             }
             outputs = (loss_dict,lm_logits,simcse_logits)
+            self.log_dict(loss_dict, prog_bar=True)
         else:
             outputs = (lm_logits,simcse_logits)
         return outputs
@@ -131,10 +149,7 @@ class MyTransformer(TransformerModelUnilm):
 
 if __name__== '__main__':
     parser = HfArgumentParser((ModelArguments, TrainingArguments, DataArguments))
-    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        model_args, training_args, data_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
-    else:
-        model_args, training_args, data_args = parser.parse_args_into_dataclasses()
+    model_args, training_args, data_args = parser.parse_dict(train_info_args)
 
     dataHelper = NN_DataHelper(data_args.data_backend)
     tokenizer, config, label2id, id2label = load_tokenizer_and_config_with_args(dataHelper, model_args, training_args,data_args)
@@ -155,10 +170,9 @@ if __name__== '__main__':
     dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files,allow_train_shuffle=False)
 
     model = MyTransformer(config=config,model_args=model_args,training_args=training_args)
-    checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True, every_n_epochs=1)
+    checkpoint_callback = ModelCheckpoint(monitor="loss", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
-        check_val_every_n_epoch=1 if data_args.do_eval else None,
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",

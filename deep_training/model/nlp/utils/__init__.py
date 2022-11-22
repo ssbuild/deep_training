@@ -2,7 +2,8 @@
 # @Time    : 2022/11/15 13:33
 import typing
 
-from transformers import AdamW, get_linear_schedule_with_warmup
+from torch.optim import AdamW
+from transformers import get_linear_schedule_with_warmup
 
 
 def configure_optimizers(model_attrs: typing.Union[typing.List,typing.Tuple],

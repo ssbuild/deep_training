@@ -7,51 +7,58 @@ import typing
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
-from deep_training.data_helper import DataHelper
-from typing import Union, List
-import torch
 import numpy as np
-from pytorch_lightning.utilities.types import EPOCH_OUTPUT
-from deep_training.model.nlp.layers.seq_pointer import f1_metric
+from torch import nn
+from deep_training.data_helper import DataHelper
+import torch
+import logging
 from pytorch_lightning import Trainer
 from deep_training.data_helper import make_all_dataset_with_args, load_all_dataset_with_args, \
     load_tokenizer_and_config_with_args
-
-from deep_training.model.nlp.models.pointer import TransformerForPointer
-from deep_training.model.nlp.metrics.pointer import metric_for_pointer
 from transformers import HfArgumentParser, BertTokenizer
-from deep_training.data_helper import ModelArguments, DataArguments, TrainingArguments
+from deep_training.model.nlp.models.transformer import TransformerModel
+from deep_training.model.nlp.losses.circle_loss import CircleLoss
+from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
 
-
+train_info_args = {
+    'device': '1',
+    'data_backend': 'leveldb',
+    'model_type': 'bert',
+    'model_name_or_path': '/data/nlp/pre_models/torch/bert/bert-base-chinese',
+    'tokenizer_name': '/data/nlp/pre_models/torch/bert/bert-base-chinese',
+    'config_name': '/data/nlp/pre_models/torch/bert/bert-base-chinese/config.json',
+    'do_train': True,
+    'do_eval': True,
+    'train_file': '/data/nlp/nlp_train_data/clue/tnews/train.json',
+    'eval_file': '/data/nlp/nlp_train_data/clue/tnews/dev.json',
+    'test_file': '/data/nlp/nlp_train_data/clue/tnews/test.json',
+    'label_file': '/data/nlp/nlp_train_data/clue/tnews/labels.json',
+    'learning_rate': 5e-5,
+    'max_epochs': 3,
+    'train_batch_size': 10,
+    'test_batch_size': 2,
+    'adam_epsilon': 1e-8,
+    'gradient_accumulation_steps': 1,
+    'max_grad_norm': 1.0,
+    'weight_decay': 0,
+    'warmup_steps': 0,
+    'output_dir': './output',
+    'max_seq_length': 512
+}
 
 class NN_DataHelper(DataHelper):
     # 切分词
-    def on_data_process(self, data: typing.Any, user_data: tuple):
-
+    def on_data_process(self,data: typing.Any, user_data: tuple):
         tokenizer: BertTokenizer
         tokenizer,max_seq_length,label2id,mode = user_data
-        sentence,label_dict = data
+        sentence,label_str = data
 
-        input_ids = tokenizer.convert_tokens_to_ids(list(sentence))
-        if len(input_ids) > max_seq_length - 2:
-            input_ids = input_ids[:max_seq_length - 2]
-        input_ids = [tokenizer.cls_token_id] + input_ids + [tokenizer.sep_token_id]
-        attention_mask = [1] * len(input_ids)
+        o = tokenizer(sentence, max_length=max_seq_length, truncation=True, add_special_tokens=True, )
+        input_ids = np.asarray(o['input_ids'], dtype=np.int64)
+        attention_mask = np.asarray(o['attention_mask'], dtype=np.int64)
 
-        input_ids = np.asarray(input_ids, dtype=np.int64)
-        attention_mask = np.asarray(attention_mask, dtype=np.int64)
+        labels = np.asarray(label2id[label_str] if label_str is not None else 0,dtype=np.int64)
         seqlen = np.asarray(len(input_ids), dtype=np.int64)
-
-        labels = np.zeros(shape=(len(label2id),max_seq_length,max_seq_length),dtype=np.int32)
-        real_label = []
-        for label_str, o in label_dict.items():
-            pts = list(o.values())[0]
-            labelid = label2id[label_str]
-            for pt in pts:
-                if pt[1] < max_seq_length:
-                    labels[labelid, pt[0], pt[1]] = 1
-                real_label.append((labelid, pt[0], pt[1]))
-
         pad_len = max_seq_length - len(input_ids)
         if pad_len > 0:
             pad_val = tokenizer.pad_token_id
@@ -61,20 +68,29 @@ class NN_DataHelper(DataHelper):
             'input_ids': input_ids,
             'attention_mask': attention_mask,
             'labels': labels,
-            'seqlen': seqlen,
+            'seqlen': seqlen
         }
-        if mode == 'eval':
-            d['real_label'] = np.asarray(bytes(json.dumps(real_label,ensure_ascii=False),encoding='utf-8'))
         return d
 
     #读取标签
     @staticmethod
-    def read_labels_from_file(label_fname: str):
-        labels = [
-            'address','book','company','game','government','movie','name','organization','position','scene'
-        ]
-        label2id = {label: i for i, label in enumerate(labels)}
-        id2label = {i: label for i, label in enumerate(labels)}
+    def read_labels_from_file(files: str):
+        if files is None:
+            return None, None
+        label_fname = files[0]
+        is_json_file = label_fname.endswith('.json')
+        D = set()
+        with open(label_fname, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            for line in lines:
+                line = line.replace('\r\n', '').replace('\n', '')
+                if not line: continue
+                if is_json_file:
+                    jd = json.loads(line)
+                    line = jd['label']
+                D.add(line)
+        label2id = {label: i for i, label in enumerate(D)}
+        id2label = {i: label for i, label in enumerate(D)}
         return label2id, id2label
 
     # 读取文件
@@ -88,8 +104,8 @@ class NN_DataHelper(DataHelper):
                     jd = json.loads(line)
                     if not jd:
                         continue
-                    D.append((jd['text'], jd.get('label',None)))
-        return D
+                    D.append((jd['sentence'], jd.get('label',None)))
+        return D[0:1000] if mode == 'train' else D[:100]
 
 
     @staticmethod
@@ -112,74 +128,62 @@ class NN_DataHelper(DataHelper):
         o['attention_mask'] = o['attention_mask'][:, :max_len]
         if 'token_type_ids' in o:
             o['token_type_ids'] = o['token_type_ids'][:, :max_len]
-
-        o['labels'] = o['labels'][:,:, :max_len,:max_len]
         return o
 
 
-class MyTransformer(TransformerForPointer):
-    def __init__(self, *args,**kwargs):
-        super(MyTransformer, self).__init__(with_efficient=True,*args,**kwargs)
+class MyTransformer(TransformerModel):
+    def __init__(self,*args,**kwargs):
+        super(MyTransformer, self).__init__(*args,**kwargs)
 
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        labels: torch.Tensor = batch.pop('labels')
-        real_label = batch.pop("real_label")
+        self.feat_head = nn.Linear(config.hidden_size, 512, bias=False)
+        self.loss_fn = CircleLoss(m=0.25, gamma=32)
+
+    def get_model_lr(self):
+        return super(MyTransformer, self).get_model_lr() + [
+            (self.feat_head, self.config.task_specific_params['learning_rate_for_task'])
+        ]
+
+    def compute_loss(self,batch) -> tuple:
+        labels: torch.Tensor = batch.pop('labels',None)
         outputs = self(**batch)
-        val_loss, logits = outputs[:2]
-        f1 = f1_metric(labels,logits)
-        return {"losses": val_loss, "logits": logits.item(),"labels": real_label,'f1':f1}
-
-    def validation_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
-        id2label = self.config.id2label
-        threshold = 1e-7
-        preds,labels = [],[]
-        for o in outputs:
-            logits = o['logits']
-            label = o['labels']
-            for tag in logits:
-                one_result = []
-                for (l, s, e) in zip(*np.where(tag > threshold)):
-                    one_result.append((l, s, e))
-                preds.append(one_result)
-            labels.append(label)
-        m = metric_for_pointer(labels,preds,id2label)
-        print(m)
-
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        # implement your own
-        out = self(x)
-        return out
+        logits = self.feat_head(outputs[0][:, 0, :])
+        logits = torch.tan(logits)
+        if labels is not None:
+            labels = torch.squeeze(labels, dim=1)
+            loss = self.loss_fn(logits,labels)
+            outputs = (loss,logits)
+        else:
+            outputs = (logits,)
+        return outputs
 
 
 
 if __name__== '__main__':
     parser = HfArgumentParser((ModelArguments, TrainingArguments, DataArguments))
-    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        model_args, training_args, data_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
-    else:
-        model_args, training_args, data_args = parser.parse_args_into_dataclasses()
+    model_args, training_args, data_args = parser.parse_dict(train_info_args)
 
     dataHelper = NN_DataHelper(data_args.data_backend)
     tokenizer, config, label2id, id2label = load_tokenizer_and_config_with_args(dataHelper, model_args, training_args,data_args)
     save_fn_args = (tokenizer, data_args.max_seq_length,label2id)
 
+    print(label2id, id2label)
+    print('*' * 30, config.num_labels)
 
     N = 1
     train_files, eval_files, test_files = [], [], []
     for i in range(N):
         intermediate_name = data_args.intermediate_name + '_{}'.format(i)
+        logging.info('make data {}...'.format(intermediate_name))
         train_file, eval_file, test_file = make_all_dataset_with_args(dataHelper, save_fn_args, data_args,
-                                                                      intermediate_name=intermediate_name,num_process_worker=0)
+                                                                      intermediate_name=intermediate_name)
         train_files.append(train_file)
         eval_files.append(eval_file)
         test_files.append(test_file)
 
-
+    print(train_files, eval_files, test_files)
     dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
     
-
     model = MyTransformer(config=config,model_args=model_args,training_args=training_args)
     checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True, every_n_epochs=1)
     trainer = Trainer(

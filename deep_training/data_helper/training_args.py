@@ -122,7 +122,7 @@ class TrainingArguments:
         metadata={"help": "模型任务层训练时的学习率"},
     )
     max_epochs: int = field(
-        default=5e-5,
+        default=-1,
         metadata={"help": "模型训练的轮数"},
     )
     max_steps: int = field(

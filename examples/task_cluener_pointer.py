@@ -4,22 +4,50 @@ import os
 import sys
 import typing
 
-from pytorch_lightning.callbacks import ModelCheckpoint, Checkpoint, LambdaCallback
-from pytorch_lightning.callbacks.callback import Callback
-from pytorch_lightning.utilities.types import EPOCH_OUTPUT
+from pytorch_lightning.callbacks import ModelCheckpoint
 
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
 from deep_training.data_helper import DataHelper
+from typing import Union, List
 import torch
-import pytorch_lightning as pl
 import numpy as np
+from pytorch_lightning.utilities.types import EPOCH_OUTPUT
+from deep_training.model.nlp.layers.seq_pointer import f1_metric
 from pytorch_lightning import Trainer
 from deep_training.data_helper import make_all_dataset_with_args, load_all_dataset_with_args, \
     load_tokenizer_and_config_with_args
-from deep_training.model.nlp.models.crf_model import TransformerForCRF
+
+from deep_training.model.nlp.models.pointer import TransformerForPointer
+from deep_training.model.nlp.metrics.pointer import metric_for_pointer
 from transformers import HfArgumentParser, BertTokenizer
 from deep_training.data_helper import ModelArguments, DataArguments, TrainingArguments
 
+
+train_info_args = {
+    'device': '1',
+    'data_backend': 'memory_raw',
+    'model_type': 'bert',
+    'model_name_or_path': '/data/nlp/pre_models/torch/bert/bert-base-chinese',
+    'tokenizer_name': '/data/nlp/pre_models/torch/bert/bert-base-chinese',
+    'config_name': '/data/nlp/pre_models/torch/bert/bert-base-chinese/config.json',
+    'do_train': True,
+    'do_eval': True,
+    'train_file': '/data/nlp/nlp_train_data/clue/cluener/train.json',
+    'eval_file': '/data/nlp/nlp_train_data/clue/cluener/dev.json',
+    'test_file': '/data/nlp/nlp_train_data/clue/cluener/test.json',
+    'learning_rate': 5e-5,
+    'max_epochs': 3,
+    'train_batch_size': 10,
+    'eval_batch_size': 2,
+    'test_batch_size': 2,
+    'adam_epsilon': 1e-8,
+    'gradient_accumulation_steps': 1,
+    'max_grad_norm': 1.0,
+    'weight_decay': 0,
+    'warmup_steps': 0,
+    'output_dir': './output',
+    'max_seq_length': 160
+}
 
 class NN_DataHelper(DataHelper):
     # 切分词
@@ -39,37 +67,29 @@ class NN_DataHelper(DataHelper):
         attention_mask = np.asarray(attention_mask, dtype=np.int64)
         seqlen = np.asarray(len(input_ids), dtype=np.int64)
 
-        labels = np.zeros(shape=(seqlen,),dtype=np.int64)
-
+        labels = np.zeros(shape=(len(label2id),max_seq_length,max_seq_length),dtype=np.int32)
+        real_label = []
         for label_str, o in label_dict.items():
             pts = list(o.values())[0]
+            labelid = label2id[label_str]
             for pt in pts:
-                if pt[1] > seqlen - 2:
-                    continue
-                pt[0] += 1
-                pt[1] += 1
-                span_len = pt[1] - pt[0] + 1
-                if span_len == 1:
-                    labels[pt[0]] = label2id['S_' + label_str]
-                elif span_len == 2:
-                    labels[pt[0]] = label2id['B_' + label_str]
-                    labels[pt[1]] = label2id['E_' + label_str]
-                    for i in range(span_len - 2):
-                        labels[pt[0] + 1 + i] = label2id['I_' + label_str]
-
+                if pt[1] < max_seq_length:
+                    labels[labelid, pt[0], pt[1]] = 1
+                real_label.append((labelid, pt[0], pt[1]))
 
         pad_len = max_seq_length - len(input_ids)
         if pad_len > 0:
             pad_val = tokenizer.pad_token_id
             input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
             attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-            labels = np.pad(labels, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
         d = {
             'input_ids': input_ids,
             'attention_mask': attention_mask,
             'labels': labels,
             'seqlen': seqlen,
         }
+        if mode == 'eval':
+            d['real_label'] = np.asarray(bytes(json.dumps(real_label,ensure_ascii=False),encoding='utf-8'))
         return d
 
     #读取标签
@@ -78,7 +98,6 @@ class NN_DataHelper(DataHelper):
         labels = [
             'address','book','company','game','government','movie','name','organization','position','scene'
         ]
-        labels = ['O'] + [t + '_' + l  for t in ['B','I','E','S'] for l in labels]
         label2id = {label: i for i, label in enumerate(labels)}
         id2label = {i: label for i, label in enumerate(labels)}
         return label2id, id2label
@@ -119,37 +138,52 @@ class NN_DataHelper(DataHelper):
         if 'token_type_ids' in o:
             o['token_type_ids'] = o['token_type_ids'][:, :max_len]
 
-        o['labels'] = o['labels'][:,:max_len]
+        o['labels'] = o['labels'][:,:, :max_len,:max_len]
         return o
 
-class MyTransformer(TransformerForCRF):
+
+class MyTransformer(TransformerForPointer):
     def __init__(self, *args,**kwargs):
         super(MyTransformer, self).__init__(with_efficient=True,*args,**kwargs)
 
-    def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
-        print('*' * 50)
-        print(outputs)
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
+        labels: torch.Tensor = batch.pop('labels')
+        real_label = batch.pop("real_label")
+        outputs = self(**batch)
+        val_loss, logits = outputs[:2]
+        f1 = f1_metric(labels,logits)
+        return {"losses": val_loss, "logits": logits.item(),"labels": real_label,'f1':f1}
 
+    def validation_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
+        id2label = self.config.id2label
+        threshold = 1e-7
+        preds,labels = [],[]
+        for o in outputs:
+            logits = o['logits']
+            label = o['labels']
+            for tag in logits:
+                one_result = []
+                for (l, s, e) in zip(*np.where(tag > threshold)):
+                    one_result.append((l, s, e))
+                preds.append(one_result)
+            labels.append(label)
+        m = metric_for_pointer(labels,preds,id2label)
+        print(m)
 
-class MyModelCheckpoint(Callback):
-    def __init__(self,model,eval_dm,*args,**kwargs):
-        self.model = model
-        self.eval_dm = eval_dm
-        super(Callback, self).__init__(*args,**kwargs)
-
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        # implement your own
+        out = self(x)
+        return out
 
 
 
 if __name__== '__main__':
     parser = HfArgumentParser((ModelArguments, TrainingArguments, DataArguments))
-    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        model_args, training_args, data_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
-    else:
-        model_args, training_args, data_args = parser.parse_args_into_dataclasses()
+    model_args, training_args, data_args = parser.parse_dict(train_info_args)
 
     dataHelper = NN_DataHelper(data_args.data_backend)
     tokenizer, config, label2id, id2label = load_tokenizer_and_config_with_args(dataHelper, model_args, training_args,data_args)
-
     save_fn_args = (tokenizer, data_args.max_seq_length,label2id)
 
 
@@ -159,26 +193,18 @@ if __name__== '__main__':
         intermediate_name = data_args.intermediate_name + '_{}'.format(i)
         train_file, eval_file, test_file = make_all_dataset_with_args(dataHelper, save_fn_args, data_args,
                                                                       intermediate_name=intermediate_name,num_process_worker=0)
-        train_files.append(train_file[:1000])
-        eval_files.append(eval_file[:100])
+        train_files.append(train_file)
+        eval_files.append(eval_file)
         test_files.append(test_file)
 
-    train_dm,eval_dm,test_dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
+
+    dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
+
+    
+
     model = MyTransformer(config=config,model_args=model_args,training_args=training_args)
-    #checkpoint_callback = MyModelCheckpoint(eval_dm,save_top_k=0,every_n_epochs=1)
-    # checkpoint_callback = MyModelCheckpoint(model,eval_dm)
-
-    #[batch, seq] , [batch, seq]
-    #[batch * num_tags, seq] , [batch* num_tags, seq]
-    def on_train_epoch_end(trainer: "pl.Trainer", pl_module: "pl.LightningModule"):
-        print('!!!!!!!!!!!!!')
-        # pl_module.eval()
-        # result = trainer.validate(model, eval_dm)
-        # print(result)
-
-    checkpoint_callback = LambdaCallback(on_train_epoch_end=on_train_epoch_end)
+    checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True, every_n_epochs=1)
     trainer = Trainer(
-        log_every_n_steps = 10,
         callbacks=[checkpoint_callback],
         check_val_every_n_epoch=1 if data_args.do_eval else None,
         max_epochs=training_args.max_epochs,
@@ -191,13 +217,11 @@ if __name__== '__main__':
         accumulate_grad_batches = training_args.gradient_accumulation_steps
     )
 
-    #【batch,num_label,seq,seq】
-    #[batch,num_label *  seq * 2 ]
-    if data_args.do_train and train_dm:
-        trainer.fit(model, datamodule=train_dm)
+    if data_args.do_train:
+        trainer.fit(model, datamodule=dm)
 
-    if data_args.do_eval and eval_dm:
-        trainer.validate(model, datamodule=eval_dm)
+    if data_args.do_eval:
+        trainer.validate(model, datamodule=dm)
 
-    if data_args.do_test and test_dm:
-        trainer.test(model, datamodule=test_dm)
+    if data_args.do_test:
+        trainer.test(model, datamodule=dm)

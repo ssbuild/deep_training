@@ -2,70 +2,91 @@
 import json
 import os
 import sys
+import typing
 
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
-import typing
-import numpy as np
 from deep_training.data_helper import DataHelper
+import numpy as np
+from typing import Union, List
 import torch
+from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from pytorch_lightning import Trainer
 from deep_training.data_helper import make_all_dataset_with_args, load_all_dataset_with_args, \
     load_tokenizer_and_config_with_args
-from deep_training.model.nlp.models.hphtlinker import TransformerForHphtlinker
+from deep_training.model.nlp.layers.seq_pointer import loss_fn,f1_metric
 from transformers import HfArgumentParser, BertTokenizer
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
+from deep_training.model.nlp.models.gplinker import TransformerForGplinker
+from deep_training.model.nlp.metrics.pointer import metric_for_pointer
 
+train_info_args = {
+    'device': 1,
+    'data_backend': 'memory_raw',
+    'model_type': 'bert',
+    'model_name_or_path':'/data/nlp/pre_models/torch/bert/bert-base-chinese',
+    'tokenizer_name':'/data/nlp/pre_models/torch/bert/bert-base-chinese',
+    'config_name':'/data/nlp/pre_models/torch/bert/bert-base-chinese/config.json',
+    'do_train': True,
+    'train_file':'/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
+    'label_file':'/data/nlp/nlp_train_data/relation/law/relation_label.json',
+    'learning_rate': 5e-5,
+    'max_epochs': 3,
+    'train_batch_size': 10,
+    'eval_batch_size': 2,
+    'test_batch_size': 2,
+    'adam_epsilon': 1e-8,
+    'gradient_accumulation_steps': 1,
+    'max_grad_norm': 1.0,
+    'weight_decay': 0,
+    'warmup_steps': 0,
+    'output_dir': './output',
+    'max_seq_length': 160,
+}
 
 class NN_DataHelper(DataHelper):
+    index = 0
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
 
         tokenizer: BertTokenizer
-        tokenizer,max_seq_length,predicate2id,mode = user_data
-        sentence,entities,re_list = data
+        tokenizer, max_seq_length, predicate2id, mode = user_data
+        sentence, entities, re_list = data
         spo_list = re_list
         tokens = list(sentence)
 
         if len(tokens) > max_seq_length - 2:
             tokens = tokens[0:(max_seq_length - 2)]
-        input_ids = tokenizer.convert_tokens_to_ids(['CLS'] +tokens + ['SEP'] )
+        input_ids = tokenizer.convert_tokens_to_ids(['CLS'] + tokens + ['SEP'])
         seqlen = len(input_ids)
         attention_mask = [1] * seqlen
-
-        input_ids = np.asarray(input_ids, dtype = np.int64)
+        input_ids = np.asarray(input_ids, dtype=np.int64)
         attention_mask = np.asarray(attention_mask, dtype=np.int64)
+        entity_labels = np.zeros(shape=(2,max_seq_length,max_seq_length))
+        head_labels = np.zeros(shape=(len(predicate2id),max_seq_length,max_seq_length))
+        tail_labels = np.zeros(shape=(len(predicate2id),max_seq_length,max_seq_length))
 
-
-        spoes = {}
+        entity_labels_tmp = [set() for _ in range(2)]
+        head_labels_tmp = [set() for _ in range(len(predicate2id))]
+        tail_labels_tmp = [set() for _ in range(len(predicate2id))]
         for s, p, o in spo_list:
             if s[1] < max_seq_length - 2 and o[1] < max_seq_length - 2:
-                s = (s[0], s[1])
-                o = (o[0], o[1], predicate2id[p])
-                if s not in spoes:
-                    spoes[s] = []
-                spoes[s].append(o)
+                entity_labels_tmp[0].add((s[0], s[1]))
+                entity_labels_tmp[1].add((o[0], o[1]))
+                p:int = predicate2id[p]
+                head_labels_tmp[p].add((s[0], s[1]))
+                tail_labels_tmp[p].add((o[0], o[1]))
 
-        subject_labels = np.zeros((max_seq_length, 2),dtype=np.float32)
-        subject_ids = np.zeros((2,),dtype=np.int64)
-        object_labels = np.zeros((max_seq_length, len(predicate2id), 2),dtype=np.float32)
-        if spoes:
-            for s in spoes:
-                subject_labels[s[0], 0] = 1
-                subject_labels[s[1], 1] = 1
-            # 随机选一个subject（这里没有实现错误！这就是想要的效果！！）
-            start, end = np.array(list(spoes.keys())).T
-            start = np.random.choice(start)
-            end = np.random.choice(end[end >= start])
-            #subject_ids = (start, end)
-            subject_ids[0] = start
-            subject_ids[1] = end
+        def feed_label(x,pts_list):
+            for i,pts in enumerate(pts_list):
+                for p in pts:
+                    x[i][p[0]][p[1]] = 1
+        feed_label(entity_labels,list(map(lambda x: list(x), entity_labels_tmp)))
+        feed_label(head_labels, list(map(lambda x: list(x), head_labels_tmp)))
+        feed_label(tail_labels, list(map(lambda x: list(x), tail_labels_tmp)))
 
-            for o in spoes.get((start,end), []):
-                object_labels[o[0], o[2], 0] = 1
-                object_labels[o[1], o[2], 1] = 1
-        pad_len = max_seq_length - seqlen
+        pad_len = max_seq_length - len(input_ids)
         if pad_len > 0:
             pad_val = tokenizer.pad_token_id
             input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
@@ -73,25 +94,25 @@ class NN_DataHelper(DataHelper):
         d = {
             'input_ids': input_ids,
             'attention_mask': attention_mask,
-            'subject_labels': subject_labels,
-            'subject_ids':subject_ids,
-            'object_labels': object_labels,
-            'seqlen': seqlen
+            'entity_labels': entity_labels,
+            'head_labels': head_labels,
+            'tail_labels': tail_labels,
+            'seqlen': seqlen,
         }
         return d
 
-    #读取标签
+    # 读取标签
     @staticmethod
     def read_labels_from_file(files: typing.List):
         labels = []
         label_filename = files[0]
-        with open(label_filename,mode='r',encoding='utf-8') as f:
+        with open(label_filename, mode='r', encoding='utf-8') as f:
             lines = f.readlines()
             for line in lines:
                 jd = json.loads(line)
                 if not jd:
                     continue
-                larr = [jd['subject'],jd['predicate'],jd['object']]
+                larr = [jd['subject'], jd['predicate'], jd['object']]
                 labels.append('+'.join(larr))
         label2id = {label: i for i, label in enumerate(labels)}
         id2label = {i: label for i, label in enumerate(labels)}
@@ -99,7 +120,7 @@ class NN_DataHelper(DataHelper):
 
     # 读取文件
     @staticmethod
-    def read_data_from_file(files: typing.List,mode:str):
+    def read_data_from_file(files: typing.List, mode: str):
         D = []
         for filename in files:
             with open(filename, mode='r', encoding='utf-8') as f:
@@ -112,20 +133,19 @@ class NN_DataHelper(DataHelper):
                     entities = jd.get('entities', None)
                     re_list = jd.get('re_list', None)
 
-
                     if entities:
                         entities_label = []
-                        for k,v in entities.items():
+                        for k, v in entities.items():
                             pts = list(v.values())[0]
                             for pt in pts:
-                                entities_label.append((k,pt[0],pt[1]))
+                                entities_label.append((k, pt[0], pt[1]))
                     else:
                         entities_label = None
 
                     if re_list is not None:
                         re_list_label = []
                         for re_node in re_list:
-                            for l,relation in re_node.items():
+                            for l, relation in re_node.items():
                                 s = relation[0]
                                 o = relation[1]
                                 re_list_label.append((
@@ -133,14 +153,13 @@ class NN_DataHelper(DataHelper):
                                     # l,
                                     # (o['pos'][0], o['pos'][1],o['label'])
                                     (s['pos'][0], s['pos'][1]),
-                                    '+'.join([s['label'],l,o['label']]),
+                                    '+'.join([s['label'], l, o['label']]),
                                     (o['pos'][0], o['pos'][1])
                                 ))
                     else:
                         re_list_label = None
 
-
-                    D.append((jd['text'],entities_label, re_list_label))
+                    D.append((jd['text'], entities_label, re_list_label))
         return D
 
 
@@ -165,26 +184,52 @@ class NN_DataHelper(DataHelper):
         if 'token_type_ids' in o:
             o['token_type_ids'] = o['token_type_ids'][:, :max_len]
 
-        o['subject_labels'] = o['subject_labels'][:, :max_len]
-        # o['subject_ids'] = o['subject_ids']
-        o['object_labels'] = o['object_labels'][:, :max_len]
-
+        o['entity_labels'] = o['entity_labels'][:,:, :max_len,:max_len]
+        o['head_labels'] = o['head_labels'][:, :, :max_len,:max_len]
+        o['tail_labels'] = o['tail_labels'][:, :, :max_len,:max_len]
         return o
 
 
-
-
-class MyTransformer(TransformerForHphtlinker):
+class MyTransformer(TransformerForGplinker):
     def __init__(self, *args,**kwargs):
-        super(MyTransformer, self).__init__(with_efficient=True,*args,**kwargs)
+        super(MyTransformer, self).__init__(*args,**kwargs)
+
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
+        labels: torch.Tensor = batch.pop('labels')
+        real_label = batch.pop("real_label")
+        outputs = self(**batch)
+        val_loss, logits = outputs[:2]
+        f1 = f1_metric(labels,logits)
+        return {"losses": val_loss, "logits": logits.item(),"labels": real_label,'f1':f1}
+
+    def validation_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
+        id2label = self.config.id2label
+        threshold = 1e-7
+        preds = []
+        labels = []
+        for o in outputs:
+            logits = o['logits']
+            label = o['labels']
+            for tag in logits:
+                one_result = []
+                for (l, s, e) in zip(*np.where(tag > threshold)):
+                    one_result.append((l, s, e))
+                preds.append(one_result)
+            labels.append(label)
+        m = metric_for_pointer(labels,preds,id2label)
+        print(m)
+
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        # implement your own
+        out = self(x)
+        return out
+
 
 
 if __name__== '__main__':
     parser = HfArgumentParser((ModelArguments, TrainingArguments, DataArguments))
-    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        model_args, training_args, data_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
-    else:
-        model_args, training_args, data_args = parser.parse_args_into_dataclasses()
+    model_args, training_args, data_args = parser.parse_dict(train_info_args)
 
     dataHelper = NN_DataHelper(data_args.data_backend)
     tokenizer, config, label2id, id2label = load_tokenizer_and_config_with_args(dataHelper, model_args, training_args,data_args)
@@ -203,9 +248,7 @@ if __name__== '__main__':
 
 
     dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
-
-    
-    model = MyTransformer(config=config,model_args=model_args,training_args=training_args)
+    model = MyTransformer(with_efficient=True,config=config,model_args=model_args,training_args=training_args)
     checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],

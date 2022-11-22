@@ -22,6 +22,31 @@ from transformers import HfArgumentParser, BertTokenizer
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments,MlmDataArguments
 from deep_training.utils.wwm import make_mlm_wwm_sample
 
+train_info_args = {
+    'device' '1' 
+    'data_backend': 'leveldb',
+    'model_type': 'bert',
+    'model_name_or_path': '/data/nlp/pre_models/torch/bert/bert-base-chinese',
+    'tokenizer_name': '/data/nlp/pre_models/torch/bert/bert-base-chinese',
+    'config_name': '/data/nlp/pre_models/torch/bert/bert-base-chinese/config.json',
+    'do_train': True,
+    'train_file': '/data/nlp/nlp_train_data/thucnews/train.json',
+    'max_steps': 100000,
+    'train_batch_size': 10,
+    'test_batch_size': 2,
+    'adam_epsilon': 1e-8,
+    'gradient_accumulation_steps': 1,
+    'max_grad_norm': 1.0,
+    'weight_decay': 0,
+    'warmup_steps': 0,
+    'output_dir' : './output',
+    'max_seq_length' : 512,
+    'do_lower_case': False,
+    'do_whole_word_mask': True,
+    'max_predictions_per_seq': 20,
+    'masked_lm_prob': 0.15
+}
+
 
 class NN_DataHelper(DataHelper):
     # 切分词
@@ -67,8 +92,7 @@ class NN_DataHelper(DataHelper):
                     if line_no % 10000 == 0:
                         print('read_line', line_no)
                         print(D[-1])
-        return D
-
+        return D[0:100] if mode == 'train' else D[:10]
 
     @staticmethod
     def collect_fn(batch):
@@ -131,8 +155,9 @@ class MyTransformer(TransformerModel):
             loss_dict = {
                 'mlm_loss': loss1,
                 'simcse_loss': loss2,
-                'train_loss': loss
+                'loss': loss
             }
+            self.log_dict(loss_dict,prog_bar=True)
             outputs = (loss_dict,mlm_logits,simcse_logits)
         else:
             outputs = (mlm_logits,simcse_logits)
@@ -169,10 +194,10 @@ if __name__== '__main__':
     dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files,allow_train_shuffle=False)
 
     model = MyTransformer(config=config,model_args=model_args,training_args=training_args)
-    checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True, every_n_epochs=1)
+    checkpoint_callback = ModelCheckpoint(monitor="loss", save_last=True, every_n_epochs=1)
     trainer = Trainer(
+        log_every_n_steps=20,
         callbacks=[checkpoint_callback],
-        check_val_every_n_epoch=1 if data_args.do_eval else None,
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",

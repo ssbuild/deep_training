@@ -124,8 +124,7 @@ if __name__== '__main__':
     model = MyTransformer(config=config,model_args=model_args,training_args=training_args)
     checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True, every_n_train_steps=1000)
     trainer = Trainer(
-        callbacks=[checkpoint_callback],
-        max_epochs=training_args.max_epochs,
+        callbacks=[checkpoint_callback],max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",
         devices=data_args.devices,  # limiting got iPython runs
