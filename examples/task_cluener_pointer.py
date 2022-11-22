@@ -6,7 +6,7 @@ import typing
 
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
+sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
 from deep_training.data_helper import DataHelper
 from typing import Union, List
 import torch
@@ -24,7 +24,7 @@ from deep_training.data_helper import ModelArguments, DataArguments, TrainingArg
 
 
 train_info_args = {
-    'device': '1',
+    'devices':  '1',
     'data_backend': 'memory_raw',
     'model_type': 'bert',
     'model_name_or_path': '/data/nlp/pre_models/torch/bert/bert-base-chinese',
@@ -49,48 +49,51 @@ train_info_args = {
     'max_seq_length': 160
 }
 
+
+def convert_feature(data,user_data):
+    tokenizer: BertTokenizer
+    tokenizer, max_seq_length, label2id, mode = user_data
+    sentence, label_dict = data
+
+    input_ids = tokenizer.convert_tokens_to_ids(list(sentence))
+    if len(input_ids) > max_seq_length - 2:
+        input_ids = input_ids[:max_seq_length - 2]
+    input_ids = [tokenizer.cls_token_id] + input_ids + [tokenizer.sep_token_id]
+    attention_mask = [1] * len(input_ids)
+
+    input_ids = np.asarray(input_ids, dtype=np.int64)
+    attention_mask = np.asarray(attention_mask, dtype=np.int64)
+    seqlen = np.asarray(len(input_ids), dtype=np.int64)
+
+    labels = np.zeros(shape=(len(label2id), max_seq_length, max_seq_length), dtype=np.int32)
+    real_label = []
+    for label_str, o in label_dict.items():
+        pts = list(o.values())[0]
+        labelid = label2id[label_str]
+        for pt in pts:
+            if pt[1] < max_seq_length:
+                labels[labelid, pt[0], pt[1]] = 1
+            real_label.append((labelid, pt[0], pt[1]))
+
+    pad_len = max_seq_length - len(input_ids)
+    if pad_len > 0:
+        pad_val = tokenizer.pad_token_id
+        input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+        attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+    d = {
+        'input_ids': input_ids,
+        'attention_mask': attention_mask,
+        'labels': labels,
+        'seqlen': seqlen,
+    }
+    # if mode == 'eval':
+    #     d['real_label'] = np.asarray(bytes(json.dumps(real_label, ensure_ascii=False), encoding='utf-8'))
+    return d
+
 class NN_DataHelper(DataHelper):
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
-
-        tokenizer: BertTokenizer
-        tokenizer,max_seq_length,label2id,mode = user_data
-        sentence,label_dict = data
-
-        input_ids = tokenizer.convert_tokens_to_ids(list(sentence))
-        if len(input_ids) > max_seq_length - 2:
-            input_ids = input_ids[:max_seq_length - 2]
-        input_ids = [tokenizer.cls_token_id] + input_ids + [tokenizer.sep_token_id]
-        attention_mask = [1] * len(input_ids)
-
-        input_ids = np.asarray(input_ids, dtype=np.int64)
-        attention_mask = np.asarray(attention_mask, dtype=np.int64)
-        seqlen = np.asarray(len(input_ids), dtype=np.int64)
-
-        labels = np.zeros(shape=(len(label2id),max_seq_length,max_seq_length),dtype=np.int32)
-        real_label = []
-        for label_str, o in label_dict.items():
-            pts = list(o.values())[0]
-            labelid = label2id[label_str]
-            for pt in pts:
-                if pt[1] < max_seq_length:
-                    labels[labelid, pt[0], pt[1]] = 1
-                real_label.append((labelid, pt[0], pt[1]))
-
-        pad_len = max_seq_length - len(input_ids)
-        if pad_len > 0:
-            pad_val = tokenizer.pad_token_id
-            input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-            attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-        d = {
-            'input_ids': input_ids,
-            'attention_mask': attention_mask,
-            'labels': labels,
-            'seqlen': seqlen,
-        }
-        if mode == 'eval':
-            d['real_label'] = np.asarray(bytes(json.dumps(real_label,ensure_ascii=False),encoding='utf-8'))
-        return d
+        return convert_feature(data,user_data)
 
     #读取标签
     @staticmethod
@@ -146,28 +149,24 @@ class MyTransformer(TransformerForPointer):
     def __init__(self, *args,**kwargs):
         super(MyTransformer, self).__init__(with_efficient=True,*args,**kwargs)
 
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        labels: torch.Tensor = batch.pop('labels')
-        real_label = batch.pop("real_label")
-        outputs = self(**batch)
-        val_loss, logits = outputs[:2]
-        f1 = f1_metric(labels,logits)
-        return {"losses": val_loss, "logits": logits.item(),"labels": real_label,'f1':f1}
-
     def validation_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
         id2label = self.config.id2label
         threshold = 1e-7
-        preds,labels = [],[]
+        preds,trues = [],[]
         for o in outputs:
-            logits = o['logits']
-            label = o['labels']
+            logits,label = o['outputs']
             for tag in logits:
                 one_result = []
                 for (l, s, e) in zip(*np.where(tag > threshold)):
                     one_result.append((l, s, e))
                 preds.append(one_result)
-            labels.append(label)
-        m = metric_for_pointer(labels,preds,id2label)
+
+            for tag in label:
+                one_result = []
+                for (l, s, e) in zip(*np.where(tag > threshold)):
+                    one_result.append((l, s, e))
+                trues.append(one_result)
+        m = metric_for_pointer(trues,preds,id2label)
         print(m)
 
     def test_step(self, batch, batch_idx):
@@ -206,7 +205,6 @@ if __name__== '__main__':
     checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
-        check_val_every_n_epoch=1 if data_args.do_eval else None,
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",

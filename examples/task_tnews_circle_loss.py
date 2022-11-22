@@ -6,7 +6,7 @@ import typing
 
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
+sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
 import numpy as np
 from torch import nn
 from deep_training.data_helper import DataHelper
@@ -21,7 +21,7 @@ from deep_training.model.nlp.losses.circle_loss import CircleLoss
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
 
 train_info_args = {
-    'device': '1',
+    'devices':  '1',
     'data_backend': 'leveldb',
     'model_type': 'bert',
     'model_name_or_path': '/data/nlp/pre_models/torch/bert/bert-base-chinese',

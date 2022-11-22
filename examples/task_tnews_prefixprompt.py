@@ -9,7 +9,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from sklearn.metrics import f1_score, classification_report
 
-sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
+sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
 import numpy as np
 from deep_training.data_helper import DataHelper
 from deep_training.data_helper import ModelArguments, TrainingArguments, PrefixModelArguments, \
@@ -23,7 +23,7 @@ from transformers import HfArgumentParser, BertTokenizer
 from deep_training.model.nlp.models.prefixtuning import PrefixTransformerForSequenceClassification
 
 train_info_args = {
-    'device': '1',
+    'devices':  '1',
     'data_backend': 'leveldb',
     'model_type': 'bert',
     'model_name_or_path': '/data/nlp/pre_models/torch/bert/bert-base-chinese',

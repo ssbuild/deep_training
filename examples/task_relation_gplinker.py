@@ -6,7 +6,7 @@ import typing
 
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
+sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
 from deep_training.data_helper import DataHelper
 import numpy as np
 from typing import Union, List
@@ -160,7 +160,7 @@ class NN_DataHelper(DataHelper):
                         re_list_label = None
 
                     D.append((jd['text'], entities_label, re_list_label))
-        return D
+        return D[0:1000]
 
 
     @staticmethod
@@ -194,13 +194,20 @@ class MyTransformer(TransformerForGplinker):
     def __init__(self, *args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
 
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        labels: torch.Tensor = batch.pop('labels')
-        real_label = batch.pop("real_label")
+    def compute_loss(self,batch) -> tuple:
+        labels: torch.Tensor = batch.pop('labels',None)
+
         outputs = self(**batch)
-        val_loss, logits = outputs[:2]
-        f1 = f1_metric(labels,logits)
-        return {"losses": val_loss, "logits": logits.item(),"labels": real_label,'f1':f1}
+        if labels is not None:
+            loss, logits = outputs[:2]
+            f1 = f1_metric(labels, logits)
+            loss_dict = {'loss': loss,'f1': f1}
+            outputs = (loss_dict,logits,batch.pop("real_label"))
+        else:
+            outputs = (outputs[0],)
+        return outputs
+
+
 
     def validation_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
         id2label = self.config.id2label
@@ -252,7 +259,6 @@ if __name__== '__main__':
     checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
-        check_val_every_n_epoch=1 if data_args.do_eval else None,
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",

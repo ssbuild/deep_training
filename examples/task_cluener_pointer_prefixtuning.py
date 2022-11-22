@@ -6,7 +6,7 @@ import typing
 
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
+sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
 from deep_training.data_helper import DataHelper
 import torch
 import numpy as np

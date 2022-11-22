@@ -6,7 +6,7 @@ import sys
 
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
+sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
 import typing
 import numpy as np
 import torch

@@ -20,13 +20,15 @@ class TransformerForPointer(TransformerModel):
         ]
 
     def compute_loss(self,batch) -> tuple:
+        labels: torch.Tensor = batch.pop('labels', None)
         outputs = self(**batch)
         logits = self.pointer_layer(outputs[0], batch['attention_mask'])
-        if 'labels' in batch:
-            labels: torch.Tensor = batch.pop('labels')
+        if labels is not None:
             loss = loss_fn(labels, logits)
             f1 = f1_metric(labels, logits)
             loss_dict = {'train_loss': loss, 'f1': f1}
-            outputs = (loss_dict,logits)
+            outputs = (loss_dict,logits,labels)
+        else:
+            outputs = (logits,)
         return outputs
 

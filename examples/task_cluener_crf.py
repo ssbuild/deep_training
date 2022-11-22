@@ -3,7 +3,7 @@ import json
 import os
 import sys
 import typing
-sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
+sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from seqmetric.metrics import f1_score, classification_report

@@ -6,7 +6,7 @@ import sys
 
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
+sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
 import typing
 import numpy as np
 import torch
@@ -22,7 +22,7 @@ from deep_training.utils.func import seq_pading
 
 
 train_info_args = {
-    'device': '1',
+    'devices':  '1',
     'data_backend': 'leveldb',
     'model_type': 'bert',
     'model_name_or_path':'/data/nlp/pre_models/torch/bert/bert-base-chinese',

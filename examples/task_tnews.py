@@ -3,7 +3,7 @@ import json
 import os
 import sys
 import typing
-sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'../..'))
+sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
 from sklearn.metrics import f1_score, classification_report
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
@@ -22,7 +22,7 @@ from deep_training.data_helper import ModelArguments, TrainingArguments, DataArg
 
 
 train_info_args = {
-    'device': '1',
+    'devices':  '1',
     'data_backend': 'leveldb',
     'model_type': 'bert',
     'model_name_or_path': '/data/nlp/pre_models/torch/bert/bert-base-chinese',
@@ -140,11 +140,11 @@ class MyTransformer(TransformerForSequenceClassification):
 
     def compute_loss(self,batch) -> tuple:
         outputs = self(**batch)
-        labels = batch.get('batch',None)
+        labels = batch.get('labels',None)
         if labels is not None:
             loss, logits = outputs[0:2]
-            acc = torch.sum(torch.eq(labels.view(-1), torch.argmax(logits, dim=1, keepdim=False))) / \
-                  labels.view(-1).size()[0]
+            acc = torch.sum(torch.eq(labels.view(-1),
+                                     torch.argmax(logits, dim=1, keepdim=False))) / labels.view(-1).size()[0]
             loss_dict = {
                 'loss': loss,
                 'acc': acc
@@ -152,6 +152,7 @@ class MyTransformer(TransformerForSequenceClassification):
             outputs = (loss_dict, logits, labels)
         else:
             outputs = (outputs[0],)
+
         return outputs
 
     def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:

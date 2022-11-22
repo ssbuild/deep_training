@@ -4,7 +4,6 @@
 
 import argparse
 from typing import Any
-
 import torch
 from pytorch_lightning import LightningModule
 from torch import nn
@@ -84,6 +83,7 @@ class TransformerBase(LightningModule):
         loss = outputs[0]
         o = {}
         if isinstance(loss, dict):
+            o = loss
             if 'loss' in o:
                 o['val_loss'] = o.pop('loss')
         else:
