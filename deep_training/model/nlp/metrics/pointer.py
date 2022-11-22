@@ -38,8 +38,4 @@ def metric_for_pointer(trues_all,preds_all,id2label):
             v.append(one_preds[k])
 
         str_report, f1 = pt_class_report(y_trues, y_preds, average='micro')
-        results = {
-            "f1": f1,
-            'report': str_report
-        }
-        return results
+        return f1,str_report

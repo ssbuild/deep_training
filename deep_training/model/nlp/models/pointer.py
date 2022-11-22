@@ -26,7 +26,7 @@ class TransformerForPointer(TransformerModel):
         if labels is not None:
             loss = loss_fn(labels, logits)
             f1 = f1_metric(labels, logits)
-            loss_dict = {'train_loss': loss, 'f1': f1}
+            loss_dict = {'loss': loss, 'f1': f1}
             outputs = (loss_dict,logits,labels)
         else:
             outputs = (logits,)

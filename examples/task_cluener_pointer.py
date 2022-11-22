@@ -155,19 +155,27 @@ class MyTransformer(TransformerForPointer):
         preds,trues = [],[]
         for o in outputs:
             logits,label = o['outputs']
-            for tag in logits:
+            assert len(logits) == len(label)
+
+            print(type(logits),type(label))
+            print(logits.shape)
+            print(label.shape)
+            for p,t in zip(logits,label):
                 one_result = []
-                for (l, s, e) in zip(*np.where(tag > threshold)):
+                for (l, s, e) in zip(*np.where(p > threshold)):
                     one_result.append((l, s, e))
                 preds.append(one_result)
 
-            for tag in label:
                 one_result = []
-                for (l, s, e) in zip(*np.where(tag > threshold)):
+                for (l, s, e) in zip(*np.where(t > threshold)):
                     one_result.append((l, s, e))
                 trues.append(one_result)
-        m = metric_for_pointer(trues,preds,id2label)
-        print(m)
+
+
+        f1,str_report = metric_for_pointer(trues,preds,id2label)
+        print(f1)
+        print(str_report)
+        self.log('val_f1',f1,prog_bar=True)
 
     def test_step(self, batch, batch_idx):
         x, y = batch
@@ -199,10 +207,8 @@ if __name__== '__main__':
 
     dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
-    
-
     model = MyTransformer(config=config,model_args=model_args,training_args=training_args)
-    checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True, every_n_epochs=1)
+    checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
         max_epochs=training_args.max_epochs,

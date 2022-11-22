@@ -105,7 +105,7 @@ class MyTransformer(TransformerForMaskLM):
         loss = torch.sum(loss, dtype=torch.float) / (torch.sum(weight, dtype=torch.float) + 1e-8)
         return loss
 
-    def compute_loss(self,batch, batch_idx) -> tuple:
+    def compute_loss(self,batch) -> tuple:
         labels,weight = None,None
         if 'labels' in batch:
             weight = batch.pop('weight')
