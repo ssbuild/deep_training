@@ -7,13 +7,14 @@ import torch
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 
 from .transformer import TransformerModel
-from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer,loss_fn,f1_metric
+from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer,loss_for_pointer,f1_metric_for_pointer
+from ..metrics.pointer import metric_for_pointer
 
 __all__ = [
     'TransformerForPointer'
 ]
 
-from ..metrics.pointer import metric_for_pointer
+
 
 
 class TransformerForPointer(TransformerModel):
@@ -32,8 +33,8 @@ class TransformerForPointer(TransformerModel):
         outputs = self(**batch)
         logits = self.pointer_layer(outputs[0], batch['attention_mask'])
         if labels is not None:
-            loss = loss_fn(labels, logits)
-            f1 = f1_metric(labels, logits)
+            loss = loss_for_pointer(labels, logits)
+            f1 = f1_metric_for_pointer(labels, logits)
             loss_dict = {'loss': loss, 'f1': f1}
             outputs = (loss_dict,logits,labels)
         else:

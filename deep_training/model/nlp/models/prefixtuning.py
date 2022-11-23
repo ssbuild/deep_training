@@ -13,7 +13,7 @@ from torch.nn import MSELoss, CrossEntropyLoss, BCEWithLogitsLoss
 from deep_training.data_helper import PrefixModelArguments
 from .transformer import TransformerModel
 from ..layers.prefix_encoder import PrefixEncoder
-from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer, loss_fn, f1_metric
+from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer, loss_for_pointer, f1_metric_for_pointer
 from ..layers.crf import CRF
 
 __all__ = [
@@ -251,8 +251,8 @@ class PrefixTransformerPointer(PrefixTransformerForModel):
         outputs = self(**batch)
         logits = self.pointer_layer(outputs[0], batch['attention_mask'])
         if labels is not None:
-            loss = loss_fn(labels, logits)
-            f1 = f1_metric(labels, logits)
+            loss = loss_for_pointer(labels, logits)
+            f1 = f1_metric_for_pointer(labels, logits)
             loss_dict = {'loss': loss, 'f1': f1}
             outputs = (loss_dict, logits, labels)
         else:

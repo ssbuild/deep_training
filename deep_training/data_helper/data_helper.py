@@ -37,8 +37,11 @@ def make_dataset(data: typing.List,
 
 
 class DataHelper:
-    def __init__(self,backend: typing.Union[E_file_backend, str]):
+    def __init__(self,
+                 backend: typing.Union[E_file_backend, str],
+                 data_process_fn=None):
         self.backend = backend
+        self.data_process_fn = self.on_data_process if data_process_fn is None else data_process_fn
 
     def load_numpy_dataset(self,files: typing.Union[typing.List[str], str],
            options: typing.Union[
@@ -110,7 +113,7 @@ class DataHelper:
     #自定义函数
     def make_dataset_custom(self,data: typing.List,
                  input_fn: typing.Callable[
-                     [int, typing.Any, tuple], typing.Union[typing.Dict, typing.List, typing.Tuple]],
+                     [typing.Any, tuple], typing.Union[typing.Dict, typing.List, typing.Tuple]],
                  input_fn_args: typing.Tuple,
                  outfile: str,
                  overwrite=False,
@@ -132,7 +135,7 @@ class DataHelper:
                      mode=None):
         if not os.path.exists(outfile) or overwrite:
             data = self.read_data_from_file(input_files,mode)
-            fw = DataWriteHelper(self.on_data_process, input_fn_args,
+            fw = DataWriteHelper(self.data_process_fn, input_fn_args,
                                  outfile, self.backend, num_process_worker=num_process_worker,
                                  shuffle=shuffle)
             outfile = fw.save(data)

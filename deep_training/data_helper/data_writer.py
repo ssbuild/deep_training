@@ -12,7 +12,7 @@ __all__ = [
 class DataWriteHelper:
     def __init__(self,
                  input_fn: typing.Callable[
-                     [int, typing.Any, tuple], typing.Union[typing.Dict, typing.List, typing.Tuple]],
+                     [typing.Any, tuple], typing.Union[typing.Dict, typing.List, typing.Tuple]],
                  input_fn_args:typing.Tuple,
                  outfile:str,
                  backend='record',
