@@ -7,8 +7,6 @@ sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
 from sklearn.metrics import f1_score, classification_report
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
-
-
 import numpy as np
 from deep_training.data_helper import DataHelper
 import torch

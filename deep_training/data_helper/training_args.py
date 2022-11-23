@@ -82,7 +82,7 @@ class ModelArguments:
 
 
 @dataclass
-class PrefixModelArguments(ModelArguments):
+class PrefixModelArguments:
     # prompt参数
     prompt_type: int = field(
         default=0,

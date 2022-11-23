@@ -3,10 +3,8 @@ import json
 import logging
 import os
 import sys
-
-from pytorch_lightning.callbacks import ModelCheckpoint
-
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
+from pytorch_lightning.callbacks import ModelCheckpoint
 import typing
 import numpy as np
 import torch

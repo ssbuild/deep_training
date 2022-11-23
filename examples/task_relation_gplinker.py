@@ -3,26 +3,21 @@ import json
 import os
 import sys
 import typing
-
-from pytorch_lightning.callbacks import ModelCheckpoint
-
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
+from pytorch_lightning.callbacks import ModelCheckpoint
 from deep_training.data_helper import DataHelper
 import numpy as np
-from typing import Union, List
 import torch
-from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from pytorch_lightning import Trainer
 from deep_training.data_helper import make_all_dataset_with_args, load_all_dataset_with_args, \
     load_tokenizer_and_config_with_args
-from deep_training.model.nlp.layers.seq_pointer import loss_fn,f1_metric
+from deep_training.model.nlp.layers.seq_pointer import f1_metric
 from transformers import HfArgumentParser, BertTokenizer
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
 from deep_training.model.nlp.models.gplinker import TransformerForGplinker
-from deep_training.model.nlp.metrics.pointer import metric_for_pointer
 
 train_info_args = {
-    'device': 1,
+    'devices': 1,
     'data_backend': 'memory_raw',
     'model_type': 'bert',
     'model_name_or_path':'/data/nlp/pre_models/torch/bert/bert-base-chinese',
@@ -209,22 +204,7 @@ class MyTransformer(TransformerForGplinker):
 
 
 
-    def validation_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
-        id2label = self.config.id2label
-        threshold = 1e-7
-        preds = []
-        labels = []
-        for o in outputs:
-            logits = o['logits']
-            label = o['labels']
-            for tag in logits:
-                one_result = []
-                for (l, s, e) in zip(*np.where(tag > threshold)):
-                    one_result.append((l, s, e))
-                preds.append(one_result)
-            labels.append(label)
-        m = metric_for_pointer(labels,preds,id2label)
-        print(m)
+
 
     def test_step(self, batch, batch_idx):
         x, y = batch

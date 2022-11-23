@@ -95,10 +95,10 @@ class PrefixTransformerForModel(TransformerModel):
         past_key_values = past_key_values.permute([2, 0, 3, 1, 4]).split(2)
         return past_key_values
 
-    def forward(self, batch):
-        return self._get_transformer_outputs(batch)
+    def forward(self, **batch):
+        return self._get_transformer_outputs(**batch)
 
-    def get_transformer_outputs_0(self,batch):
+    def get_transformer_outputs_0(self,**batch):
         input_ids = batch['input_ids']
         attention_mask = batch['attention_mask']
         batch_size = input_ids.shape[0]
@@ -129,7 +129,7 @@ class PrefixTransformerForModel(TransformerModel):
         return (sequence_output,first_token_tensor)
 
 
-    def get_transformer_outputs_1(self,batch):
+    def get_transformer_outputs_1(self,**batch):
         input_ids = batch['input_ids']
         attention_mask = batch.pop('attention_mask')
         batch_size = input_ids.shape[0]
@@ -297,20 +297,18 @@ class PrefixTransformerForCRF(PrefixTransformerForModel):
             (self.crf, self.config.task_specific_params['learning_rate_for_task']),
         ]
 
-
-    def compute_loss(self,batch) -> tuple:
-        labels = batch.pop('labels',None)
+    def compute_loss(self, batch):
+        labels: torch.Tensor = batch.pop('labels', None)
         attention_mask = batch['attention_mask']
-        outputs = self.get_transformer_outputs(batch)
+        outputs = self(**batch)
         logits = outputs[0]
         logits = self.classifier(logits)
+        tags = self.crf.decode(logits, attention_mask)
         if labels is not None:
             labels = torch.where(labels >= 0, labels, torch.zeros_like(labels))
             loss = self.crf(emissions=logits, tags=labels, mask=attention_mask)
-            tags = self.crf.decode(logits, attention_mask)
-            outputs = (loss,tags,labels)
+            outputs = (loss, tags, labels)
         else:
-            tags = self.crf.decode(logits, attention_mask)
             outputs = (tags,)
         return outputs
 

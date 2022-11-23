@@ -11,7 +11,6 @@ from seqmetric.scheme import IOBES
 
 from deep_training.data_helper import DataHelper
 import torch
-import pytorch_lightning as pl
 import numpy as np
 from pytorch_lightning import Trainer
 from deep_training.data_helper import make_all_dataset_with_args, load_all_dataset_with_args, \
@@ -22,7 +21,7 @@ from deep_training.data_helper import ModelArguments, DataArguments, TrainingArg
 
 
 train_info_args = {
-    'device': 1,
+    'devices': 1,
     'data_backend':'memory_raw',
     'model_type':'bert',
     'model_name_or_path':'/data/nlp/pre_models/torch/bert/bert-base-chinese',
@@ -49,54 +48,56 @@ train_info_args = {
 }
 
 
+def convert_feature(data: typing.Any, user_data: tuple):
+    tokenizer: BertTokenizer
+    tokenizer, max_seq_length, label2id, mode = user_data
+    sentence, label_dict = data
+
+    input_ids = tokenizer.convert_tokens_to_ids(list(sentence))
+    if len(input_ids) > max_seq_length - 2:
+        input_ids = input_ids[:max_seq_length - 2]
+    input_ids = [tokenizer.cls_token_id] + input_ids + [tokenizer.sep_token_id]
+    attention_mask = [1] * len(input_ids)
+
+    input_ids = np.asarray(input_ids, dtype=np.int64)
+    attention_mask = np.asarray(attention_mask, dtype=np.int64)
+    seqlen = np.asarray(len(input_ids), dtype=np.int64)
+
+    labels = np.zeros(shape=(seqlen,), dtype=np.int64)
+    for label_str, o in label_dict.items():
+        pts = list(o.values())[0]
+        for pt in pts:
+            if pt[1] > seqlen - 2:
+                continue
+            pt[0] += 1
+            pt[1] += 1
+            span_len = pt[1] - pt[0] + 1
+            if span_len == 1:
+                labels[pt[0]] = label2id['S-' + label_str]
+            elif span_len == 2:
+                labels[pt[0]] = label2id['B-' + label_str]
+                labels[pt[1]] = label2id['E-' + label_str]
+                for i in range(span_len - 2):
+                    labels[pt[0] + 1 + i] = label2id['I-' + label_str]
+
+    pad_len = max_seq_length - len(input_ids)
+    if pad_len > 0:
+        pad_val = tokenizer.pad_token_id
+        input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+        attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+        labels = np.pad(labels, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+    d = {
+        'input_ids': input_ids,
+        'attention_mask': attention_mask,
+        'labels': labels,
+        'seqlen': seqlen,
+    }
+    return d
+
 class NN_DataHelper(DataHelper):
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
-
-        tokenizer: BertTokenizer
-        tokenizer,max_seq_length,label2id,mode = user_data
-        sentence,label_dict = data
-
-        input_ids = tokenizer.convert_tokens_to_ids(list(sentence))
-        if len(input_ids) > max_seq_length - 2:
-            input_ids = input_ids[:max_seq_length - 2]
-        input_ids = [tokenizer.cls_token_id] + input_ids + [tokenizer.sep_token_id]
-        attention_mask = [1] * len(input_ids)
-
-        input_ids = np.asarray(input_ids, dtype=np.int64)
-        attention_mask = np.asarray(attention_mask, dtype=np.int64)
-        seqlen = np.asarray(len(input_ids), dtype=np.int64)
-
-        labels = np.zeros(shape=(seqlen,),dtype=np.int64)
-        for label_str, o in label_dict.items():
-            pts = list(o.values())[0]
-            for pt in pts:
-                if pt[1] > seqlen - 2:
-                    continue
-                pt[0] += 1
-                pt[1] += 1
-                span_len = pt[1] - pt[0] + 1
-                if span_len == 1:
-                    labels[pt[0]] = label2id['S-' + label_str]
-                elif span_len == 2:
-                    labels[pt[0]] = label2id['B-' + label_str]
-                    labels[pt[1]] = label2id['E-' + label_str]
-                    for i in range(span_len - 2):
-                        labels[pt[0] + 1 + i] = label2id['I-' + label_str]
-
-        pad_len = max_seq_length - len(input_ids)
-        if pad_len > 0:
-            pad_val = tokenizer.pad_token_id
-            input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-            attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-            labels = np.pad(labels, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-        d = {
-            'input_ids': input_ids,
-            'attention_mask': attention_mask,
-            'labels': labels,
-            'seqlen': seqlen,
-        }
-        return d
+        convert_feature(data,user_data)
 
     #读取标签
     @staticmethod
