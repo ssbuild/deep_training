@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import typing
+
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)), '..'))
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -29,7 +30,7 @@ train_info_args = {
     'eval_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
     'label_file': '/data/nlp/nlp_train_data/relation/law/relation_label.json',
     'learning_rate': 5e-5,
-    'learning_rate_for_task':1e-4,
+    'learning_rate_for_task': 1e-4,
     'max_epochs': 5,
     'train_batch_size': 10,
     'eval_batch_size': 2,
@@ -58,9 +59,9 @@ def convert_feature(data: typing.Any, user_data: tuple):
     attention_mask = [1] * seqlen
     input_ids = np.asarray(input_ids, dtype=np.int32)
     attention_mask = np.asarray(attention_mask, dtype=np.int32)
-    entity_labels = np.zeros(shape=(2, max_seq_length, max_seq_length), dtype=np.int32)
-    head_labels = np.zeros(shape=(len(predicate2id), max_seq_length, max_seq_length), dtype=np.int32)
-    tail_labels = np.zeros(shape=(len(predicate2id), max_seq_length, max_seq_length), dtype=np.int32)
+    entity_labels = np.zeros(shape=(2, max_seq_length, 2), dtype=np.int32)
+    head_labels = np.zeros(shape=(len(predicate2id), max_seq_length, 2), dtype=np.int32)
+    tail_labels = np.zeros(shape=(len(predicate2id), max_seq_length, 2), dtype=np.int32)
 
     entity_labels_tmp = [set() for _ in range(2)]
     head_labels_tmp = [set() for _ in range(len(predicate2id))]
@@ -75,14 +76,13 @@ def convert_feature(data: typing.Any, user_data: tuple):
 
     def feed_label(x, pts_list):
         for i, pts in enumerate(pts_list):
-            for p in pts:
-                x[i][p[0]][p[1]] = 1
-
+            for j, p in enumerate(pts):
+                x[i][0] = p[0]
+                x[i][1] = p[1]
 
     feed_label(entity_labels, list(map(lambda x: list(x), entity_labels_tmp)))
     feed_label(head_labels, list(map(lambda x: list(x), head_labels_tmp)))
     feed_label(tail_labels, list(map(lambda x: list(x), tail_labels_tmp)))
-
 
     pad_len = max_seq_length - len(input_ids)
     if pad_len > 0:
@@ -102,6 +102,7 @@ def convert_feature(data: typing.Any, user_data: tuple):
 
 class NN_DataHelper(DataHelper):
     index = 0
+
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
         return convert_feature(data, user_data)
@@ -188,9 +189,9 @@ class NN_DataHelper(DataHelper):
         if 'token_type_ids' in o:
             o['token_type_ids'] = o['token_type_ids'][:, :max_len]
 
-        o['entity_labels'] = o['entity_labels'][:, :, :max_len, :max_len]
-        o['head_labels'] = o['head_labels'][:, :, :max_len, :max_len]
-        o['tail_labels'] = o['tail_labels'][:, :, :max_len, :max_len]
+        o['entity_labels'] = o['entity_labels'][:, :, :max_len]
+        o['head_labels'] = o['head_labels'][:, :, :max_len]
+        o['tail_labels'] = o['tail_labels'][:, :, :max_len]
         return o
 
 
@@ -201,19 +202,19 @@ class MyTransformer(TransformerForGplinker):
 
     def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
         self.index += 1
-        if  self.index <= 2:
+        if self.index <= 2:
             self.log('val_f1', 0.0)
             return
 
         print('*' * 30)
         threshold = 0
 
-        y_preds,y_trues = [],[]
+        y_preds, y_trues = [], []
         for o in outputs:
             logits1, logits2, logits3, entity_labels, head_labels, tail_labels = o['outputs']
 
             print('*' * 10)
-            print(logits1.shape,logits2.shape, logits3.shape)
+            print(logits1.shape, logits2.shape, logits3.shape)
             print(entity_labels.shape, head_labels.shape, tail_labels.shape)
 
             for p1, p2, p3, l1, l2, l3 in zip(logits1, logits2, logits3, entity_labels, head_labels, tail_labels):
@@ -227,7 +228,7 @@ class MyTransformer(TransformerForGplinker):
         # print(f1)
         # print(str_report)
         # self.log('val_f1', f1, prog_bar=True)
-        self.log('val_f1',0)
+        self.log('val_f1', 0)
 
 
 if __name__ == '__main__':
