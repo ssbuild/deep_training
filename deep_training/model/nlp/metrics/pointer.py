@@ -19,10 +19,8 @@ def metric_for_pointer(trues_all,preds_all,id2label):
         one_preds = {
             label: [] for i, label in id2label.items()
         }
-
         pred = preds_all[idx]
         true = trues_all[idx]
-
         for l, s, e in true:
             str_label = id2label[l]
             one_trues[str_label].append((l, s, e))
@@ -31,11 +29,10 @@ def metric_for_pointer(trues_all,preds_all,id2label):
             str_label = id2label[l]
             one_preds[str_label].append((l, s, e))
 
-
         for k, v in y_trues.items():
             v.append(one_trues[k])
         for k, v in y_preds.items():
             v.append(one_preds[k])
 
-    str_report, f1 = pt_class_report(y_trues, y_preds, average='micro')
+    str_report, f1 = pt_class_report(y_trues, y_preds, average='macro')
     return f1,str_report

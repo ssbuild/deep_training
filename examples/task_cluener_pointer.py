@@ -29,8 +29,8 @@ train_info_args = {
     'eval_file': '/data/nlp/nlp_train_data/clue/cluener/dev.json',
     'test_file': '/data/nlp/nlp_train_data/clue/cluener/test.json',
     'learning_rate': 5e-5,
-    'max_epochs': 3,
-    'train_batch_size': 36,
+    'max_epochs': 15,
+    'train_batch_size': 64,
     'eval_batch_size': 2,
     'test_batch_size': 2,
     'adam_epsilon': 1e-8,
@@ -54,10 +54,9 @@ def convert_feature(data, user_data):
     input_ids = [tokenizer.cls_token_id] + input_ids + [tokenizer.sep_token_id]
     attention_mask = [1] * len(input_ids)
 
-    input_ids = np.asarray(input_ids, dtype=np.int64)
-    attention_mask = np.asarray(attention_mask, dtype=np.int64)
-    seqlen = np.asarray(len(input_ids), dtype=np.int64)
-
+    input_ids = np.asarray(input_ids, dtype=np.int32)
+    attention_mask = np.asarray(attention_mask, dtype=np.int32)
+    seqlen = np.asarray(len(input_ids), dtype=np.int32)
     labels = np.zeros(shape=(len(label2id), max_seq_length, max_seq_length), dtype=np.int32)
     real_label = []
     for label_str, o in label_dict.items():
@@ -140,13 +139,8 @@ class NN_DataHelper(DataHelper):
 
 class MyTransformer(TransformerForPointer):
     def __init__(self, *args, **kwargs):
-        super(MyTransformer, self).__init__(with_efficient=True, *args, **kwargs)
+        super(MyTransformer, self).__init__(*args, **kwargs)
 
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        # implement your own
-        out = self(x)
-        return out
 
 
 if __name__ == '__main__':
@@ -171,7 +165,7 @@ if __name__ == '__main__':
 
     dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
-    model = MyTransformer(config=config, model_args=model_args, training_args=training_args)
+    model = MyTransformer(with_efficient=True,config=config, model_args=model_args, training_args=training_args)
     checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],

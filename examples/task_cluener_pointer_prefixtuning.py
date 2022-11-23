@@ -31,9 +31,9 @@ train_info_args = {
     'train_file':  '/data/nlp/nlp_train_data/clue/cluener/train.json',
     'eval_file':  '/data/nlp/nlp_train_data/clue/cluener/dev.json',
     'test_file':  '/data/nlp/nlp_train_data/clue/cluener/test.json',
-    'learning_rate':  5e-5,
-    'max_epochs':  3,
-    'train_batch_size':  100,
+    'learning_rate':  1e-3,
+    'max_epochs':  80,
+    'train_batch_size':  140,
     'eval_batch_size':  2,
     'test_batch_size':  2,
     'adam_epsilon':  1e-8,
@@ -167,10 +167,9 @@ if __name__== '__main__':
     dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
     model = MyTransformer(with_efficient=True,prompt_args=prompt_args,config=config,model_args=model_args,training_args=training_args)
-    checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True, every_n_epochs=1)
+    checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
-        check_val_every_n_epoch=1 if data_args.do_eval else None,
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",

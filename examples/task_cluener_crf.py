@@ -34,15 +34,15 @@ train_info_args = {
     'test_file':'/data/nlp/nlp_train_data/clue/cluener/test.json',
     'learning_rate':5e-5,
     'learning_rate_for_task':1e-4,
-    'max_epochs':3,
-    'train_batch_size':32,
+    'max_epochs':15,
+    'train_batch_size': 64,
     'eval_batch_size':2,
     'test_batch_size':2,
     'adam_epsilon':1e-8,
     'gradient_accumulation_steps':1,
     'max_grad_norm':1.0,
     'weight_decay':0,
-    'warmup_steps':'0',
+    'warmup_steps': 0,
     'output_dir': './output',
     'max_seq_length': 160
 }
@@ -97,7 +97,7 @@ def convert_feature(data: typing.Any, user_data: tuple):
 class NN_DataHelper(DataHelper):
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
-        convert_feature(data,user_data)
+        return convert_feature(data,user_data)
 
     #读取标签
     @staticmethod
@@ -122,7 +122,7 @@ class NN_DataHelper(DataHelper):
                     if not jd:
                         continue
                     D.append((jd['text'], jd.get('label',None)))
-        return D[0:1000] if mode == 'train' else D[:100]
+        return D
 
 
     @staticmethod
@@ -138,9 +138,9 @@ class NN_DataHelper(DataHelper):
         for k in o:
             o[k] = torch.stack(o[k])
 
+
         seqlen = o.pop('seqlen')
         max_len = torch.max(seqlen)
-
         o['input_ids'] = o['input_ids'][:, :max_len]
         o['attention_mask'] = o['attention_mask'][:, :max_len]
         if 'token_type_ids' in o:
@@ -196,8 +196,8 @@ if __name__ == '__main__':
         intermediate_name = data_args.intermediate_name + '_{}'.format(i)
         train_file, eval_file, test_file = make_all_dataset_with_args(dataHelper, save_fn_args, data_args,
                                                                       intermediate_name=intermediate_name,num_process_worker=0)
-        train_files.append(train_file[:1000])
-        eval_files.append(eval_file[:100])
+        train_files.append(train_file)
+        eval_files.append(eval_file)
         test_files.append(test_file)
 
     dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)

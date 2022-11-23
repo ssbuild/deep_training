@@ -33,7 +33,7 @@ train_info_args = {
     'train_file': '/data/nlp/nlp_train_data/clue/cluener/train.json',
     'eval_file': '/data/nlp/nlp_train_data/clue/cluener/dev.json',
     'test_file': '/data/nlp/nlp_train_data/clue/cluener/test.json',
-    'learning_rate': 5e-5,
+    'learning_rate': 1e-3,
     'learning_rate_for_task': 1e-4,
     'max_epochs': 3,
     'train_batch_size': 10,

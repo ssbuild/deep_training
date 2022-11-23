@@ -46,9 +46,6 @@ class TransformerForPointer(TransformerModel):
         preds, trues = [], []
         for o in outputs:
             logits, label = o['outputs']
-            logits[:, :, [0, -1]] -= np.inf
-            logits[:, :, :, [0, -1]] -= np.inf
-            assert len(logits) == len(label)
             for p, t in zip(logits, label):
                 a_result = []
                 for (l, s, e) in zip(*np.where(p > threshold)):

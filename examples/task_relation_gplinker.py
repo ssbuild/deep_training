@@ -3,6 +3,9 @@ import json
 import os
 import sys
 import typing
+
+from pytorch_lightning.utilities.types import EPOCH_OUTPUT
+
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
 from pytorch_lightning.callbacks import ModelCheckpoint
 from deep_training.data_helper import DataHelper
@@ -14,7 +17,7 @@ from deep_training.data_helper import make_all_dataset_with_args, load_all_datas
 from deep_training.model.nlp.layers.seq_pointer import f1_metric
 from transformers import HfArgumentParser, BertTokenizer
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
-from deep_training.model.nlp.models.gplinker import TransformerForGplinker
+from deep_training.model.nlp.models.gplinker import TransformerForGplinker,extract_spoes
 
 train_info_args = {
     'devices': 1,
@@ -24,7 +27,9 @@ train_info_args = {
     'tokenizer_name':'/data/nlp/pre_models/torch/bert/bert-base-chinese',
     'config_name':'/data/nlp/pre_models/torch/bert/bert-base-chinese/config.json',
     'do_train': True,
+    'do_eval':True,
     'train_file':'/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
+    'eval_file':'/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
     'label_file':'/data/nlp/nlp_train_data/relation/law/relation_label.json',
     'learning_rate': 5e-5,
     'max_epochs': 3,
@@ -40,62 +45,64 @@ train_info_args = {
     'max_seq_length': 160,
 }
 
+def convert_feature(data: typing.Any, user_data: tuple):
+    tokenizer: BertTokenizer
+    tokenizer, max_seq_length, predicate2id, mode = user_data
+    sentence, entities, re_list = data
+    spo_list = re_list
+    tokens = list(sentence)
+
+    if len(tokens) > max_seq_length - 2:
+        tokens = tokens[0:(max_seq_length - 2)]
+    input_ids = tokenizer.convert_tokens_to_ids(['CLS'] + tokens + ['SEP'])
+    seqlen = len(input_ids)
+    attention_mask = [1] * seqlen
+    input_ids = np.asarray(input_ids, dtype=np.int64)
+    attention_mask = np.asarray(attention_mask, dtype=np.int64)
+    entity_labels = np.zeros(shape=(2, max_seq_length, max_seq_length))
+    head_labels = np.zeros(shape=(len(predicate2id), max_seq_length, max_seq_length))
+    tail_labels = np.zeros(shape=(len(predicate2id), max_seq_length, max_seq_length))
+
+    entity_labels_tmp = [set() for _ in range(2)]
+    head_labels_tmp = [set() for _ in range(len(predicate2id))]
+    tail_labels_tmp = [set() for _ in range(len(predicate2id))]
+    for s, p, o in spo_list:
+        if s[1] < max_seq_length - 2 and o[1] < max_seq_length - 2:
+            entity_labels_tmp[0].add((s[0], s[1]))
+            entity_labels_tmp[1].add((o[0], o[1]))
+            p: int = predicate2id[p]
+            head_labels_tmp[p].add((s[0], s[1]))
+            tail_labels_tmp[p].add((o[0], o[1]))
+
+    def feed_label(x, pts_list):
+        for i, pts in enumerate(pts_list):
+            for p in pts:
+                x[i][p[0]][p[1]] = 1
+
+    feed_label(entity_labels, list(map(lambda x: list(x), entity_labels_tmp)))
+    feed_label(head_labels, list(map(lambda x: list(x), head_labels_tmp)))
+    feed_label(tail_labels, list(map(lambda x: list(x), tail_labels_tmp)))
+
+    pad_len = max_seq_length - len(input_ids)
+    if pad_len > 0:
+        pad_val = tokenizer.pad_token_id
+        input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+        attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+    d = {
+        'input_ids': input_ids,
+        'attention_mask': attention_mask,
+        'entity_labels': entity_labels,
+        'head_labels': head_labels,
+        'tail_labels': tail_labels,
+        'seqlen': seqlen,
+    }
+    return d
+
 class NN_DataHelper(DataHelper):
     index = 0
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
-
-        tokenizer: BertTokenizer
-        tokenizer, max_seq_length, predicate2id, mode = user_data
-        sentence, entities, re_list = data
-        spo_list = re_list
-        tokens = list(sentence)
-
-        if len(tokens) > max_seq_length - 2:
-            tokens = tokens[0:(max_seq_length - 2)]
-        input_ids = tokenizer.convert_tokens_to_ids(['CLS'] + tokens + ['SEP'])
-        seqlen = len(input_ids)
-        attention_mask = [1] * seqlen
-        input_ids = np.asarray(input_ids, dtype=np.int64)
-        attention_mask = np.asarray(attention_mask, dtype=np.int64)
-        entity_labels = np.zeros(shape=(2,max_seq_length,max_seq_length))
-        head_labels = np.zeros(shape=(len(predicate2id),max_seq_length,max_seq_length))
-        tail_labels = np.zeros(shape=(len(predicate2id),max_seq_length,max_seq_length))
-
-        entity_labels_tmp = [set() for _ in range(2)]
-        head_labels_tmp = [set() for _ in range(len(predicate2id))]
-        tail_labels_tmp = [set() for _ in range(len(predicate2id))]
-        for s, p, o in spo_list:
-            if s[1] < max_seq_length - 2 and o[1] < max_seq_length - 2:
-                entity_labels_tmp[0].add((s[0], s[1]))
-                entity_labels_tmp[1].add((o[0], o[1]))
-                p:int = predicate2id[p]
-                head_labels_tmp[p].add((s[0], s[1]))
-                tail_labels_tmp[p].add((o[0], o[1]))
-
-        def feed_label(x,pts_list):
-            for i,pts in enumerate(pts_list):
-                for p in pts:
-                    x[i][p[0]][p[1]] = 1
-        feed_label(entity_labels,list(map(lambda x: list(x), entity_labels_tmp)))
-        feed_label(head_labels, list(map(lambda x: list(x), head_labels_tmp)))
-        feed_label(tail_labels, list(map(lambda x: list(x), tail_labels_tmp)))
-
-        pad_len = max_seq_length - len(input_ids)
-        if pad_len > 0:
-            pad_val = tokenizer.pad_token_id
-            input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-            attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-        d = {
-            'input_ids': input_ids,
-            'attention_mask': attention_mask,
-            'entity_labels': entity_labels,
-            'head_labels': head_labels,
-            'tail_labels': tail_labels,
-            'seqlen': seqlen,
-        }
-        return d
-
+        return convert_feature(data,user_data)
     # 读取标签
     @staticmethod
     def read_labels_from_file(files: typing.List):
@@ -189,28 +196,20 @@ class MyTransformer(TransformerForGplinker):
     def __init__(self, *args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
 
-    def compute_loss(self,batch) -> tuple:
-        labels: torch.Tensor = batch.pop('labels',None)
 
-        outputs = self(**batch)
-        if labels is not None:
-            loss, logits = outputs[:2]
-            f1 = f1_metric(labels, logits)
-            loss_dict = {'loss': loss,'f1': f1}
-            outputs = (loss_dict,logits,batch.pop("real_label"))
-        else:
-            outputs = (outputs[0],)
-        return outputs
+    def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
+        id2label = self.config.id2label
+        threshold = 1e-8
+        preds, trues = [], []
+        for o in outputs:
+            logits1, logits2, logits3,entity_labels, head_labels, tail_labels = o['outputs']
 
-
-
-
-
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        # implement your own
-        out = self(x)
-        return out
+            for p1, p2, p3,l1,l2,l3 in zip(logits1, logits2, logits3,entity_labels, head_labels, tail_labels):
+                spoes = extract_spoes([p1,p2,p3],threshold=threshold)
+                print(spoes)
+        # print(f1)
+        # print(str_report)
+        # self.log('val_f1', f1, prog_bar=True)
 
 
 
@@ -236,7 +235,7 @@ if __name__== '__main__':
 
     dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
     model = MyTransformer(with_efficient=True,config=config,model_args=model_args,training_args=training_args)
-    checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True, every_n_epochs=1)
+    checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
         max_epochs=training_args.max_epochs,
