@@ -47,58 +47,50 @@ train_info_args = {
     'pre_seq_len': 100
 }
 
+def convert_feature(data, user_data):
+    tokenizer: BertTokenizer
+    tokenizer, max_seq_length, label2id, mode = user_data
+    sentence, label_dict = data
+
+    input_ids = tokenizer.convert_tokens_to_ids(list(sentence))
+    if len(input_ids) > max_seq_length - 2:
+        input_ids = input_ids[:max_seq_length - 2]
+    input_ids = [tokenizer.cls_token_id] + input_ids + [tokenizer.sep_token_id]
+    attention_mask = [1] * len(input_ids)
+
+    input_ids = np.asarray(input_ids, dtype=np.int64)
+    attention_mask = np.asarray(attention_mask, dtype=np.int64)
+    seqlen = np.asarray(len(input_ids), dtype=np.int64)
+
+    labels = np.zeros(shape=(len(label2id), max_seq_length, max_seq_length), dtype=np.int32)
+    real_label = []
+    for label_str, o in label_dict.items():
+        pts = list(o.values())[0]
+        labelid = label2id[label_str]
+        for pt in pts:
+            if pt[1] < max_seq_length:
+                labels[labelid, pt[0], pt[1]] = 1
+            real_label.append((labelid, pt[0], pt[1]))
+
+    pad_len = max_seq_length - len(input_ids)
+    if pad_len > 0:
+        pad_val = tokenizer.pad_token_id
+        input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+        attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+    d = {
+        'input_ids': input_ids,
+        'attention_mask': attention_mask,
+        'labels': labels,
+        'seqlen': seqlen,
+    }
+    # if mode == 'eval':
+    #     d['real_label'] = np.asarray(bytes(json.dumps(real_label, ensure_ascii=False), encoding='utf-8'))
+    return d
 
 class NN_DataHelper(DataHelper):
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
-
-        tokenizer: BertTokenizer
-        tokenizer,max_seq_length,label2id,mode = user_data
-        sentence,label_dict = data
-
-        input_ids = tokenizer.convert_tokens_to_ids(list(sentence))
-        if len(input_ids) > max_seq_length - 2:
-            input_ids = input_ids[:max_seq_length - 2]
-        input_ids = [tokenizer.cls_token_id] + input_ids + [tokenizer.sep_token_id]
-        attention_mask = [1] * len(input_ids)
-
-        input_ids = np.asarray(input_ids, dtype=np.int64)
-        attention_mask = np.asarray(attention_mask, dtype=np.int64)
-        seqlen = np.asarray(len(input_ids), dtype=np.int64)
-
-        labels = np.zeros(shape=(seqlen,),dtype=np.int64)
-
-        for label_str, o in label_dict.items():
-            pts = list(o.values())[0]
-            for pt in pts:
-                if pt[1] > seqlen - 2:
-                    continue
-                pt[0] += 1
-                pt[1] += 1
-
-                span_len = pt[1] - pt[0] + 1
-                if span_len == 1:
-                    labels[pt[0]] = label2id['S_' + label_str]
-                elif span_len == 2:
-                    labels[pt[0]] = label2id['B_' + label_str]
-                    labels[pt[1]] = label2id['E_' + label_str]
-                    for i in range(span_len - 2):
-                        labels[pt[0] + 1 + i] = label2id['I_' + label_str]
-
-
-        pad_len = max_seq_length - len(input_ids)
-        if pad_len > 0:
-            pad_val = tokenizer.pad_token_id
-            input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-            attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-            labels = np.pad(labels, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-        d = {
-            'input_ids': input_ids,
-            'attention_mask': attention_mask,
-            'labels': labels,
-            'seqlen': seqlen,
-        }
-        return d
+        return convert_feature(data,user_data)
 
     #读取标签
     @staticmethod

@@ -3,28 +3,21 @@ import json
 import os
 import sys
 import typing
-
+sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)), '..'))
 from pytorch_lightning.callbacks import ModelCheckpoint
-
-sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
 from deep_training.data_helper import DataHelper
-from typing import Union, List
 import torch
 import numpy as np
-from pytorch_lightning.utilities.types import EPOCH_OUTPUT
-from deep_training.model.nlp.layers.seq_pointer import f1_metric
 from pytorch_lightning import Trainer
 from deep_training.data_helper import make_all_dataset_with_args, load_all_dataset_with_args, \
     load_tokenizer_and_config_with_args
 
 from deep_training.model.nlp.models.pointer import TransformerForPointer
-from deep_training.model.nlp.metrics.pointer import metric_for_pointer
 from transformers import HfArgumentParser, BertTokenizer
 from deep_training.data_helper import ModelArguments, DataArguments, TrainingArguments
 
-
 train_info_args = {
-    'devices':  '1',
+    'devices': '1',
     'data_backend': 'memory_raw',
     'model_type': 'bert',
     'model_name_or_path': '/data/nlp/pre_models/torch/bert/bert-base-chinese',
@@ -37,7 +30,7 @@ train_info_args = {
     'test_file': '/data/nlp/nlp_train_data/clue/cluener/test.json',
     'learning_rate': 5e-5,
     'max_epochs': 3,
-    'train_batch_size': 10,
+    'train_batch_size': 36,
     'eval_batch_size': 2,
     'test_batch_size': 2,
     'adam_epsilon': 1e-8,
@@ -50,7 +43,7 @@ train_info_args = {
 }
 
 
-def convert_feature(data,user_data):
+def convert_feature(data, user_data):
     tokenizer: BertTokenizer
     tokenizer, max_seq_length, label2id, mode = user_data
     sentence, label_dict = data
@@ -90,16 +83,17 @@ def convert_feature(data,user_data):
     #     d['real_label'] = np.asarray(bytes(json.dumps(real_label, ensure_ascii=False), encoding='utf-8'))
     return d
 
+
 class NN_DataHelper(DataHelper):
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
-        return convert_feature(data,user_data)
+        return convert_feature(data, user_data)
 
-    #读取标签
+    # 读取标签
     @staticmethod
     def read_labels_from_file(label_fname: str):
         labels = [
-            'address','book','company','game','government','movie','name','organization','position','scene'
+            'address', 'book', 'company', 'game', 'government', 'movie', 'name', 'organization', 'position', 'scene'
         ]
         label2id = {label: i for i, label in enumerate(labels)}
         id2label = {i: label for i, label in enumerate(labels)}
@@ -107,7 +101,7 @@ class NN_DataHelper(DataHelper):
 
     # 读取文件
     @staticmethod
-    def read_data_from_file(files: typing.List,mode:str):
+    def read_data_from_file(files: typing.List, mode: str):
         D = []
         for filename in files:
             with open(filename, mode='r', encoding='utf-8') as f:
@@ -116,9 +110,8 @@ class NN_DataHelper(DataHelper):
                     jd = json.loads(line)
                     if not jd:
                         continue
-                    D.append((jd['text'], jd.get('label',None)))
+                    D.append((jd['text'], jd.get('label', None)))
         return D
-
 
     @staticmethod
     def collect_fn(batch):
@@ -141,41 +134,13 @@ class NN_DataHelper(DataHelper):
         if 'token_type_ids' in o:
             o['token_type_ids'] = o['token_type_ids'][:, :max_len]
 
-        o['labels'] = o['labels'][:,:, :max_len,:max_len]
+        o['labels'] = o['labels'][:, :, :max_len, :max_len]
         return o
 
 
 class MyTransformer(TransformerForPointer):
-    def __init__(self, *args,**kwargs):
-        super(MyTransformer, self).__init__(with_efficient=True,*args,**kwargs)
-
-    def validation_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
-        id2label = self.config.id2label
-        threshold = 1e-7
-        preds,trues = [],[]
-        for o in outputs:
-            logits,label = o['outputs']
-            assert len(logits) == len(label)
-
-            print(type(logits),type(label))
-            print(logits.shape)
-            print(label.shape)
-            for p,t in zip(logits,label):
-                one_result = []
-                for (l, s, e) in zip(*np.where(p > threshold)):
-                    one_result.append((l, s, e))
-                preds.append(one_result)
-
-                one_result = []
-                for (l, s, e) in zip(*np.where(t > threshold)):
-                    one_result.append((l, s, e))
-                trues.append(one_result)
-
-
-        f1,str_report = metric_for_pointer(trues,preds,id2label)
-        print(f1)
-        print(str_report)
-        self.log('val_f1',f1,prog_bar=True)
+    def __init__(self, *args, **kwargs):
+        super(MyTransformer, self).__init__(with_efficient=True, *args, **kwargs)
 
     def test_step(self, batch, batch_idx):
         x, y = batch
@@ -184,30 +149,29 @@ class MyTransformer(TransformerForPointer):
         return out
 
 
-
-if __name__== '__main__':
+if __name__ == '__main__':
     parser = HfArgumentParser((ModelArguments, TrainingArguments, DataArguments))
     model_args, training_args, data_args = parser.parse_dict(train_info_args)
 
     dataHelper = NN_DataHelper(data_args.data_backend)
-    tokenizer, config, label2id, id2label = load_tokenizer_and_config_with_args(dataHelper, model_args, training_args,data_args)
-    save_fn_args = (tokenizer, data_args.max_seq_length,label2id)
-
+    tokenizer, config, label2id, id2label = load_tokenizer_and_config_with_args(dataHelper, model_args, training_args,
+                                                                                data_args)
+    save_fn_args = (tokenizer, data_args.max_seq_length, label2id)
 
     N = 1
     train_files, eval_files, test_files = [], [], []
     for i in range(N):
         intermediate_name = data_args.intermediate_name + '_{}'.format(i)
         train_file, eval_file, test_file = make_all_dataset_with_args(dataHelper, save_fn_args, data_args,
-                                                                      intermediate_name=intermediate_name,num_process_worker=0)
+                                                                      intermediate_name=intermediate_name,
+                                                                      num_process_worker=0)
         train_files.append(train_file)
         eval_files.append(eval_file)
         test_files.append(test_file)
 
-
     dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
-    model = MyTransformer(config=config,model_args=model_args,training_args=training_args)
+    model = MyTransformer(config=config, model_args=model_args, training_args=training_args)
     checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
@@ -218,7 +182,7 @@ if __name__== '__main__':
         enable_progress_bar=True,
         default_root_dir=data_args.output_dir,
         gradient_clip_val=training_args.max_grad_norm,
-        accumulate_grad_batches = training_args.gradient_accumulation_steps
+        accumulate_grad_batches=training_args.gradient_accumulation_steps
     )
 
     if data_args.do_train:

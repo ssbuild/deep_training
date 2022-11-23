@@ -5,7 +5,6 @@ from seqmetric.metrics import pt_class_report
 
 
 def metric_for_pointer(trues_all,preds_all,id2label):
-
     y_trues = {
         label: [] for i, label in id2label.items()
     }
@@ -32,10 +31,11 @@ def metric_for_pointer(trues_all,preds_all,id2label):
             str_label = id2label[l]
             one_preds[str_label].append((l, s, e))
 
+
         for k, v in y_trues.items():
             v.append(one_trues[k])
         for k, v in y_preds.items():
             v.append(one_preds[k])
 
-        str_report, f1 = pt_class_report(y_trues, y_preds, average='micro')
-        return f1,str_report
+    str_report, f1 = pt_class_report(y_trues, y_preds, average='micro')
+    return f1,str_report

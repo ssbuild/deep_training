@@ -3,7 +3,10 @@
 import argparse
 import typing
 from typing import Any
+
+import numpy as np
 import torch
+from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from torch import nn
 from torch.nn import MSELoss, CrossEntropyLoss, BCEWithLogitsLoss
 
@@ -19,6 +22,9 @@ __all__ = [
     'PrefixTransformerForTokenClassification',
     'PrefixTransformerForCRF'
 ]
+
+from ..metrics.pointer import metric_for_pointer
+
 
 class PrefixTransformerForModel(TransformerModel):
     def __init__(self,prompt_args: PrefixModelArguments, *args: Any, **kwargs: Any):
@@ -58,8 +64,8 @@ class PrefixTransformerForModel(TransformerModel):
         total_param = all_param - the_model_param
         print('total param is {}'.format(total_param))  # 9860105
         #function
-        self.get_prompt : typing.Callable = self.get_prompt_0 if prompt_args.prompt_type == 0 else self.get_prompt_1
-        self.get_transformer_outputs : typing.Callable = self.get_transformer_outputs_0 if prompt_args.prompt_type == 0 else self.get_transformer_outputs_1
+        self._get_prompt : typing.Callable = self.get_prompt_0 if prompt_args.prompt_type == 0 else self.get_prompt_1
+        self._get_transformer_outputs : typing.Callable = self.get_transformer_outputs_0 if prompt_args.prompt_type == 0 else self.get_transformer_outputs_1
 
 
     def get_model_lr(self):
@@ -89,7 +95,8 @@ class PrefixTransformerForModel(TransformerModel):
         past_key_values = past_key_values.permute([2, 0, 3, 1, 4]).split(2)
         return past_key_values
 
-
+    def forward(self, batch):
+        return self._get_transformer_outputs(batch)
 
     def get_transformer_outputs_0(self,batch):
         input_ids = batch['input_ids']
@@ -101,12 +108,12 @@ class PrefixTransformerForModel(TransformerModel):
             position_ids=batch.get('position_ids',None),
             token_type_ids=batch.get('token_type_ids',None),
         )
-        prompts = self.get_prompt(batch_size)
+        prompts = self._get_prompt(batch_size)
         inputs_embeds = torch.cat((prompts, raw_embedding), dim=1)
         prefix_attention_mask = torch.ones(batch_size, self.pre_seq_len).to(self.model.device)
         attention_mask = torch.cat((prefix_attention_mask, attention_mask), dim=1)
 
-        outputs = self(
+        outputs = self.model(
             # input_ids,
             attention_mask=attention_mask,
             # token_type_ids=token_type_ids,
@@ -126,11 +133,11 @@ class PrefixTransformerForModel(TransformerModel):
         input_ids = batch['input_ids']
         attention_mask = batch.pop('attention_mask')
         batch_size = input_ids.shape[0]
-        past_key_values = self.get_prompt(batch_size)
+        past_key_values = self._get_prompt(batch_size)
         prefix_attention_mask = torch.ones(batch_size, self.pre_seq_len).to(self.model.device)
         attention_mask = torch.cat((prefix_attention_mask, attention_mask), dim=1)
         batch['attention_mask'] = attention_mask
-        outputs = self(
+        outputs = self.model(
             **batch,
             past_key_values=past_key_values,
         )
@@ -149,8 +156,8 @@ class PrefixTransformerForSequenceClassification(PrefixTransformerForModel):
 
 
     def compute_loss(self,batch):
-        labels = batch.pop('labels')
-        outputs = self.get_transformer_outputs(batch)
+        labels = batch.pop('labels',None)
+        outputs = self(batch)
         pooled_output = outputs[1]
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
@@ -178,7 +185,7 @@ class PrefixTransformerForSequenceClassification(PrefixTransformerForModel):
                 loss_fct = BCEWithLogitsLoss()
                 loss = loss_fct(logits, labels)
 
-            outputs = (loss,logits,)
+            outputs = (loss,logits,labels)
         else:
             outputs = (logits,)
         return outputs
@@ -201,12 +208,11 @@ class PrefixTransformerForTokenClassification(PrefixTransformerForModel):
     def compute_loss(self, batch):
         labels = batch.pop('labels',None)
         attention_mask = batch['attention_mask']
-        outputs = self.get_transformer_outputs(batch)
+        outputs = self(batch)
         pooled_output = outputs[1]
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
 
-        loss = None
         if labels is not None:
             loss_fct = CrossEntropyLoss()
             # Only keep active parts of the losses
@@ -220,7 +226,7 @@ class PrefixTransformerForTokenClassification(PrefixTransformerForModel):
             else:
                 loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
 
-            outputs = (loss,logits)
+            outputs = (loss,logits,labels)
         else:
             outputs = (logits,)
         return outputs
@@ -240,38 +246,41 @@ class PrefixTransformerPointer(PrefixTransformerForModel):
         ]
 
 
-    def get_loss_and_logits(self,batch):
-        labels = batch.pop('labels',None)
-        attention_mask = batch['attention_mask']
-        outputs = self.get_transformer_outputs(batch)
-        logits = outputs[0]
-        logits = self.pointer_layer(logits, attention_mask)
-
+    def compute_loss(self, batch) -> tuple:
+        labels: torch.Tensor = batch.pop('labels', None)
+        outputs = self(**batch)
+        logits = self.pointer_layer(outputs[0], batch['attention_mask'])
         if labels is not None:
             loss = loss_fn(labels, logits)
-            outputs = (loss,logits)
+            f1 = f1_metric(labels, logits)
+            loss_dict = {'loss': loss, 'f1': f1}
+            outputs = (loss_dict, logits, labels)
         else:
             outputs = (logits,)
         return outputs
 
-    def training_step(self, batch, batch_idx):
-        labels = batch['labels']
-        loss ,logits = self.get_loss_and_logits(batch)
-        f1 = f1_metric(labels, logits)
-        self.log_dict({'train_loss': loss, 'f1': f1}, prog_bar=True)
-        return loss
-
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        labels = batch['labels']
-        val_loss, logits = self.get_loss_and_logits(batch)
-        f1 = f1_metric(labels, logits)
-        return {"losses": val_loss, "logits": logits, "labels": labels}
-
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        # implement your own
-        _, logits = self.get_loss_and_outputs(x)
-        return logits
+    def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
+        id2label = self.config.id2label
+        threshold = 1e-8
+        preds, trues = [], []
+        for o in outputs:
+            logits, label = o['outputs']
+            logits[:, :, [0, -1]] -= np.inf
+            logits[:, :, :, [0, -1]] -= np.inf
+            assert len(logits) == len(label)
+            for p, t in zip(logits, label):
+                a_result = []
+                for (l, s, e) in zip(*np.where(p > threshold)):
+                    a_result.append((l, s, e))
+                preds.append(a_result)
+                b_result = []
+                for (l, s, e) in zip(*np.where(t > threshold)):
+                    b_result.append((l, s, e))
+                trues.append(b_result)
+        f1, str_report = metric_for_pointer(trues, preds, id2label)
+        print(f1)
+        print(str_report)
+        self.log('val_f1', f1, prog_bar=True)
 
 
 class PrefixTransformerForCRF(PrefixTransformerForModel):
@@ -289,19 +298,20 @@ class PrefixTransformerForCRF(PrefixTransformerForModel):
         ]
 
 
-    def get_loss_and_logits(self,batch):
+    def compute_loss(self,batch) -> tuple:
         labels = batch.pop('labels',None)
         attention_mask = batch['attention_mask']
         outputs = self.get_transformer_outputs(batch)
         logits = outputs[0]
         logits = self.classifier(logits)
-        loss = None
         if labels is not None:
             labels = torch.where(labels >= 0, labels, torch.zeros_like(labels))
             loss = self.crf(emissions=logits, tags=labels, mask=attention_mask)
-            outputs = (loss) + outputs
+            tags = self.crf.decode(logits, attention_mask)
+            outputs = (loss,tags,labels)
         else:
             tags = self.crf.decode(logits, attention_mask)
             outputs = (tags,)
-
         return outputs
+
+
