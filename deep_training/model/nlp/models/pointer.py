@@ -7,7 +7,8 @@ import torch
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 
 from .transformer import TransformerModel
-from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer,loss_for_pointer,f1_metric_for_pointer
+from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer, f1_metric_for_pointer
+from ..losses.loss_globalpointer import loss_for_pointer
 from ..metrics.pointer import metric_for_pointer
 
 __all__ = [

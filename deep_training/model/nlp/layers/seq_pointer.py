@@ -5,35 +5,12 @@ import torch
 import torch.nn as nn
 
 __all__ = [
-    'multilabel_categorical_crossentropy',
-    'loss_for_pointer',
     'f1_metric_for_pointer',
     'PointerLayer',
     'EfficientPointerLayer'
 ]
 
-def multilabel_categorical_crossentropy(y_true, y_pred):
 
-    y_pred = (1 - 2 * y_true) * y_pred
-    y_pred_neg = y_pred - y_true * 1e12
-    y_pred_pos = y_pred - (1 - y_true) * 1e12
-    zeros = torch.zeros_like(y_pred[..., :1])
-    y_pred_neg = torch.cat([y_pred_neg, zeros], dim=-1)
-    y_pred_pos = torch.cat([y_pred_pos, zeros], dim=-1)
-    neg_loss = torch.logsumexp(y_pred_neg, dim=-1)
-    pos_loss = torch.logsumexp(y_pred_pos, dim=-1)
-    return (neg_loss + pos_loss).mean()
-
-def loss_for_pointer(y_true, y_pred):
-    """
-    y_true:(batch_size, ent_type_size, seq_len, seq_len)
-    y_pred:(batch_size, ent_type_size, seq_len, seq_len)
-    """
-    batch_size, ent_type_size = y_pred.shape[:2]
-    y_true = y_true.reshape(batch_size * ent_type_size, -1)
-    y_pred = y_pred.reshape(batch_size * ent_type_size, -1)
-    loss = multilabel_categorical_crossentropy(y_true, y_pred)
-    return loss
 
 
 def f1_metric_for_pointer(y_true, y_pred):

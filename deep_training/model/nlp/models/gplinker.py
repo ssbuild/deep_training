@@ -5,13 +5,16 @@ import typing
 
 import numpy as np
 import torch
-from torch.nn.functional import cross_entropy
+
 from .transformer import TransformerModel
 from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer
+from ..losses.loss_globalpointer import loss_for_gplinker
 
 __all__ = [
     'TransformerForGplinker'
 ]
+
+
 
 
 def extract_spoes(outputs: typing.List, threshold=1e-8):
@@ -40,16 +43,6 @@ def extract_spoes(outputs: typing.List, threshold=1e-8):
     return list(spoes)
 
 
-def loss_for_gplinker(y_true: torch.Tensor, y_pred: torch.Tensor):
-    shape = y_pred.shape
-    y_true = y_true[..., 0] * shape[2] + y_true[..., 1]
-
-    print('*' * 30,y_pred.size(),y_true.size())
-
-    y_pred = torch.transpose(y_pred,1, 3)
-    y_pred = torch.transpose(y_pred, 2, 3)
-    loss = cross_entropy(y_pred,y_true.long(),  reduction='sum')
-    return loss.mean()
 
 
 class TransformerForGplinker(TransformerModel):

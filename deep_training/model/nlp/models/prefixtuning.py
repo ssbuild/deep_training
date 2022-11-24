@@ -12,9 +12,9 @@ from torch.nn import MSELoss, CrossEntropyLoss, BCEWithLogitsLoss
 
 from deep_training.data_helper import PrefixModelArguments
 from .transformer import TransformerModel
-from ..layers.prefix_encoder import PrefixEncoder
-from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer, loss_for_pointer, f1_metric_for_pointer
 from ..layers.crf import CRF
+from ..layers.prefix_encoder import PrefixEncoder
+from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer, f1_metric_for_pointer
 
 __all__ = [
     'PrefixTransformerForModel',
@@ -22,6 +22,8 @@ __all__ = [
     'PrefixTransformerForTokenClassification',
     'PrefixTransformerForCRF'
 ]
+
+from ..losses.loss_globalpointer import loss_for_pointer
 
 from ..metrics.pointer import metric_for_pointer
 
