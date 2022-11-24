@@ -15,7 +15,7 @@ from deep_training.data_helper import make_all_dataset_with_args, load_all_datas
     load_tokenizer_and_config_with_args
 from transformers import HfArgumentParser, BertTokenizer
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
-from deep_training.model.nlp.models.gplinker import TransformerForGplinker, extract_spoes
+from deep_training.model.nlp.models.gplinker import TransformerForGplinker, extract_spoes, extract_spoes_from_labels
 
 train_info_args = {
     'devices': 1,
@@ -30,8 +30,8 @@ train_info_args = {
     'eval_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
     'label_file': '/data/nlp/nlp_train_data/relation/law/relation_label.json',
     'learning_rate': 5e-5,
-    'learning_rate_for_task': 1e-4,
-    'max_epochs': 5,
+    'learning_rate_for_task': 1e-5,
+    'max_epochs': 10,
     'train_batch_size': 10,
     'eval_batch_size': 2,
     'test_batch_size': 2,
@@ -75,11 +75,10 @@ def convert_feature(data: typing.Any, user_data: tuple):
             tail_labels_tmp[p].add((o[0], o[1]))
 
     def feed_label(x, pts_list):
-        for i, pts in enumerate(pts_list):
-            for j, p in enumerate(pts):
-                x[i][0] = p[0]
-                x[i][1] = p[1]
-
+        for p,pts in enumerate(pts_list):
+            for seq,pos in enumerate(pts):
+                x[p][seq][0] = pos[0]
+                x[p][seq][1] = pos[1]
     feed_label(entity_labels, list(map(lambda x: list(x), entity_labels_tmp)))
     feed_label(head_labels, list(map(lambda x: list(x), head_labels_tmp)))
     feed_label(tail_labels, list(map(lambda x: list(x), tail_labels_tmp)))
@@ -206,25 +205,20 @@ class MyTransformer(TransformerForGplinker):
             self.log('val_f1', 0.0)
             return
 
-        print('*' * 30)
+
         threshold = 0
 
         y_preds, y_trues = [], []
         for o in outputs:
             logits1, logits2, logits3, entity_labels, head_labels, tail_labels = o['outputs']
-
-            print('*' * 10)
-            print(logits1.shape, logits2.shape, logits3.shape)
-            print(entity_labels.shape, head_labels.shape, tail_labels.shape)
-
             for p1, p2, p3, l1, l2, l3 in zip(logits1, logits2, logits3, entity_labels, head_labels, tail_labels):
                 p_spoes = extract_spoes([p1, p2, p3], threshold=threshold)
-                t_spoes = extract_spoes([l1, l2, l3], threshold=threshold)
+                t_spoes = extract_spoes_from_labels([l1, l2, l3])
                 y_preds.append(p_spoes)
                 y_trues.append(t_spoes)
 
-        print(y_preds)
-        print(y_trues)
+        print(y_preds[:10])
+        print(y_trues[:10])
         # print(f1)
         # print(str_report)
         # self.log('val_f1', f1, prog_bar=True)

@@ -15,13 +15,29 @@ __all__ = [
 ]
 
 
+def extract_spoes_from_labels(outputs: typing.List):
 
+    subjects, objects = set(), set()
+    for i,(h,t) in enumerate(zip(outputs[0][0],outputs[0][1])):
+        if h[0] != 0 and h[1] != 0:
+            subjects.add((h[0], h[1]))
+        if t[0] != 0 and t[1] != 0:
+            objects.add((t[0], t[1]))
+    spoes = set()
+    for p,(hs,ts) in enumerate(zip(outputs[1],outputs[2])):
+        for h,t in zip(hs,ts):
+            h = tuple(h.tolist())
+            t = tuple(t.tolist())
+            if h in subjects and t in objects:
+                spoes.add((h[0], h[1], p, t[0], t[1]))
+    return list(spoes)
 
 def extract_spoes(outputs: typing.List, threshold=1e-8):
     # 抽取subject和object
-    pos_logits = outputs[0]
     subjects, objects = set(), set()
-    for l, h, t in zip(*np.where(pos_logits > threshold)):
+
+    for l, h, t in zip(*np.where(outputs[0] > threshold)):
+        print('*' * 30)
         if l == 0:
             subjects.add((h, t))
         else:
@@ -31,12 +47,8 @@ def extract_spoes(outputs: typing.List, threshold=1e-8):
     spoes = set()
     for sh, st in subjects:
         for oh, ot in objects:
-            print(outputs[1][:, sh, oh])
-            print(outputs)
             p1s = np.where(outputs[1][:, sh, oh] > threshold)[0]
             p2s = np.where(outputs[2][:, st, ot] > threshold)[0]
-
-            print(p1s, p2s)
             ps = set(p1s) & set(p2s)
             for p in ps:
                 spoes.add((sh, st, p, oh, ot))
@@ -77,11 +89,10 @@ class TransformerForGplinker(TransformerModel):
             loss2 = loss_for_gplinker(head_labels, logits2)
             loss3 = loss_for_gplinker(tail_labels, logits3)
             loss = (loss1 + loss2 + loss3) / 3
-
             loss_dict = {'loss': loss,
                          'loss_entities': loss1,
-                         'loss_re1': loss2,
-                         'loss_re2': loss3}
+                         'loss_head': loss2,
+                         'loss_tail': loss3}
             outputs = (loss_dict, logits1, logits2, logits3,
                        entity_labels, head_labels, tail_labels)
 
