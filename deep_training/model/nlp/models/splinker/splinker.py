@@ -11,9 +11,9 @@ __all__ = [
 
 
 
-def get_spoes(logits_all,seq_len_all,id2labels):
+def extract_spoes(logits_all, seq_len_all, id2labels):
     batch_result = []
-    for (i, (logits, seq_len)) in enumerate(zip( logits_all, seq_len_all)):
+    for (i, (logits, seq_len)) in enumerate(zip(logits_all, seq_len_all)):
         logits = logits[1:seq_len + 1]  # slice between [CLS] and [SEP] to get valid logits
         predictions = []
         for token in logits:
@@ -24,6 +24,10 @@ def get_spoes(logits_all,seq_len_all,id2labels):
         for layer_1 in predictions:
             for layer_2 in layer_1:
                 flatten_predictions.append(layer_2[0])
+
+
+        print(predictions)
+        print(flatten_predictions)
         subject_id_list = []
         # 12
         num_real_label = (len(id2labels) - 2) // 2
@@ -38,7 +42,7 @@ def get_spoes(logits_all,seq_len_all,id2labels):
 class BCELossForIE(nn.Module):
     def __init__(self, ):
         super(BCELossForIE, self).__init__()
-        self.criterion = nn.BCEWithLogitsLoss(reduction='none')
+        self.criterion = nn.BCELoss(reduction='none')
 
     def forward(self, logits, labels, mask):
         loss = self.criterion(logits, labels)
@@ -70,13 +74,11 @@ class TransformerForSplinker(TransformerModel):
         logits = outputs[0]
         logits = self.dropout(logits)
         logits = self.sigmoid(self.classifier(logits))
-
+        tags = torch.where(logits > 0.5, torch.ones_like(logits,dtype=torch.int32), torch.zeros_like(logits,dtype=torch.int32))
         seqlen = torch.sum(attention_mask,dim=1,keepdim=False).long() -2
         if labels is not None:
             loss = self.BCELoss(logits=logits, labels=labels, mask=mask)
-            tags = torch.where(logits >= 0.5, torch.ones_like(logits), torch.zeros_like(logits))
             outputs = (loss,tags,seqlen,labels)
         else:
-            tags = torch.where(logits >= 0.5, torch.ones_like(logits), torch.zeros_like(logits))
             outputs = (tags,seqlen,)
         return outputs

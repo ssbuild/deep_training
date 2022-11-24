@@ -5,7 +5,7 @@ import sys
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)), '..'))
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 
-from deep_training.model.nlp.models.splinker.splinker import get_spoes
+from deep_training.model.nlp.models.splinker.splinker import extract_spoes
 import typing
 import numpy as np
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -215,7 +215,7 @@ class MyTransformer(TransformerForSplinker):
         for o in outputs:
             logits, seqlen, labels = o['outputs']
             print(seqlen)
-            result = get_spoes(logits, seqlen, self.config.id2label)
+            result = extract_spoes(logits, seqlen, self.config.id2label)
             print(result[:3])
 
         # print(f1)
