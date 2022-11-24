@@ -16,13 +16,15 @@ __all__ = [
 
 
 def extract_spoes_from_labels(outputs: typing.List):
-
     subjects, objects = set(), set()
-    for i,(h,t) in enumerate(zip(outputs[0][0],outputs[0][1])):
+    for h in outputs[0][0]:
         if h[0] != 0 and h[1] != 0:
             subjects.add((h[0], h[1]))
+
+    for t in outputs[0][1]:
         if t[0] != 0 and t[1] != 0:
             objects.add((t[0], t[1]))
+
     spoes = set()
     for p,(hs,ts) in enumerate(zip(outputs[1],outputs[2])):
         for h,t in zip(hs,ts):
@@ -35,20 +37,23 @@ def extract_spoes_from_labels(outputs: typing.List):
 def extract_spoes(outputs: typing.List, threshold=1e-8):
     # 抽取subject和object
     subjects, objects = set(), set()
-
+    outputs[0][:, [0, -1]] -= np.inf
+    outputs[0][:, :, [0, -1]] -= np.inf
     for l, h, t in zip(*np.where(outputs[0] > threshold)):
-        print('*' * 30)
         if l == 0:
             subjects.add((h, t))
         else:
             objects.add((h, t))
 
+    print(subjects,objects)
     # 识别对应的predicate
     spoes = set()
     for sh, st in subjects:
         for oh, ot in objects:
             p1s = np.where(outputs[1][:, sh, oh] > threshold)[0]
             p2s = np.where(outputs[2][:, st, ot] > threshold)[0]
+
+            print('*' *30,p1s,p2s)
             ps = set(p1s) & set(p2s)
             for p in ps:
                 spoes.add((sh, st, p, oh, ot))

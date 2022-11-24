@@ -1,13 +1,38 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/11/11 17:15
+import numpy as np
 import torch
 from torch import nn
-from .transformer import TransformerModel
+from ..transformer import TransformerModel
 
 __all__ = [
     'TransformerForSplinker'
 ]
 
+
+
+def get_spoes(logits_all,seq_len_all,id2labels):
+    batch_result = []
+    for (i, (logits, seq_len)) in enumerate(zip( logits_all, seq_len_all)):
+        logits = logits[1:seq_len + 1]  # slice between [CLS] and [SEP] to get valid logits
+        predictions = []
+        for token in logits:
+            predictions.append(np.argwhere(token == 1).tolist())
+
+        # flatten predictions then retrival all valid subject id
+        flatten_predictions = []
+        for layer_1 in predictions:
+            for layer_2 in layer_1:
+                flatten_predictions.append(layer_2[0])
+        subject_id_list = []
+        # 12
+        num_real_label = (len(id2labels) - 2) // 2
+        for cls_label in list(set(flatten_predictions)):
+            if 1 < cls_label < num_real_label and (cls_label + num_real_label - 2) in flatten_predictions:
+                subject_id_list.append(cls_label)
+        subject_id_list = list(set(subject_id_list))
+        batch_result.append(subject_id_list)
+    return batch_result
 
 
 class BCELossForIE(nn.Module):
@@ -34,21 +59,24 @@ class TransformerForSplinker(TransformerModel):
 
     def get_model_lr(self):
         return super(TransformerForSplinker, self).get_model_lr() + [
-            (self.classifier, self.config.task_specific_params['learning_rate']),
+            (self.classifier, self.config.task_specific_params['learning_rate_for_task']),
         ]
 
     def compute_loss(self,batch) -> tuple:
         labels: torch.Tensor = batch.pop('labels',None)
         mask = batch.pop('mask')
+        attention_mask = batch['attention_mask']
         outputs = self(**batch)
         logits = outputs[0]
         logits = self.dropout(logits)
         logits = self.sigmoid(self.classifier(logits))
+
+        seqlen = torch.sum(attention_mask,dim=1,keepdim=False).long() -2
         if labels is not None:
             loss = self.BCELoss(logits=logits, labels=labels, mask=mask)
-            logits = torch.where(logits >= 0.5, torch.ones_like(logits), torch.zeros_like(logits))
-            outputs = (loss,logits)
+            tags = torch.where(logits >= 0.5, torch.ones_like(logits), torch.zeros_like(logits))
+            outputs = (loss,tags,seqlen,labels)
         else:
-            logits = torch.where(logits >= 0.5, torch.ones_like(logits), torch.zeros_like(logits))
-            outputs = (logits,)
+            tags = torch.where(logits >= 0.5, torch.ones_like(logits), torch.zeros_like(logits))
+            outputs = (tags,seqlen,)
         return outputs

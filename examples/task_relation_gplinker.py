@@ -30,10 +30,10 @@ train_info_args = {
     'eval_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
     'label_file': '/data/nlp/nlp_train_data/relation/law/relation_label.json',
     'learning_rate': 5e-5,
-    'learning_rate_for_task': 1e-5,
-    'max_epochs': 10,
-    'train_batch_size': 10,
-    'eval_batch_size': 2,
+    'learning_rate_for_task': 3e-4,
+    'max_epochs': 15,
+    'train_batch_size': 32,
+    'eval_batch_size': 8,
     'test_batch_size': 2,
     'adam_epsilon': 1e-8,
     'gradient_accumulation_steps': 1,
@@ -59,14 +59,19 @@ def convert_feature(data: typing.Any, user_data: tuple):
     attention_mask = [1] * seqlen
     input_ids = np.asarray(input_ids, dtype=np.int32)
     attention_mask = np.asarray(attention_mask, dtype=np.int32)
-    entity_labels = np.zeros(shape=(2, max_seq_length, 2), dtype=np.int32)
-    head_labels = np.zeros(shape=(len(predicate2id), max_seq_length, 2), dtype=np.int32)
-    tail_labels = np.zeros(shape=(len(predicate2id), max_seq_length, 2), dtype=np.int32)
+
+
+    max_target_len = 60
+    entity_labels = np.zeros(shape=(2, max_target_len, 2), dtype=np.int32)
+    head_labels = np.zeros(shape=(len(predicate2id), max_target_len, 2), dtype=np.int32)
+    tail_labels = np.zeros(shape=(len(predicate2id), max_target_len, 2), dtype=np.int32)
 
     entity_labels_tmp = [set() for _ in range(2)]
     head_labels_tmp = [set() for _ in range(len(predicate2id))]
     tail_labels_tmp = [set() for _ in range(len(predicate2id))]
     for s, p, o in spo_list:
+        s = (s[0] + 1, s[1] + 1)
+        o = (o[0] + 1, o[1] + 1)
         if s[1] < max_seq_length - 2 and o[1] < max_seq_length - 2:
             entity_labels_tmp[0].add((s[0], s[1]))
             entity_labels_tmp[1].add((o[0], o[1]))
@@ -75,14 +80,19 @@ def convert_feature(data: typing.Any, user_data: tuple):
             tail_labels_tmp[p].add((o[0], o[1]))
 
     def feed_label(x, pts_list):
+        tlen = 0
         for p,pts in enumerate(pts_list):
             for seq,pos in enumerate(pts):
+                tlen += 1
                 x[p][seq][0] = pos[0]
                 x[p][seq][1] = pos[1]
-    feed_label(entity_labels, list(map(lambda x: list(x), entity_labels_tmp)))
-    feed_label(head_labels, list(map(lambda x: list(x), head_labels_tmp)))
-    feed_label(tail_labels, list(map(lambda x: list(x), tail_labels_tmp)))
+        return tlen
 
+    targetlen1 = feed_label(entity_labels, list(map(lambda x: list(x), entity_labels_tmp)))
+    targetlen2 = feed_label(head_labels, list(map(lambda x: list(x), head_labels_tmp)))
+    targetlen3 = feed_label(tail_labels, list(map(lambda x: list(x), tail_labels_tmp)))
+
+    targetlen = np.asarray(np.max([targetlen1,targetlen2,targetlen3,1]),dtype=np.int32)
     pad_len = max_seq_length - len(input_ids)
     if pad_len > 0:
         pad_val = tokenizer.pad_token_id
@@ -95,7 +105,9 @@ def convert_feature(data: typing.Any, user_data: tuple):
         'head_labels': head_labels,
         'tail_labels': tail_labels,
         'seqlen': seqlen,
+        'targetlen': targetlen,
     }
+    print(seqlen,targetlen)
     return d
 
 
@@ -183,14 +195,16 @@ class NN_DataHelper(DataHelper):
         seqlen = o.pop('seqlen')
         max_len = torch.max(seqlen)
 
+        targetlen = o.pop('targetlen')
+        max_tarlen = torch.max(targetlen)
+
         o['input_ids'] = o['input_ids'][:, :max_len]
         o['attention_mask'] = o['attention_mask'][:, :max_len]
         if 'token_type_ids' in o:
             o['token_type_ids'] = o['token_type_ids'][:, :max_len]
-
-        o['entity_labels'] = o['entity_labels'][:, :, :max_len]
-        o['head_labels'] = o['head_labels'][:, :, :max_len]
-        o['tail_labels'] = o['tail_labels'][:, :, :max_len]
+        o['entity_labels'] = o['entity_labels'][:, :, :max_tarlen]
+        o['head_labels'] = o['head_labels'][:, :, :max_tarlen]
+        o['tail_labels'] = o['tail_labels'][:, :, :max_tarlen]
         return o
 
 

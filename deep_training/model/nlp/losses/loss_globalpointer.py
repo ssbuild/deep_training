@@ -52,4 +52,4 @@ def loss_for_gplinker(y_true: torch.Tensor, y_pred: torch.Tensor):
     y_true = y_true[..., 0] * shape[2] + y_true[..., 1]
     y_pred = torch.reshape(y_pred, (shape[0], -1, torch.prod(torch.tensor(shape[2:]))))
     loss = sparse_multilabel_categorical_crossentropy(y_true.long(),y_pred,True)
-    return loss.sum(dim=-1).mean()
+    return loss.sum(dim=1).mean()
