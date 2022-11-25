@@ -26,11 +26,13 @@ train_info_args = {
     'config_name': '/data/nlp/pre_models/torch/bert/bert-base-chinese/config.json',
     'do_train': True,
     'do_eval': True,
-    'train_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
-    'eval_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
-    'label_file': '/data/nlp/nlp_train_data/relation/law/relation_label.json',
+     # 'train_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
+    # 'eval_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
+    # 'label_file': '/data/nlp/nlp_train_data/relation/law/relation_label.json',
+    'train_file': '/data/nlp/nlp_train_data/myrelation/re_labels.json',
+    'eval_file': '/data/nlp/nlp_train_data/myrelation/re_labels.json',
+    'label_file': '/data/nlp/nlp_train_data/myrelation/labels.json',
     'learning_rate': 5e-5,
-    'learning_rate_for_task': 3e-4,
     'max_epochs': 15,
     'train_batch_size': 32,
     'eval_batch_size': 8,
@@ -107,7 +109,6 @@ def convert_feature(data: typing.Any, user_data: tuple):
         'seqlen': seqlen,
         'targetlen': targetlen,
     }
-    print(seqlen,targetlen)
     return d
 
 
@@ -215,24 +216,21 @@ class MyTransformer(TransformerForGplinker):
 
     def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
         self.index += 1
-        if self.index <= 2:
+        if self.index <= 3:
             self.log('val_f1', 0.0)
             return
 
-
-        threshold = 0
-
+        threshold = 1e-6
         y_preds, y_trues = [], []
         for o in outputs:
             logits1, logits2, logits3, entity_labels, head_labels, tail_labels = o['outputs']
-            for p1, p2, p3, l1, l2, l3 in zip(logits1, logits2, logits3, entity_labels, head_labels, tail_labels):
-                p_spoes = extract_spoes([p1, p2, p3], threshold=threshold)
-                t_spoes = extract_spoes_from_labels([l1, l2, l3])
-                y_preds.append(p_spoes)
-                y_trues.append(t_spoes)
+            p_spoes = extract_spoes([logits1, logits2, logits3], threshold=threshold)
+            t_spoes = extract_spoes_from_labels([entity_labels, head_labels, tail_labels])
+            y_preds.extend(p_spoes)
+            y_trues.extend(t_spoes)
 
-        print(y_preds[:10])
-        print(y_trues[:10])
+        print(y_preds[:3])
+        print(y_trues[:3])
         # print(f1)
         # print(str_report)
         # self.log('val_f1', f1, prog_bar=True)

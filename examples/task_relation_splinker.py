@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import copy
 import json
 import os
 import sys
@@ -17,6 +18,7 @@ from deep_training.data_helper import make_all_dataset_with_args, load_all_datas
 from transformers import HfArgumentParser, BertTokenizer
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
 from deep_training.model.nlp.models.splinker import TransformerForSplinker
+from seqmetric.metrics.spo_labeling import spo_report,get_report_from_string
 
 train_info_args = {
     'devices': 1,
@@ -27,12 +29,15 @@ train_info_args = {
     'config_name': '/data/nlp/pre_models/torch/bert/bert-base-chinese/config.json',
     'do_train': True,
     'do_eval': True,
+    # 'train_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
+    # 'eval_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
+    # 'label_file': '/data/nlp/nlp_train_data/relation/law/relation_label.json',
     'train_file': '/data/nlp/nlp_train_data/myrelation/re_labels.json',
     'eval_file': '/data/nlp/nlp_train_data/myrelation/re_labels.json',
     'label_file': '/data/nlp/nlp_train_data/myrelation/labels.json',
     'learning_rate': 5e-5,
     'max_epochs': 10,
-    'train_batch_size': 10,
+    'train_batch_size': 16,
     'eval_batch_size': 8,
     'test_batch_size': 2,
     'adam_epsilon': 1e-8,
@@ -62,18 +67,15 @@ class NN_DataHelper(DataHelper):
         input_ids = np.asarray(input_ids, dtype=np.int32)
         attention_mask = np.asarray(attention_mask, dtype=np.int32)
         num_labels = len(predicate2id)
-
         if spo_list is not None:
-            labels = np.zeros(shape=(seqlen - 2, num_labels), dtype=np.int32)
-
-            valid_label_n = (len(predicate2id.keys()) - 2) // 2
+            labels = np.zeros(shape=(seqlen - 2, num_labels * 2 + 2), dtype=np.int32)
             for s, p, o in spo_list:
                 if s[1] >= seqlen - 2 or o[1] >= seqlen - 2:
                     continue
                 s_ids = [s[0], s[1]]
                 o_ids = [o[0], o[1]]
-                label_for_s = predicate2id[p]
-                label_for_o = label_for_s + valid_label_n
+                label_for_s = predicate2id[p] + 2
+                label_for_o = label_for_s + num_labels
                 slen = s_ids[1] - s_ids[0] + 1
                 labels[s[0]][label_for_s] = 1
                 for i in range(slen - 1):
@@ -85,17 +87,17 @@ class NN_DataHelper(DataHelper):
             for i in range(seqlen - 2):
                 if not np.any(labels[i]):
                     labels[i][0] = 1
-            edge = np.expand_dims(np.asarray([1] + [0] * (num_labels - 1), dtype=np.int32), axis=0)
+            edge = np.expand_dims(np.asarray([1] + [0] * (num_labels * 2 + 1), dtype=np.int32), axis=0)
             labels = np.concatenate([edge, labels, edge], axis=0)
         else:
-            labels = np.zeros(shape=(seqlen, num_labels), dtype=np.int32)
+            labels = np.zeros(shape=(seqlen, num_labels * 2 + 2), dtype=np.int32)
 
         pad_len = max_seq_length - len(input_ids)
         if pad_len:
             pad_val = tokenizer.pad_token_id
             input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
             attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-            labels = np.concatenate([labels, np.zeros(shape=(pad_len, num_labels))], axis=0)
+            labels = np.concatenate([labels, np.zeros(shape=(pad_len, num_labels * 2 + 2))], axis=0)
 
         mask = np.logical_and(input_ids != tokenizer.pad_token_id,
                               np.logical_and(input_ids != tokenizer.cls_token_id, input_ids != tokenizer.sep_token_id))
@@ -123,7 +125,6 @@ class NN_DataHelper(DataHelper):
                     continue
                 larr = [jd['subject'], jd['predicate'], jd['object']]
                 labels.append('+'.join(larr))
-        labels = ['O', 'I'] + [tag + l for tag in ['', 'unused'] for l in labels]
         label2id = {label: i for i, label in enumerate(labels)}
         id2label = {i: label for i, label in enumerate(labels)}
         return label2id, id2label
@@ -209,19 +210,22 @@ class MyTransformer(TransformerForSplinker):
             self.log('val_f1', 0.0)
             return
 
-        threshold = 0
 
         y_preds, y_trues = [], []
         for o in outputs:
             logits, seqlen, labels = o['outputs']
-            print(seqlen)
-            result = extract_spoes(logits, seqlen, self.config.id2label)
-            print(result[:3])
+            pred = extract_spoes(logits, seqlen, self.config.id2label)
+            true = extract_spoes(labels, seqlen, self.config.id2label)
+            y_preds.extend(pred)
+            y_trues.extend(true)
 
-        # print(f1)
-        # print(str_report)
-        # self.log('val_f1', f1, prog_bar=True)
-        self.log('val_f1', 0)
+
+        str_report = spo_report(y_trues,y_preds,self.config.label2id,col_space=10)
+        report = get_report_from_string(str_report,metric='macro')
+        f1 = report[-2]
+        print(str_report)
+        print(f1)
+        self.log('val_f1', f1, prog_bar=True)
 
 
 if __name__ == '__main__':
@@ -246,7 +250,7 @@ if __name__ == '__main__':
 
     dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
-    model = MyTransformer(with_efficient=False, config=config, model_args=model_args, training_args=training_args)
+    model = MyTransformer(config=config, model_args=model_args, training_args=training_args)
     checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],

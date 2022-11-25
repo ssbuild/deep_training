@@ -11,7 +11,6 @@ import numpy as np
 from pytorch_lightning import Trainer
 from deep_training.data_helper import make_all_dataset_with_args, load_all_dataset_with_args, \
     load_tokenizer_and_config_with_args
-
 from deep_training.model.nlp.models.pointer import TransformerForPointer
 from transformers import HfArgumentParser, BertTokenizer
 from deep_training.data_helper import ModelArguments, DataArguments, TrainingArguments
@@ -29,6 +28,7 @@ train_info_args = {
     'eval_file': '/data/nlp/nlp_train_data/clue/cluener/dev.json',
     'test_file': '/data/nlp/nlp_train_data/clue/cluener/test.json',
     'learning_rate': 5e-5,
+    'learning_rate_for_task': 5e-5,
     'max_epochs': 15,
     'train_batch_size': 64,
     'eval_batch_size': 2,
@@ -39,9 +39,11 @@ train_info_args = {
     'weight_decay': 0,
     'warmup_steps': 0,
     'output_dir': './output',
-    'max_seq_length': 160
+    'max_seq_length': 300
 }
 
+
+eval_labels = []
 
 def convert_feature(data, user_data):
     tokenizer: BertTokenizer
@@ -78,6 +80,9 @@ def convert_feature(data, user_data):
         'labels': labels,
         'seqlen': seqlen,
     }
+    if mode == 'eval':
+        global eval_labels
+        eval_labels.append(real_label)
     # if mode == 'eval':
     #     d['real_label'] = np.asarray(bytes(json.dumps(real_label, ensure_ascii=False), encoding='utf-8'))
     return d
@@ -165,7 +170,10 @@ if __name__ == '__main__':
 
     dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
-    model = MyTransformer(with_efficient=True,config=config, model_args=model_args, training_args=training_args)
+
+    print('*' * 30)
+    print(len(eval_labels))
+    model = MyTransformer(eval_labels,with_efficient=False,config=config, model_args=model_args, training_args=training_args)
     checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
@@ -176,7 +184,8 @@ if __name__ == '__main__':
         enable_progress_bar=True,
         default_root_dir=data_args.output_dir,
         gradient_clip_val=training_args.max_grad_norm,
-        accumulate_grad_batches=training_args.gradient_accumulation_steps
+        accumulate_grad_batches=training_args.gradient_accumulation_steps,
+        num_sanity_val_steps=0,
     )
 
     if data_args.do_train:
