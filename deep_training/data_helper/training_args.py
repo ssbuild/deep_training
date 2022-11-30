@@ -4,7 +4,6 @@
 import os
 from dataclasses import dataclass, field
 from typing import Optional
-
 from pytorch_lightning.utilities.seed import seed_everything
 
 __all__ = [
@@ -250,7 +249,6 @@ class DataArguments:
         metadata={
             "help": (
                 "语言生成标题的最大长度 "
-
             )
         },
     )

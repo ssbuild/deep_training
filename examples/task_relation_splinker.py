@@ -96,7 +96,7 @@ class NN_DataHelper(DataHelper):
         if pad_len:
             pad_val = tokenizer.pad_token_id
             input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-            attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+            attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(0, 0))
             labels = np.concatenate([labels, np.zeros(shape=(pad_len, num_labels * 2 + 2))], axis=0)
 
         mask = np.logical_and(input_ids != tokenizer.pad_token_id,

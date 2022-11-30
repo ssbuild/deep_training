@@ -37,9 +37,6 @@ def load_tokenizer_and_config_with_args(dataHelper,model_args: ModelArguments,
                                         data_args: DataArguments,
                                         task_specific_params=None):
     label2id, id2label = dataHelper.read_labels_from_file(data_args.label_file)
-
-
-
     tokenizer = load_tokenizer(tokenizer_name=model_args.tokenizer_name,
                                 model_name_or_path=model_args.model_name_or_path,
                                 cache_dir=model_args.cache_dir,

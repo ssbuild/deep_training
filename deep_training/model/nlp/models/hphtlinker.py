@@ -10,20 +10,17 @@ __all__ = [
     'TransformerForHphtlinker'
 ]
 
-
-class BCELossForLinker(nn.Module):
-    def __init__(self,):
-        super(BCELossForLinker, self).__init__()
-        self.criterion = nn.BCEWithLogitsLoss(reduction='none')
-
-    def forward(self, logits, labels, mask=None):
-        loss = self.criterion(logits, labels)
-        if mask is not None:
-            mask = mask.float()
-            loss = loss * mask.unsqueeze(-1)
-            loss = torch.sum(torch.mean(loss,dim=2), dim=1) / torch.sum(mask, dim=1)
-        loss = loss.mean()
-        return loss
+def extract_spoes(outputs):
+    for (subject_preds, object_preds) in outputs:
+        subject_preds[:, [0, -1]] *= 0
+        start = np.where(subject_preds[0, :, 0] > 0.6)[0]
+        end = np.where(subject_preds[0, :, 1] > 0.5)[0]
+        subjects = []
+        for i in start:
+            j = end[end >= i]
+            if len(j) > 0:
+                j = j[0]
+                subjects.append((i, j))
 
 class TransformerForHphtlinker(TransformerModel):
     def __init__(self,*args,**kwargs):
@@ -33,7 +30,7 @@ class TransformerForHphtlinker(TransformerModel):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.subject_layer = nn.Linear(config.hidden_size, 2)
         self.object_layer = nn.Linear(config.hidden_size, 2 * config.num_labels)
-        self.BCELoss = BCELossForLinker()
+
         self.sigmoid = nn.Sigmoid()
         self.condLayerNorm = LayerNorm(hidden_size=config.hidden_size,
                                        conditional_size=config.hidden_size*2)
@@ -58,6 +55,20 @@ class TransformerForHphtlinker(TransformerModel):
         subject = torch.cat([start, end], 2)
         return subject[:, 0]
 
+    def forward_for_subject(self, **batch):
+        subject_labels, subject_ids, object_labels = None, None, None
+        if 'subject_labels' in batch:
+            subject_labels: torch.Tensor = batch.pop('subject_labels')
+            subject_ids: torch.Tensor = batch.pop('subject_ids')
+            object_labels: torch.Tensor = batch.pop('object_labels')
+
+        outputs = self(**batch)
+        last_hidden = outputs[0]
+        logits = self.dropout(last_hidden)
+        subject_preds = self.sigmoid(self.subject_layer(logits)) ** 2
+
+    def forward_for_objectp(self, **inputs):...
+
     def compute_loss(self,batch) -> tuple:
         subject_labels,subject_ids,object_labels = None,None,None
         if 'subject_labels' in batch:
@@ -79,11 +90,11 @@ class TransformerForHphtlinker(TransformerModel):
 
             loss = self.BCELoss(subject_preds, subject_labels) + self.BCELoss(object_preds, object_labels)
 
-            outputs = (loss,subject_preds,object_preds)
+            outputs = (loss,subject_preds,object_preds,subject_labels,subject_ids,object_labels)
         else:
             subject_preds[:, [0, -1]] *= 0
-            start = np.where(subject_preds[0, :, 0] > 0.6)[0]
-            end = np.where(subject_preds[0, :, 1] > 0.5)[0]
+            start = torch.where(subject_preds[0, :, 0] > 0.6)[0]
+            end = torch.where(subject_preds[0, :, 1] > 0.5)[0]
             subjects = []
             for i in start:
                 j = end[end >= i]

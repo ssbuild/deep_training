@@ -5,7 +5,8 @@ import os
 import sys
 import typing
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)), '..'))
-from deep_training.model.nlp.metrics.pointer import metric_for_gplinker
+
+from deep_training.model.nlp.metrics.pointer import metric_for_spo
 from deep_training.model.nlp.models.transformer import TransformerLightningModule
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -52,7 +53,7 @@ train_info_args = {
 
 
 class NN_DataHelper(DataHelper):
-    index = 0
+    index = -1
     eval_labels = []
     def on_data_ready(self):
         self.index = -1
@@ -60,12 +61,10 @@ class NN_DataHelper(DataHelper):
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
         self.index += 1
-
         tokenizer: BertTokenizer
         tokenizer, max_seq_length, do_lower_case, predicate2id, mode = user_data
         sentence, entities, re_list = data
         spo_list = re_list
-
         tokens = list(sentence) if not do_lower_case else list(sentence.lower())
         if len(tokens) > max_seq_length - 2:
             tokens = tokens[0:(max_seq_length - 2)]
@@ -250,7 +249,7 @@ class MyTransformer(TransformerLightningModule):
 
         print(y_preds[:3])
         print(y_trues[:3])
-        f1, str_report = metric_for_gplinker(y_trues, y_preds, self.config.label2id)
+        f1, str_report = metric_for_spo(y_trues, y_preds, self.config.label2id)
         print(f1)
         print(str_report)
         self.log('val_f1', f1, prog_bar=True)

@@ -100,8 +100,6 @@ class NN_DataHelper(DataHelper):
 
         if mode == 'eval':
             self.eval_labels.append(real_label)
-        # if mode == 'eval':
-        #     d['real_label'] = np.asarray(bytes(json.dumps(real_label, ensure_ascii=False), encoding='utf-8'))
         return d
 
     # 读取标签

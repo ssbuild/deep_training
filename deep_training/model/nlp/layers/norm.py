@@ -24,8 +24,6 @@ class LayerNorm(nn.Module):
         self.eps = eps
         self.conditional_size = conditional_size
         if conditional_size:
-            # 条件layernorm, 用于条件文本生成,
-            # 这里采用全零初始化, 目的是在初始状态不干扰原来的预训练权重
             self.dense1 = nn.Linear(conditional_size, hidden_size, bias=False)
             self.dense1.weight.data.uniform_(0, 0)
             self.dense2 = nn.Linear(conditional_size, hidden_size, bias=False)
@@ -35,7 +33,6 @@ class LayerNorm(nn.Module):
         inputs = x[0]
 
         if self.norm_mode == 'rmsnorm':
-            # t5使用的是RMSnorm
             variance = inputs.to(torch.float32).pow(2).mean(-1, keepdim=True)
             o = inputs * torch.rsqrt(variance + self.eps)
         else:

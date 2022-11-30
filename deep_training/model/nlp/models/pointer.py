@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/11/11 17:15
 from typing import Union, List
-
 import numpy as np
 import torch
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from torch import nn
-
 from .transformer import TransformerModel
 from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer, f1_metric_for_pointer
 from ..losses.loss_globalpointer import loss_for_pointer
@@ -50,7 +48,6 @@ class TransformerForPointer(TransformerModel):
         label2id = self.config.label2id
         threshold = 1e-7
         preds, trues = [], []
-
         index = 0
         for o in outputs:
             logits, label = o['outputs']
@@ -65,11 +62,7 @@ class TransformerForPointer(TransformerModel):
                     b_result.append((l, s, e))
                 trues.append(b_result)
                 index +=1
-                # b_result = []
-                # for (l, s, e) in zip(*np.where(t > threshold)):
-                #     b_result.append((l, s, e))
-                # trues.append(b_result)
         f1, str_report = metric_for_pointer(trues, preds, label2id)
         print(f1)
         print(str_report)
-        self.log('val_f1', f1, prog_bar=True)
+        # self.log('val_f1', f1, prog_bar=True)

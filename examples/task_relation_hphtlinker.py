@@ -2,10 +2,12 @@
 import json
 import os
 import sys
-
-from pytorch_lightning.callbacks import ModelCheckpoint
-
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
+
+from deep_training.model.nlp.metrics.pointer import metric_for_spo
+from pytorch_lightning.utilities.types import EPOCH_OUTPUT
+from deep_training.model.nlp.models.transformer import TransformerLightningModule
+from pytorch_lightning.callbacks import ModelCheckpoint
 import typing
 import numpy as np
 from deep_training.data_helper import DataHelper
@@ -13,7 +15,7 @@ import torch
 from pytorch_lightning import Trainer
 from deep_training.data_helper import make_dataset_with_args, load_dataset_with_args, \
     load_tokenizer_and_config_with_args
-from deep_training.model.nlp.models.hphtlinker import TransformerForHphtlinker
+from deep_training.model.nlp.models.hphtlinker import TransformerForHphtlinker, extract_spoes
 from transformers import HfArgumentParser, BertTokenizer
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
 
@@ -25,7 +27,9 @@ train_info_args = {
     'tokenizer_name':'/data/nlp/pre_models/torch/bert/bert-base-chinese',
     'config_name':'/data/nlp/pre_models/torch/bert/bert-base-chinese/config.json',
     'do_train': True,
+    'do_eval': True,
     'train_file':'/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
+    'eval_file':'/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
     'label_file':'/data/nlp/nlp_train_data/relation/law/relation_label.json',
     'learning_rate': 5e-5,
     'max_epochs': 3,
@@ -38,29 +42,31 @@ train_info_args = {
     'weight_decay': 0,
     'warmup_steps': 0,
     'output_dir': './output',
-    'max_seq_length': 160,
+    'train_max_seq_length': 380,
+    'eval_max_seq_length': 512,
+    'test_max_seq_length': 512,
 }
 
 class NN_DataHelper(DataHelper):
+    index = -1
+    eval_labels = []
+    def on_data_ready(self):
+        self.index = -1
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
-
+        self.index += 1
         tokenizer: BertTokenizer
-        tokenizer,max_seq_length,predicate2id,mode = user_data
+        tokenizer, max_seq_length, do_lower_case, predicate2id, mode = user_data
         sentence,entities,re_list = data
         spo_list = re_list
-        tokens = list(sentence)
-
+        tokens = list(sentence) if not do_lower_case else list(sentence.lower())
         if len(tokens) > max_seq_length - 2:
             tokens = tokens[0:(max_seq_length - 2)]
         input_ids = tokenizer.convert_tokens_to_ids(['CLS'] +tokens + ['SEP'] )
         seqlen = len(input_ids)
         attention_mask = [1] * seqlen
-
         input_ids = np.asarray(input_ids, dtype = np.int64)
         attention_mask = np.asarray(attention_mask, dtype=np.int64)
-
-
         spoes = {}
         for s, p, o in spo_list:
             if s[1] < max_seq_length - 2 and o[1] < max_seq_length - 2:
@@ -81,7 +87,6 @@ class NN_DataHelper(DataHelper):
             start, end = np.array(list(spoes.keys())).T
             start = np.random.choice(start)
             end = np.random.choice(end[end >= start])
-            #subject_ids = (start, end)
             subject_ids[0] = start
             subject_ids[1] = end
 
@@ -92,7 +97,7 @@ class NN_DataHelper(DataHelper):
         if pad_len > 0:
             pad_val = tokenizer.pad_token_id
             input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-            attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+            attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(0, 0))
         d = {
             'input_ids': input_ids,
             'attention_mask': attention_mask,
@@ -134,7 +139,6 @@ class NN_DataHelper(DataHelper):
 
                     entities = jd.get('entities', None)
                     re_list = jd.get('re_list', None)
-
 
                     if entities:
                         entities_label = []
@@ -179,14 +183,11 @@ class NN_DataHelper(DataHelper):
                     o[k].append(torch.tensor(b[k]))
         for k in o:
             o[k] = torch.stack(o[k])
-
         max_len = torch.max(o.pop('seqlen'))
-
         o['input_ids'] = o['input_ids'][:, :max_len]
         o['attention_mask'] = o['attention_mask'][:, :max_len]
         if 'token_type_ids' in o:
             o['token_type_ids'] = o['token_type_ids'][:, :max_len]
-
         o['subject_labels'] = o['subject_labels'][:, :max_len]
         # o['subject_ids'] = o['subject_ids']
         o['object_labels'] = o['object_labels'][:, :max_len]
@@ -195,11 +196,35 @@ class NN_DataHelper(DataHelper):
 
 
 
+class MyTransformer(TransformerLightningModule):
+    def __init__(self,eval_labels,  *args, **kwargs):
+        super(MyTransformer, self).__init__(config,*args, **kwargs)
+        self.model = TransformerForHphtlinker.from_pretrained(*args, **kwargs)
+        self.eval_labels = eval_labels
 
-class MyTransformer(TransformerForHphtlinker):
-    def __init__(self, *args,**kwargs):
-        super(MyTransformer, self).__init__(with_efficient=True,*args,**kwargs)
+    def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
+        self.index += 1
+        if self.index < 3:
+            self.log('val_f1', 0.0, prog_bar=True)
+            return
 
+        y_preds, y_trues = [], []
+        idx = 0
+        for o in outputs:
+            logits1, logits2, _, _, _ = o['outputs']
+            output_labels = self.eval_labels[idx * len(logits1):(idx + 1) * len(logits1)]
+            idx += 1
+            p_spoes = extract_spoes([logits1, logits2])
+            t_spoes = output_labels
+            y_preds.extend(p_spoes)
+            y_trues.extend(t_spoes)
+
+        print(y_preds[:3])
+        print(y_trues[:3])
+        f1, str_report = metric_for_spo(y_trues, y_preds, self.config.label2id)
+        print(f1)
+        print(str_report)
+        self.log('val_f1', f1, prog_bar=True)
 
 if __name__== '__main__':
     parser = HfArgumentParser((ModelArguments, TrainingArguments, DataArguments))

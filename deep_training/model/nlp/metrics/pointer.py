@@ -10,7 +10,7 @@ def metric_for_pointer(trues_all,preds_all,label2id,metric='micro'):
     return f1,str_report
 
 
-def metric_for_gplinker(trues_all,preds_all,label2id,metric='micro'):
+def metric_for_spo(trues_all, preds_all, label2id, metric='micro'):
     str_report = spo_report(trues_all, preds_all, label2id)
     report = get_report_from_string(str_report,metric=metric)
     f1 = float(report[-2])

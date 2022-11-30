@@ -19,7 +19,7 @@ class TransformerForCRF(TransformerModel):
 
     def get_model_lr(self):
         return super(TransformerForCRF, self).get_model_lr() + [
-            (self.classifier, self.config.task_specific_params['learning_rate_for_task']),
+            (self.classifier, self.config.task_specific_params['learning_rate']),
             (self.crf, self.config.task_specific_params['learning_rate_for_task']),
         ]
 

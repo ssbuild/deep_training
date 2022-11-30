@@ -26,8 +26,6 @@ __all__ = [
     'PrefixTransformerForCRF'
 ]
 
-
-
 class PrefixTransformerForModel(TransformerModel):
     def __init__(self,prompt_args: PrefixModelArguments, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)

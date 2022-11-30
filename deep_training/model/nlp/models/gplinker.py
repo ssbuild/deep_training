@@ -2,11 +2,9 @@
 # @Author  : tk
 # @FileName: gp_linker.py
 import typing
-
 import numpy as np
 import torch
 from torch import nn
-
 from .transformer import TransformerModel
 from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer
 from ..losses.loss_globalpointer import loss_for_gplinker
@@ -80,8 +78,6 @@ class TransformerForGplinker(TransformerModel):
                          'loss_tail': loss3}
             outputs = (loss_dict, logits1, logits2, logits3,
                        entity_labels, head_labels, tail_labels)
-
-            # self.log_dict(loss_dict, prog_bar=True)
         else:
             outputs = (logits1, logits2, logits3)
         return outputs
