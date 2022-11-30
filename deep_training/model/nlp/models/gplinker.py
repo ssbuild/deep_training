@@ -16,27 +16,6 @@ __all__ = [
 ]
 
 
-def extract_spoes_from_labels(outputs: typing.List):
-    batch_spoes = []
-    for l1, l2, l3 in zip(outputs[0], outputs[1], outputs[2]):
-        subjects, objects = set(), set()
-        for h in l1[0]:
-            if h[0] != 0 and h[1] != 0:
-                subjects.add((h[0], h[1]))
-    
-        for t in l1[1]:
-            if t[0] != 0 and t[1] != 0:
-                objects.add((t[0], t[1]))
-    
-        spoes = set()
-        for p,(hs,ts) in enumerate(zip(l2,l3)):
-            for h,t in zip(hs,ts):
-                h = tuple(h.tolist())
-                t = tuple(t.tolist())
-                if (h[0],t[0]) in subjects and (h[1],t[1]) in objects:
-                    spoes.add((h[0], h[1], p, t[0], t[1]))
-        batch_spoes.append(list(spoes))
-    return batch_spoes
 
 def extract_spoes(outputs: typing.List, threshold=1e-8):
     batch_spoes = []
@@ -54,10 +33,9 @@ def extract_spoes(outputs: typing.List, threshold=1e-8):
             for oh, ot in objects:
                 p1s = np.where(logit2[:, sh, oh] > threshold)[0]
                 p2s = np.where(logit3[:, st, ot] > threshold)[0]
-                print(p1s,p2s)
                 ps = set(p1s) & set(p2s)
                 for p in ps:
-                    spoes.add((sh, st, p, oh, ot))
+                    spoes.add((sh-1, st-1, p, oh-1, ot-1))
         batch_spoes.append(list(spoes))
     return batch_spoes
 
@@ -110,3 +88,30 @@ class TransformerForGplinker(TransformerModel):
         else:
             outputs = (logits1, logits2, logits3)
         return outputs
+
+
+
+
+
+
+
+
+
+# def extract_spoes_from_labels(outputs: typing.List):
+#     batch_spoes = []
+#     for l1, l2, l3 in zip(outputs[0], outputs[1], outputs[2]):
+#         subjects, objects = set(), set()
+#         for p,es in enumerate(l1):
+#             o = subjects if p == 0 else objects
+#             for e in es:
+#                 if e[0] != 0 and e[1] != 0:
+#                     o.add((e[0], e[1]))
+#
+#         spoes = set()
+#         for p,(hs,ts) in enumerate(zip(l2,l3)):
+#             for h in hs:
+#                 for t in ts:
+#                     if (h[0],t[0]) in subjects and (h[1],t[1]) in objects:
+#                         spoes.add((h[0] - 1, t[0] - 1, p, h[1] - 1, t[1] - 1))
+#         batch_spoes.append(list(spoes))
+#     return batch_spoes

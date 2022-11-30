@@ -218,14 +218,8 @@ class TransformerModelForUnilm(TransformerModel):
 
     def compute_loss(self,batch):
         batch['attention_mask'] = unilm_mask(batch['token_type_ids'])
-
-        type_vocab_size = getattr(self.config, 'type_vocab_size', 0)
-        if type_vocab_size == 1:
-            batch['token_type_ids'] = torch.zeros_like(batch['input_ids'])
-        if type_vocab_size != 2:
+        if  getattr(self.config, 'type_vocab_size', 0) != 2:
             batch.pop('token_type_ids')
-
-
 
         labels = batch.pop('labels',None)
         outputs = self(**batch)

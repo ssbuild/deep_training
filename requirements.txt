@@ -1,7 +1,7 @@
 transformers
-pytorch_lightning
-fastdatasets
-seqmetric
+pytorch_lightning >= 1.8
+fastdatasets >= 0.9
+seqmetric >= 0.1.2
 sklearn
 scipy
 scikit-learn

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
+import math
 import os
 import sys
 import typing
@@ -16,7 +17,7 @@ from deep_training.data_helper import make_dataset_with_args, load_dataset_with_
     load_tokenizer_and_config_with_args
 from transformers import HfArgumentParser, BertTokenizer
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
-from deep_training.model.nlp.models.gplinker import TransformerForGplinker, extract_spoes, extract_spoes_from_labels
+from deep_training.model.nlp.models.gplinker import TransformerForGplinker, extract_spoes
 
 train_info_args = {
     'devices': 1,
@@ -27,12 +28,12 @@ train_info_args = {
     'config_name': '/data/nlp/pre_models/torch/bert/bert-base-chinese/config.json',
     'do_train': True,
     'do_eval': True,
-     # 'train_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
-    # 'eval_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
-    # 'label_file': '/data/nlp/nlp_train_data/relation/law/relation_label.json',
-    'train_file': '/data/nlp/nlp_train_data/myrelation/re_labels.json',
-    'eval_file': '/data/nlp/nlp_train_data/myrelation/re_labels.json',
-    'label_file': '/data/nlp/nlp_train_data/myrelation/labels.json',
+    'train_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
+    'eval_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
+    'label_file': '/data/nlp/nlp_train_data/relation/law/relation_label.json',
+    # 'train_file': '/data/nlp/nlp_train_data/myrelation/re_labels.json',
+    # 'eval_file': '/data/nlp/nlp_train_data/myrelation/re_labels.json',
+    # 'label_file': '/data/nlp/nlp_train_data/myrelation/labels.json',
     'learning_rate': 5e-5,
     'max_epochs': 15,
     'train_batch_size': 32,
@@ -82,13 +83,16 @@ class NN_DataHelper(DataHelper):
         entity_labels_tmp = [set() for _ in range(2)]
         head_labels_tmp = [set() for _ in range(len(predicate2id))]
         tail_labels_tmp = [set() for _ in range(len(predicate2id))]
+
+        real_label = []
         for s, p, o in spo_list:
+            p: int = predicate2id[p]
+            real_label.append((s[0], s[1], p, o[0], o[1]))
             s = (s[0] + 1, s[1] + 1)
             o = (o[0] + 1, o[1] + 1)
             if s[1] < max_seq_length - 2 and o[1] < max_seq_length - 2:
                 entity_labels_tmp[0].add((s[0], s[1]))
                 entity_labels_tmp[1].add((o[0], o[1]))
-                p: int = predicate2id[p]
                 head_labels_tmp[p].add((s[0], o[0]))
                 tail_labels_tmp[p].add((s[1], o[1]))
 
@@ -120,8 +124,13 @@ class NN_DataHelper(DataHelper):
             'seqlen': seqlen,
             'targetlen': targetlen,
         }
+
+        if self.index < 5:
+            print(tokens)
+            print(input_ids[:seqlen])
+
         if mode == 'eval':
-            self.eval_labels.append((head_labels[:,:targetlen],tail_labels[:targetlen],tail_labels[:targetlen]))
+            self.eval_labels.append(real_label)
         return d
 
     # 读取标签
@@ -218,10 +227,12 @@ class MyTransformer(TransformerLightningModule):
         self.model = TransformerForGplinker.from_pretrained(config,with_efficient,*args, **kwargs)
         self.index = 0
         self.eval_labels = eval_labels
+
+
     def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
         self.index += 1
-        if self.index <= 2:
-            self.log('val_f1', 0.0)
+        if self.index < 3:
+            self.log('val_f1', 0.0, prog_bar=True)
             return
 
         threshold = 1e-7
@@ -230,14 +241,15 @@ class MyTransformer(TransformerLightningModule):
         idx = 0
         for o in outputs:
             logits1, logits2, logits3, _,_,_ = o['outputs']
-            entity_labels, head_labels, tail_labels = self.eval_labels[idx]
-            idx += len(logits1)
-
+            output_labels = self.eval_labels[idx*len(logits1):(idx + 1)*len(logits1)]
+            idx += 1
             p_spoes = extract_spoes([logits1, logits2, logits3], threshold=threshold)
-            t_spoes = extract_spoes_from_labels([entity_labels, head_labels, tail_labels])
+            t_spoes =output_labels
             y_preds.extend(p_spoes)
             y_trues.extend(t_spoes)
 
+        print(y_preds[:3])
+        print(y_trues[:3])
         f1, str_report = metric_for_gplinker(y_trues, y_preds, self.config.label2id)
         print(f1)
         print(str_report)
