@@ -33,7 +33,7 @@ def extract_spoes_from_labels(outputs: typing.List):
             for h,t in zip(hs,ts):
                 h = tuple(h.tolist())
                 t = tuple(t.tolist())
-                if h in subjects and t in objects:
+                if (h[0],t[0]) in subjects and (h[1],t[1]) in objects:
                     spoes.add((h[0], h[1], p, t[0], t[1]))
         batch_spoes.append(list(spoes))
     return batch_spoes
@@ -41,7 +41,6 @@ def extract_spoes_from_labels(outputs: typing.List):
 def extract_spoes(outputs: typing.List, threshold=1e-8):
     batch_spoes = []
     for logit1,logit2,logit3 in zip(outputs[0],outputs[1],outputs[2]):
-        # 抽取subject和object
         subjects, objects = set(), set()
         logit1[:, [0, -1]] -= np.inf
         logit1[:, :, [0, -1]] -= np.inf
@@ -50,13 +49,12 @@ def extract_spoes(outputs: typing.List, threshold=1e-8):
                 subjects.add((h, t))
             else:
                 objects.add((h, t))
-
-        # 识别对应的predicate
         spoes = set()
         for sh, st in subjects:
             for oh, ot in objects:
                 p1s = np.where(logit2[:, sh, oh] > threshold)[0]
                 p2s = np.where(logit3[:, st, ot] > threshold)[0]
+                print(p1s,p2s)
                 ps = set(p1s) & set(p2s)
                 for p in ps:
                     spoes.add((sh, st, p, oh, ot))
@@ -67,11 +65,9 @@ def extract_spoes(outputs: typing.List, threshold=1e-8):
 
 
 class TransformerForGplinker(TransformerModel):
-    def __init__(self, with_efficient=False, *args, **kwargs):
-        super(TransformerForGplinker, self).__init__(*args, **kwargs)
-
+    def __init__(self,config, with_efficient, *args, **kwargs):
+        super(TransformerForGplinker, self).__init__(config, with_efficient,*args, **kwargs)
         self.dropout = nn.Dropout(self.config.hidden_dropout_prob)
-
         PointerLayerObject = EfficientPointerLayer if with_efficient else PointerLayer
         self.entities_layer = PointerLayerObject(self.config.hidden_size, 2, 64)
         self.heads_layer = PointerLayerObject(self.config.hidden_size, self.config.num_labels, 64, RoPE=False,
@@ -92,7 +88,9 @@ class TransformerForGplinker(TransformerModel):
         tail_labels: torch.Tensor = batch.pop('tail_labels', None)
         attention_mask = batch['attention_mask']
         outputs = self(**batch)
-        logits = self.dropout(outputs[0])
+        logits = outputs[0]
+        if self.model.training:
+            logits = self.dropout(logits)
         logits1 = self.entities_layer(logits, attention_mask)
         logits2 = self.heads_layer(logits, attention_mask)
         logits3 = self.tails_layer(logits, attention_mask)
@@ -108,7 +106,7 @@ class TransformerForGplinker(TransformerModel):
             outputs = (loss_dict, logits1, logits2, logits3,
                        entity_labels, head_labels, tail_labels)
 
-            self.log_dict(loss_dict, prog_bar=True)
+            # self.log_dict(loss_dict, prog_bar=True)
         else:
             outputs = (logits1, logits2, logits3)
         return outputs

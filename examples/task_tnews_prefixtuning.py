@@ -15,7 +15,7 @@ from deep_training.data_helper import DataHelper
 import torch
 from torch.nn import CrossEntropyLoss
 from pytorch_lightning import Trainer
-from deep_training.data_helper import make_all_dataset_with_args, load_all_dataset_with_args, load_tokenizer_and_config_with_args
+from deep_training.data_helper import make_dataset_with_args, load_dataset_with_args, load_tokenizer_and_config_with_args
 from transformers import HfArgumentParser, BertTokenizer
 from deep_training.model.nlp.models.prefixtuning import PrefixTransformerForSequenceClassification
 from deep_training.data_helper import ModelArguments, TrainingArguments, PrefixModelArguments, \
@@ -124,8 +124,7 @@ class NN_DataHelper(DataHelper):
         for k in o:
             o[k] = torch.stack(o[k])
 
-        seqlen = o.pop('seqlen')
-        max_len = torch.max(seqlen)
+        max_len = torch.max(o.pop('seqlen'))
 
         o['input_ids'] = o['input_ids'][:, :max_len]
         o['attention_mask'] = o['attention_mask'][:, :max_len]
@@ -188,14 +187,14 @@ if __name__== '__main__':
     for i in range(N):
         intermediate_name = data_args.intermediate_name + '_{}'.format(i)
         logging.info('make data {}...'.format(intermediate_name))
-        train_file, eval_file, test_file = make_all_dataset_with_args(dataHelper, save_fn_args, data_args,
-                                                                      intermediate_name=intermediate_name)
+        train_file, eval_file, test_file = make_dataset_with_args(dataHelper, save_fn_args, data_args,
+                                                                  intermediate_name=intermediate_name)
         train_files.append(train_file)
         eval_files.append(eval_file)
         test_files.append(test_file)
 
     print(train_files, eval_files, test_files)
-    dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
+    dm = load_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
     
     model = MyTransformer(prompt_args=prompt_args,config=config,model_args=model_args,training_args=training_args)
@@ -210,7 +209,8 @@ if __name__== '__main__':
         enable_progress_bar=True,
         default_root_dir=data_args.output_dir,
         gradient_clip_val=training_args.max_grad_norm,
-        accumulate_grad_batches = training_args.gradient_accumulation_steps
+        accumulate_grad_batches = training_args.gradient_accumulation_steps,
+        num_sanity_val_steps=0,
     )
 
     if data_args.do_train:

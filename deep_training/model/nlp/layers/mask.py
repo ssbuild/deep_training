@@ -19,3 +19,10 @@ def unilm_mask(s: torch.Tensor):
     idxs = torch.cumsum(s, dim=1)
     mask = idxs[:, None, :] <= idxs[:, :, None]
     return mask.long()
+
+
+def unilm_mask_from_length(s: torch.Tensor,s1_len: torch.Tensor,s2_len: torch.Tensor,):
+    torch.ones_like(s1_len)
+    idxs = torch.cumsum(s, dim=1)
+    mask = idxs[:, None, :] <= idxs[:, :, None]
+    return mask.long()

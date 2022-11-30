@@ -12,7 +12,7 @@ import numpy as np
 import torch
 from deep_training.data_helper import DataHelper
 from pytorch_lightning import Trainer
-from deep_training.data_helper import make_all_dataset_with_args, load_all_dataset_with_args, \
+from deep_training.data_helper import make_dataset_with_args, load_dataset_with_args, \
     load_tokenizer_and_config_with_args
 from deep_training.model.nlp.models.transformer import TransformerForCausalLM
 from transformers import HfArgumentParser, BertTokenizer
@@ -79,8 +79,7 @@ class NN_DataHelper(DataHelper):
         for k in o:
             o[k] = torch.stack(o[k])
 
-        seqlen = o.pop('seqlen')
-        max_len = torch.max(seqlen)
+        max_len = torch.max(o.pop('seqlen'))
 
         o['input_ids'] = o['input_ids'][:, :max_len]
         o['attention_mask'] = o['attention_mask'][:, :max_len]
@@ -112,13 +111,13 @@ if __name__== '__main__':
     for i in range(N):
         intermediate_name = data_args.intermediate_name + '_{}'.format(i)
         logging.info('make data {}...'.format(intermediate_name))
-        train_file, eval_file, test_file = make_all_dataset_with_args(dataHelper, save_fn_args, data_args,
-                                                                      intermediate_name=intermediate_name)
+        train_file, eval_file, test_file = make_dataset_with_args(dataHelper, save_fn_args, data_args,
+                                                                  intermediate_name=intermediate_name)
         train_files.append(train_file)
         eval_files.append(eval_file)
         test_files.append(test_file)
 
-    dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
+    dm = load_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
 
     model = MyTransformer(config=config,model_args=model_args,training_args=training_args)

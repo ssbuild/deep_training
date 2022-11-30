@@ -4,6 +4,9 @@ import os
 import sys
 import typing
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
+from deep_training.model.nlp.models.transformer import TransformerLightningModule
+
+
 
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
@@ -15,7 +18,7 @@ from deep_training.data_helper import DataHelper
 from transformers import HfArgumentParser, BertTokenizer
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments,PrefixModelArguments
 from pytorch_lightning import Trainer
-from deep_training.data_helper import make_all_dataset_with_args, load_all_dataset_with_args, \
+from deep_training.data_helper import make_dataset_with_args, load_dataset_with_args, \
     load_tokenizer_and_config_with_args
 
 from deep_training.model.nlp.models.prefixtuning import PrefixTransformerForCRF
@@ -49,50 +52,66 @@ train_info_args = {
     'pre_seq_len': 100
 }
 
-def convert_feature(data, user_data):
-    tokenizer: BertTokenizer
-    tokenizer, max_seq_length, label2id, mode = user_data
-    sentence, label_dict = data
-
-    input_ids = tokenizer.convert_tokens_to_ids(list(sentence))
-    if len(input_ids) > max_seq_length - 2:
-        input_ids = input_ids[:max_seq_length - 2]
-    input_ids = [tokenizer.cls_token_id] + input_ids + [tokenizer.sep_token_id]
-    attention_mask = [1] * len(input_ids)
-
-    input_ids = np.asarray(input_ids, dtype=np.int64)
-    attention_mask = np.asarray(attention_mask, dtype=np.int64)
-    seqlen = np.asarray(len(input_ids), dtype=np.int64)
-
-    labels = np.zeros(shape=(len(label2id), max_seq_length, max_seq_length), dtype=np.int32)
-    real_label = []
-    for label_str, o in label_dict.items():
-        pts = list(o.values())[0]
-        labelid = label2id[label_str]
-        for pt in pts:
-            if pt[1] < max_seq_length:
-                labels[labelid, pt[0], pt[1]] = 1
-            real_label.append((labelid, pt[0], pt[1]))
-
-    pad_len = max_seq_length - len(input_ids)
-    if pad_len > 0:
-        pad_val = tokenizer.pad_token_id
-        input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-        attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
-    d = {
-        'input_ids': input_ids,
-        'attention_mask': attention_mask,
-        'labels': labels,
-        'seqlen': seqlen,
-    }
-    # if mode == 'eval':
-    #     d['real_label'] = np.asarray(bytes(json.dumps(real_label, ensure_ascii=False), encoding='utf-8'))
-    return d
-
 class NN_DataHelper(DataHelper):
+    index = 0
+    def on_data_ready(self):
+        self.index = 0
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
-        return convert_feature(data,user_data)
+        tokenizer: BertTokenizer
+        tokenizer, max_seq_length, do_lower_case, label2id, mode = user_data
+        sentence, label_dict = data
+
+        tokens = list(sentence) if not do_lower_case else list(sentence.lower())
+        input_ids = tokenizer.convert_tokens_to_ids(tokens)
+        if len(input_ids) > max_seq_length - 2:
+            input_ids = input_ids[:max_seq_length - 2]
+        input_ids = [tokenizer.cls_token_id] + input_ids + [tokenizer.sep_token_id]
+        attention_mask = [1] * len(input_ids)
+
+        input_ids = np.asarray(input_ids, dtype=np.int64)
+        attention_mask = np.asarray(attention_mask, dtype=np.int64)
+        seqlen = np.asarray(len(input_ids), dtype=np.int64)
+
+        labels = np.zeros(shape=(seqlen,), dtype=np.int64)
+        for label_str, o in label_dict.items():
+            pts = [_ for a_ in list(o.values()) for _ in a_]
+            for pt in pts:
+                if pt[1] > seqlen - 2:
+                    continue
+                pt[0] += 1
+                pt[1] += 1
+                span_len = pt[1] - pt[0] + 1
+                if span_len == 1:
+                    labels[pt[0]] = label2id['S-' + label_str]
+                elif span_len >= 2:
+                    labels[pt[0]] = label2id['B-' + label_str]
+                    labels[pt[1]] = label2id['E-' + label_str]
+                    for i in range(span_len - 2):
+                        labels[pt[0] + 1 + i] = label2id['I-' + label_str]
+
+        pad_len = max_seq_length - len(input_ids)
+        if pad_len > 0:
+            pad_val = tokenizer.pad_token_id
+            input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+            attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+            labels = np.pad(labels, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+
+        d = {
+            'input_ids': input_ids,
+            'attention_mask': attention_mask,
+            'labels': labels,
+            'seqlen': seqlen,
+        }
+
+        self.index += 1
+        if self.index < 5:
+            print(tokens)
+            print(input_ids[:seqlen])
+            print(attention_mask[:seqlen])
+            print(labels[:seqlen])
+            print(seqlen)
+        return d
 
     #读取标签
     @staticmethod
@@ -100,7 +119,7 @@ class NN_DataHelper(DataHelper):
         labels = [
             'address','book','company','game','government','movie','name','organization','position','scene'
         ]
-        labels = ['O'] + [t + '_' + l  for t in ['B','I','E','S'] for l in labels]
+        labels = ['O'] + [t + '-' + l  for t in ['B','I','E','S'] for l in labels]
         label2id = {label: i for i, label in enumerate(labels)}
         id2label = {i: label for i, label in enumerate(labels)}
         return label2id, id2label
@@ -132,10 +151,7 @@ class NN_DataHelper(DataHelper):
                     o[k].append(torch.tensor(b[k]))
         for k in o:
             o[k] = torch.stack(o[k])
-
-        seqlen = o.pop('seqlen')
-        max_len = torch.max(seqlen)
-
+        max_len = torch.max(o.pop('seqlen'))
         o['input_ids'] = o['input_ids'][:, :max_len]
         o['attention_mask'] = o['attention_mask'][:, :max_len]
         if 'token_type_ids' in o:
@@ -144,10 +160,10 @@ class NN_DataHelper(DataHelper):
         o['labels'] = o['labels'][:,:max_len]
         return o
 
-
-class MyTransformer(PrefixTransformerForCRF):
+class MyTransformer(TransformerLightningModule):
     def __init__(self, *args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
+        self.model = PrefixTransformerForCRF.from_pretrained(*args,**kwargs)
 
     def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
         preds_all, labels_all = [], []
@@ -180,20 +196,28 @@ if __name__== '__main__':
 
     dataHelper = NN_DataHelper(data_args.data_backend)
     tokenizer, config, label2id, id2label = load_tokenizer_and_config_with_args(dataHelper, model_args, training_args,data_args)
-    save_fn_args = (tokenizer, data_args.max_seq_length,label2id)
 
+    token_fn_args_dict = {
+        'train': (tokenizer, data_args.train_max_seq_length, model_args.do_lower_case, label2id, 'train'),
+        'eval': (tokenizer, data_args.eval_max_seq_length, model_args.do_lower_case, label2id, 'eval'),
+        'test': (tokenizer, data_args.test_max_seq_length, model_args.do_lower_case, label2id, 'test')
+    }
 
     N = 1
     train_files, eval_files, test_files = [], [], []
     for i in range(N):
         intermediate_name = data_args.intermediate_name + '_{}'.format(i)
-        train_file, eval_file, test_file = make_all_dataset_with_args(dataHelper, save_fn_args, data_args,
-                                                                      intermediate_name=intermediate_name,num_process_worker=0)
-        train_files.append(train_file)
-        eval_files.append(eval_file)
-        test_files.append(test_file)
+        if data_args.do_train:
+            train_files.append(make_dataset_with_args(dataHelper, data_args.train_file, token_fn_args_dict['train'], data_args,
+                                                      intermediate_name=intermediate_name, shuffle=True, mode='train'))
+        if data_args.do_eval:
+            eval_files.append(make_dataset_with_args(dataHelper, data_args.eval_file, token_fn_args_dict['eval'], data_args,
+                                                     intermediate_name=intermediate_name, shuffle=False, mode='eval'))
+        if data_args.do_test:
+            test_files.append(make_dataset_with_args(dataHelper, data_args.test_file, token_fn_args_dict['test'], data_args,
+                                                     intermediate_name=intermediate_name, shuffle=False, mode='test'))
 
-    dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
+    dm = load_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
     model = MyTransformer(prompt_args=prompt_args,config=config,model_args=model_args,training_args=training_args)
     checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True,every_n_epochs=1)
     trainer = Trainer(
@@ -206,7 +230,8 @@ if __name__== '__main__':
         enable_progress_bar=True,
         default_root_dir=data_args.output_dir,
         gradient_clip_val=training_args.max_grad_norm,
-        accumulate_grad_batches = training_args.gradient_accumulation_steps
+        accumulate_grad_batches = training_args.gradient_accumulation_steps,
+        num_sanity_val_steps=0,
     )
 
     if data_args.do_train:

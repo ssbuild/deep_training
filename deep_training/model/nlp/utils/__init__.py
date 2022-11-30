@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/11/15 13:33
+import random
 import typing
 
 from torch.optim import AdamW
@@ -9,10 +10,8 @@ from transformers import get_linear_schedule_with_warmup
 def configure_optimizers(model_attrs: typing.Union[typing.List,typing.Tuple],
                          hparams: typing.Dict,
                          estimated_stepping_batches: int):
+
     no_decay = ["bias", "LayerNorm.weight"]
-    # attrs = [(model, self.config_gpt2.task_specific_params['learning_rate']),
-    #          (self.classifier, self.config_gpt2.task_specific_params['learning_rate']),
-    #          (self.crf, self.config_gpt2.task_specific_params['learning_rate_for_task']), ]
     opt = []
     for a, lr in model_attrs:
         opt += [
@@ -25,8 +24,8 @@ def configure_optimizers(model_attrs: typing.Union[typing.List,typing.Tuple],
                 "weight_decay": 0.0, "lr": lr,
             },
         ]
-    optimizer = AdamW(opt, lr=hparams.training_args.learning_rate, eps=hparams.training_args.adam_epsilon)
 
+    optimizer = AdamW(opt, lr=hparams.training_args.learning_rate, eps=hparams.training_args.adam_epsilon)
     scheduler = get_linear_schedule_with_warmup(
         optimizer,
         num_warmup_steps=hparams.training_args.warmup_steps,
@@ -35,3 +34,44 @@ def configure_optimizers(model_attrs: typing.Union[typing.List,typing.Tuple],
     )
     scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
     return [optimizer], [scheduler]
+
+
+
+def generate_random_str(randomlength=16):
+    """
+    生成一个指定长度的随机字符串
+    """
+    random_str =''
+    base_str ='ABCDEFGHIGKLMNOPQRSTUVWXYZabcdefghigklmnopqrstuvwxyz0123456789'
+    length =len(base_str) -1
+    for i in range(randomlength):
+        random_str +=base_str[random.randint(0, length)]
+    return random_str
+
+
+
+class InheritBlockMeta(type):
+    def __new__(cls, name,bases, attr,*args,**kwargs):
+        if kwargs.get('__inherit',False):
+            return super(InheritBlockMeta, cls).__new__(cls, name, bases, attr)
+        if any(tuple(True for b in bases if issubclass(b,ClassUnBlock))):
+            return super(InheritBlockMeta, cls).__new__(cls, name, bases, attr)
+        return super(InheritBlockMeta, cls).__new__(cls, name,() if any(tuple(True for b in bases if str(b).endswith('__.ClassBlock\'>'))) else bases, attr)
+
+class ClassUnBlock(metaclass=InheritBlockMeta,__inherit=True):...
+class ClassBlock(metaclass=InheritBlockMeta,__inherit=False):...
+
+
+def block_class(className):
+    return type('BC' + generate_random_str(12), (className, ClassBlock,), dict(__MODEL_CLASS__ = className))
+
+
+
+
+class ExceptClassMeta(type):
+    def __new__(cls, name,bases,attr,*args,**kwargs):
+        excepts = kwargs.pop('excepts',None)
+        return super(ExceptClassMeta, cls).__new__(cls, name,tuple(_ for _ in bases if not str(_).endswith('__.{}\'>'.format(excepts))) if excepts is not None else bases,attr)
+
+class ExceptCLASS(metaclass=ExceptClassMeta):...
+

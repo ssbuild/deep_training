@@ -30,15 +30,15 @@ def loss_for_pointer(y_true, y_pred):
 
 def sparse_multilabel_categorical_crossentropy(y_true, y_pred, mask_zero=False,epsilon=1e-7,inf=1e12):
     zeros = torch.zeros_like(y_pred[..., :1])
-    y_pred = torch.concat([y_pred, zeros], dim=-1)
+    y_pred = torch.cat([y_pred, zeros], dim=-1)
     if mask_zero:
         infs = zeros + inf
-        y_pred = torch.concat([infs, y_pred[..., 1:]], dim=-1)
+        y_pred = torch.cat([infs, y_pred[..., 1:]], dim=-1)
 
     y_pos_2 = torch.gather(y_pred,-1, y_true)
-    y_pos_1 = torch.concat([y_pos_2, zeros], dim=-1)
+    y_pos_1 = torch.cat([y_pos_2, zeros], dim=-1)
     if mask_zero:
-        y_pred = torch.concat([-infs, y_pred[..., 1:]], dim=-1)
+        y_pred = torch.cat([-infs, y_pred[..., 1:]], dim=-1)
         y_pos_2 = torch.gather(y_pred,-1, y_true)
     pos_loss = torch.logsumexp(-y_pos_1, dim=-1)
     all_loss = torch.logsumexp(y_pred, dim=-1)
@@ -47,9 +47,9 @@ def sparse_multilabel_categorical_crossentropy(y_true, y_pred, mask_zero=False,e
     neg_loss = all_loss + torch.log(aux_loss)
     return pos_loss + neg_loss
 
-def loss_for_gplinker(y_true: torch.Tensor, y_pred: torch.Tensor):
+def loss_for_gplinker(y_true: torch.Tensor, y_pred: torch.Tensor,mask_zero=True):
     shape = y_pred.shape
     y_true = y_true[..., 0] * shape[2] + y_true[..., 1]
-    y_pred = torch.reshape(y_pred, (shape[0], -1, torch.prod(torch.tensor(shape[2:]))))
-    loss = sparse_multilabel_categorical_crossentropy(y_true.long(),y_pred,True)
+    y_pred = torch.reshape(y_pred, (shape[0], -1, torch.prod(torch.tensor(shape[2:])).numpy()))
+    loss = sparse_multilabel_categorical_crossentropy(y_true.long(),y_pred,mask_zero)
     return loss.sum(dim=1).mean()

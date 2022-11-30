@@ -13,10 +13,10 @@ import torch
 from deep_training.data_helper import DataHelper
 from torch import nn
 from pytorch_lightning import Trainer
-from deep_training.data_helper import make_all_dataset_with_args, load_all_dataset_with_args, \
+from deep_training.data_helper import make_dataset_with_args, load_dataset_with_args, \
     load_tokenizer_and_config_with_args
 from transformers import HfArgumentParser, BertTokenizer
-from deep_training.model.nlp.models.transformer import TransformerModelUnilm
+from deep_training.model.nlp.models.transformer import TransformerModelForUnilm
 from deep_training.model.nlp.losses.contrast import compute_simcse_loss
 from deep_training.model.nlp.layers.mask import unilm_mask
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
@@ -102,8 +102,7 @@ class NN_DataHelper(DataHelper):
         for k in o:
             o[k] = torch.stack(o[k])
 
-        seqlen = o.pop('seqlen')
-        max_len = torch.max(seqlen)
+        max_len = torch.max(o.pop('seqlen'))
 
         o['input_ids'] = o['input_ids'][:, :max_len]
         o['token_type_ids'] = o['token_type_ids'][:, :max_len]
@@ -111,7 +110,7 @@ class NN_DataHelper(DataHelper):
         return o
 
 
-class MyTransformer(TransformerModelUnilm):
+class MyTransformer(TransformerModelForUnilm):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
         self.sim_head = nn.Linear(config.hidden_size, 512, bias=False)
@@ -161,13 +160,13 @@ if __name__== '__main__':
     for i in range(N):
         intermediate_name = data_args.intermediate_name + '_{}'.format(i)
         logging.info('make data {}...'.format(intermediate_name))
-        train_file, eval_file, test_file = make_all_dataset_with_args(dataHelper, save_fn_args, data_args,
-                                                                      intermediate_name=intermediate_name)
+        train_file, eval_file, test_file = make_dataset_with_args(dataHelper, save_fn_args, data_args,
+                                                                  intermediate_name=intermediate_name)
         train_files.append(train_file)
         eval_files.append(eval_file)
         test_files.append(test_file)
 
-    dm = load_all_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files,allow_train_shuffle=False)
+    dm = load_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files, allow_train_shuffle=False)
 
     model = MyTransformer(config=config,model_args=model_args,training_args=training_args)
     checkpoint_callback = ModelCheckpoint(monitor="loss", save_last=True, every_n_epochs=1)
@@ -180,7 +179,8 @@ if __name__== '__main__':
         enable_progress_bar=True,
         default_root_dir=data_args.output_dir,
         gradient_clip_val=training_args.max_grad_norm,
-        accumulate_grad_batches = training_args.gradient_accumulation_steps
+        accumulate_grad_batches = training_args.gradient_accumulation_steps,
+        num_sanity_val_steps=0,
     )
 
     if data_args.do_train:

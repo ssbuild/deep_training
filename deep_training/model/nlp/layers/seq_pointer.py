@@ -20,6 +20,8 @@ def f1_metric_for_pointer(y_true, y_pred):
 
 def seq_masking(logits:torch.Tensor,mask,axis,value=-1e12):
     x = logits
+    if mask is None:
+        return x
     for _ in range(axis - 1):
         mask = torch.unsqueeze(mask,1)
     for _ in range(len(x.size()) -len(mask.size())):
@@ -55,16 +57,10 @@ class PointerLayer(nn.Module):
 
 
 
-    def forward(self, context_output, attention_mask):
+    def forward(self, context_output, mask = None):
 
 
-        self.device = attention_mask.device
-
-        #context_outputs = self.encoder(input_ids, attention_mask, token_type_ids)
-        # last_hidden_state:(batch_size, seq_len, hidden_size)
-        #last_hidden_state = context_outputs[0]
-
-
+        self.device = context_output.device
         batch_size,seq_len = context_output.size()[0:2]
 
 
@@ -99,8 +95,8 @@ class PointerLayer(nn.Module):
         logits = torch.einsum('bmhd,bnhd->bhmn', qw, kw)
 
 
-        logits = seq_masking(logits, attention_mask, 2,-self.infinity)
-        logits = seq_masking(logits, attention_mask, 3,-self.infinity)
+        logits = seq_masking(logits, mask, 2, -self.infinity)
+        logits = seq_masking(logits, mask, 3, -self.infinity)
 
         if self.tril_mask:
             #排除下三角
@@ -139,11 +135,9 @@ class EfficientPointerLayer(nn.Module):
         return embeddings
 
 
-    def forward(self, context_output, attention_mask):
-        self.device = attention_mask.device
-        #context_outputs = self.encoder(input_ids, attention_mask, token_type_ids)
-        # last_hidden_state:(batch_size, seq_len, hidden_size)
-        #last_hidden_state = context_outputs[0]
+    def forward(self, context_output, mask):
+        self.device = context_output.device
+
         batch_size,seq_len = context_output.size()[0:2]
         # outputs:(batch_size, seq_len, head_size*2)
         outputs = self.dense1(context_output)
@@ -178,8 +172,8 @@ class EfficientPointerLayer(nn.Module):
         bias = torch.einsum('bnh->bhn',outputs_dense ) / 2
         logits = logits[:, None] + bias[:, ::2, None] + bias[:, 1::2, :, None]
 
-        logits = seq_masking(logits, attention_mask, 2,-self.infinity)
-        logits = seq_masking(logits, attention_mask, 3,-self.infinity)
+        logits = seq_masking(logits, mask, 2, -self.infinity)
+        logits = seq_masking(logits, mask, 3, -self.infinity)
 
         if self.tril_mask:
             #排除下三角

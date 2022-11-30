@@ -15,6 +15,9 @@ from .transformer import TransformerModel
 from ..layers.crf import CRF
 from ..layers.prefix_encoder import PrefixEncoder
 from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer, f1_metric_for_pointer
+from ..losses.loss_globalpointer import loss_for_pointer
+from ..metrics.pointer import metric_for_pointer
+
 
 __all__ = [
     'PrefixTransformerForModel',
@@ -23,9 +26,6 @@ __all__ = [
     'PrefixTransformerForCRF'
 ]
 
-from ..losses.loss_globalpointer import loss_for_pointer
-
-from ..metrics.pointer import metric_for_pointer
 
 
 class PrefixTransformerForModel(TransformerModel):
@@ -161,7 +161,8 @@ class PrefixTransformerForSequenceClassification(PrefixTransformerForModel):
         labels = batch.pop('labels',None)
         outputs = self(batch)
         pooled_output = outputs[1]
-        pooled_output = self.dropout(pooled_output)
+        if self.model.training:
+            pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
 
         loss = None
@@ -212,7 +213,8 @@ class PrefixTransformerForTokenClassification(PrefixTransformerForModel):
         attention_mask = batch['attention_mask']
         outputs = self(batch)
         pooled_output = outputs[1]
-        pooled_output = self.dropout(pooled_output)
+        if self.model.training:
+            pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
 
         if labels is not None:
@@ -251,7 +253,10 @@ class PrefixTransformerPointer(PrefixTransformerForModel):
     def compute_loss(self, batch) -> tuple:
         labels: torch.Tensor = batch.pop('labels', None)
         outputs = self(**batch)
-        logits = self.pointer_layer(outputs[0], batch['attention_mask'])
+        logits = outputs[0]
+        if self.model.training:
+            logits = self.dropout(logits)
+        logits = self.pointer_layer(logits, batch['attention_mask'])
         if labels is not None:
             loss = loss_for_pointer(labels, logits)
             f1 = f1_metric_for_pointer(labels, logits)
@@ -304,6 +309,8 @@ class PrefixTransformerForCRF(PrefixTransformerForModel):
         attention_mask = batch['attention_mask']
         outputs = self(**batch)
         logits = outputs[0]
+        if self.model.training:
+            logits = self.dropout(logits)
         logits = self.classifier(logits)
         tags = self.crf.decode(logits, attention_mask)
         if labels is not None:

@@ -17,16 +17,13 @@ __all__ = [
 ]
 
 
-
-
 class TransformerForPointer(TransformerModel):
-    def __init__(self,eval_labels,with_efficient=True, *args,**kwargs):
-        super(TransformerForPointer, self).__init__(*args, **kwargs)
-
-        self.eval_labels = eval_labels
+    def __init__(self,config,with_efficient, *args,**kwargs):
+        super(TransformerForPointer, self).__init__(config,*args, **kwargs)
         self.dropout = nn.Dropout(self.config.hidden_dropout_prob)
         PointerLayerObject = EfficientPointerLayer if with_efficient else PointerLayer
         self.pointer_layer = PointerLayerObject(self.config.hidden_size,self.config.num_labels,64)
+        self.post_init()
 
     def get_model_lr(self):
         return super(TransformerForPointer, self).get_model_lr() + [
@@ -36,7 +33,9 @@ class TransformerForPointer(TransformerModel):
     def compute_loss(self,batch) -> tuple:
         labels: torch.Tensor = batch.pop('labels', None)
         outputs = self(**batch)
-        logits = self.dropout(outputs[0])
+        logits = outputs[0]
+        if self.model.training:
+            logits = self.dropout(logits)
         logits = self.pointer_layer(logits, batch['attention_mask'])
         if labels is not None:
             loss = loss_for_pointer(labels, logits)
@@ -58,16 +57,13 @@ class TransformerForPointer(TransformerModel):
             for p, t in zip(logits, label):
                 a_result = []
                 for (l, s, e) in zip(*np.where(p > threshold)):
-                    a_result.append((l, s, e))
+                    a_result.append((l, s-1, e -1))
                 preds.append(a_result)
 
-
-                print(index)
-
                 b_result = []
-
                 for (l, s, e) in self.eval_labels[index]:
                     b_result.append((l, s, e))
+                trues.append(b_result)
                 index +=1
                 # b_result = []
                 # for (l, s, e) in zip(*np.where(t > threshold)):

@@ -5,3 +5,4 @@ seqmetric
 sklearn
 scipy
 scikit-learn
+jieba

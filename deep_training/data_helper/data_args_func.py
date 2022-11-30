@@ -14,8 +14,8 @@ __all__ = [
     'is_chinese_char',
     'get_filename_no_ext',
     'get_filename_replace_dir',
-    'make_all_dataset_with_args',
-    'load_all_dataset_with_args',
+    'make_dataset_with_args',
+    'load_dataset_with_args',
     'DataHelper',
     'load_tokenizer_and_config_with_args'
 ]
@@ -79,14 +79,14 @@ def load_tokenizer_and_config_with_args(dataHelper,model_args: ModelArguments,
                             )
 
     if hasattr(config,'num_labels'):
-        print('*' * 30, config.num_labels)
+        print('*' * 30,'num_labels=', config.num_labels)
         print(label2id, id2label)
 
     return  tokenizer,config,label2id, id2label
 
 
 
-def make_all_dataset_with_args(dataHelper, save_fn_args, data_args:DataArguments, intermediate_name, allow_train_shuffle=True, num_process_worker=0):
+def make_dataset_with_args(dataHelper,input_files, fn_args, data_args:DataArguments, intermediate_name, shuffle,mode, num_process_worker=0,overwrite=False):
     '''
         dataHelper: DataHelper
         save_fn_args: tuple param for DataHelper.on_data_process
@@ -96,36 +96,20 @@ def make_all_dataset_with_args(dataHelper, save_fn_args, data_args:DataArguments
         num_process_worker: int , num of process data
     '''
     dataHelper: DataHelper
-    train_file_output, eval_file_output, test_file_output = None, None, None
-    if data_args.do_train:
-        train_file_output = os.path.join(data_args.output_dir, intermediate_name + '-train.' + data_args.data_backend)
-        logging.info('make data {}...'.format(train_file_output))
-        train_file_output = dataHelper.make_dataset(data_args.train_file, train_file_output, save_fn_args + ('train',),
-                                                    num_process_worker=num_process_worker,
-                                                    shuffle=allow_train_shuffle,
-                                                    mode='train')
-
-    if data_args.do_eval:
-        eval_file_output = os.path.join(data_args.output_dir, intermediate_name + '-eval.' + data_args.data_backend)
-        logging.info('make data {}...'.format(eval_file_output))
-        eval_file_output = dataHelper.make_dataset(data_args.eval_file, eval_file_output, save_fn_args + ('eval',),
-                                                   num_process_worker=num_process_worker,
-                                                   shuffle=False,
-                                                   mode='eval')
-
-    if data_args.do_test:
-        test_file_output = os.path.join(data_args.output_dir, intermediate_name + '-test.' + data_args.data_backend)
-        logging.info('make data {}...'.format(test_file_output))
-        test_file_output = dataHelper.make_dataset(data_args.test_file, test_file_output, save_fn_args + ('test',),
-                                                   num_process_worker=num_process_worker,
-                                                   shuffle=False,
-                                                   mode='test')
-    #特征数据保存至相应的文件或者内存
-    return train_file_output, eval_file_output, test_file_output
+    if data_args.data_backend.startswith('memory'):
+        file_output = []
+        logging.info('make data {} {}...'.format(data_args.output_dir, intermediate_name +  '-' + mode + '.' +  data_args.data_backend))
+    else:
+        file_output = os.path.join(data_args.output_dir, intermediate_name +  '-' + mode + '.' +   data_args.data_backend)
+        logging.info('make data {}...'.format(file_output))
+    if isinstance(file_output, list) or not os.path.exists(file_output) or overwrite:
+        data = dataHelper.read_data_from_file(input_files, mode)
+        dataHelper.make_dataset(file_output, data, fn_args, num_process_worker=num_process_worker,shuffle=shuffle)
+    return file_output
 
 
 
-def load_all_dataset_with_args(dataHelper,training_args: TrainingArguments,train_file,eval_file,test_file,allow_train_shuffle=True):
+def load_dataset_with_args(dataHelper, training_args: TrainingArguments, train_file, eval_file, test_file, allow_train_shuffle=True):
     '''
        dataHelper: DataHelper
        training_args: args

@@ -130,7 +130,7 @@ class TrainingArguments:
         metadata={"help": "max_steps"},
     )
     adam_epsilon: float = field(
-        default=-1,
+        default=1e-8,
         metadata={"help": "Adam优化器的epsilon值"},
     )
     gradient_accumulation_steps: int = field(
@@ -209,6 +209,33 @@ class DataArguments:
         default=False, metadata={"help": "Overwrite the cached training and evaluation sets"}
     )
 
+    train_max_seq_length: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": (
+                "The maximum total input sequence length after tokenization. Sequences longer "
+                "than this will be truncated. Default to the max input length of the model."
+            )
+        },
+    )
+    eval_max_seq_length: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": (
+                "The maximum total input sequence length after tokenization. Sequences longer "
+                "than this will be truncated. Default to the max input length of the model."
+            )
+        },
+    )
+    test_max_seq_length: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": (
+                "The maximum total input sequence length after tokenization. Sequences longer "
+                "than this will be truncated. Default to the max input length of the model."
+            )
+        },
+    )
     max_seq_length: Optional[int] = field(
         default=512,
         metadata={
@@ -264,6 +291,12 @@ class DataArguments:
         if not os.path.exists(self.output_dir):
             os.mkdir(self.output_dir)
 
+        if self.train_max_seq_length is None:
+            self.train_max_seq_length = self.max_seq_length
+        if self.eval_max_seq_length is None:
+            self.eval_max_seq_length = self.max_seq_length
+        if self.test_max_seq_length is None:
+            self.test_max_seq_length = self.max_seq_length
 
 @dataclass
 class MlmDataArguments:
