@@ -29,16 +29,19 @@ train_info_args = {
     'config_name': '/data/nlp/pre_models/torch/bert/bert-base-chinese/config.json',
     'do_train': True,
     'do_eval': True,
-    'train_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
-    'eval_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
-    'label_file': '/data/nlp/nlp_train_data/relation/law/relation_label.json',
+    # 'train_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
+    # 'eval_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
+    # 'label_file': '/data/nlp/nlp_train_data/relation/law/relation_label.json',
+    'train_file': '/data/nlp/nlp_train_data/myrelation/duie/duie_train.json',
+    'eval_file': '/data/nlp/nlp_train_data/myrelation/duie/duie_dev.json',
+    'label_file': '/data/nlp/nlp_train_data/myrelation/duie/duie_schema.json',
     # 'train_file': '/data/nlp/nlp_train_data/myrelation/re_labels.json',
     # 'eval_file': '/data/nlp/nlp_train_data/myrelation/re_labels.json',
     # 'label_file': '/data/nlp/nlp_train_data/myrelation/labels.json',
     'learning_rate': 5e-5,
     'max_epochs': 15,
-    'train_batch_size': 32,
-    'eval_batch_size': 8,
+    'train_batch_size': 38,
+    'eval_batch_size': 4,
     'test_batch_size': 2,
     'adam_epsilon': 1e-8,
     'gradient_accumulation_steps': 1,
@@ -230,7 +233,7 @@ class MyTransformer(TransformerLightningModule):
 
     def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
         self.index += 1
-        if self.index < 3:
+        if self.index < 2:
             self.log('val_f1', 0.0, prog_bar=True)
             return
 

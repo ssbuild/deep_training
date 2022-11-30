@@ -28,9 +28,15 @@ train_info_args = {
     'config_name':'/data/nlp/pre_models/torch/bert/bert-base-chinese/config.json',
     'do_train': True,
     'do_eval': True,
-    'train_file':'/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
-    'eval_file':'/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
-    'label_file':'/data/nlp/nlp_train_data/relation/law/relation_label.json',
+     # 'train_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
+    # 'eval_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
+    # 'label_file': '/data/nlp/nlp_train_data/relation/law/relation_label.json',
+    # 'train_file': '/data/nlp/nlp_train_data/myrelation/duie/duie_train.json',
+    # 'eval_file': '/data/nlp/nlp_train_data/myrelation/duie/duie_dev.json',
+    # 'label_file': '/data/nlp/nlp_train_data/myrelation/duie/duie_schema.json',
+    'train_file': '/data/nlp/nlp_train_data/myrelation/re_labels.json',
+    'eval_file': '/data/nlp/nlp_train_data/myrelation/re_labels.json',
+    'label_file': '/data/nlp/nlp_train_data/myrelation/labels.json',
     'learning_rate': 5e-5,
     'max_epochs': 3,
     'train_batch_size': 10,
@@ -68,10 +74,15 @@ class NN_DataHelper(DataHelper):
         input_ids = np.asarray(input_ids, dtype = np.int64)
         attention_mask = np.asarray(attention_mask, dtype=np.int64)
         spoes = {}
+        real_label = []
         for s, p, o in spo_list:
+            p: int = predicate2id[p]
+            real_label.append((s[0], s[1], p, o[0], o[1]))
+            s = (s[0] + 1, s[1] + 1)
+            o = (o[0] + 1, o[1] + 1)
             if s[1] < max_seq_length - 2 and o[1] < max_seq_length - 2:
                 s = (s[0], s[1])
-                o = (o[0], o[1], predicate2id[p])
+                o = (o[0], o[1], p)
                 if s not in spoes:
                     spoes[s] = []
                 spoes[s].append(o)
@@ -106,6 +117,13 @@ class NN_DataHelper(DataHelper):
             'object_labels': object_labels,
             'seqlen': seqlen
         }
+        if self.index < 5:
+            print(tokens)
+            print(input_ids[:seqlen])
+
+        if mode == 'eval':
+            self.eval_labels.append(real_label)
+
         return d
 
     #读取标签
@@ -197,10 +215,11 @@ class NN_DataHelper(DataHelper):
 
 
 class MyTransformer(TransformerLightningModule):
-    def __init__(self,eval_labels,  *args, **kwargs):
+    def __init__(self,eval_labels, config, *args, **kwargs):
         super(MyTransformer, self).__init__(config,*args, **kwargs)
-        self.model = TransformerForHphtlinker.from_pretrained(*args, **kwargs)
+        self.model = TransformerForHphtlinker.from_pretrained(config,*args, **kwargs)
         self.eval_labels = eval_labels
+        self.index = 0
 
     def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
         self.index += 1
@@ -261,8 +280,8 @@ if __name__== '__main__':
     dm = load_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
     
-    model = MyTransformer(config=config,model_args=model_args,training_args=training_args)
-    checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True, every_n_epochs=1)
+    model = MyTransformer(dataHelper.eval_labels,config=config,model_args=model_args,training_args=training_args)
+    checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
         check_val_every_n_epoch=1 if data_args.do_eval else None,

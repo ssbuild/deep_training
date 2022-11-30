@@ -10,6 +10,9 @@ __all__ = [
     'TransformerForHphtlinker'
 ]
 
+from ..losses.bce_loss import BCELoss
+
+
 def extract_spoes(outputs):
     for (subject_preds, object_preds) in outputs:
         subject_preds[:, [0, -1]] *= 0
@@ -34,7 +37,7 @@ class TransformerForHphtlinker(TransformerModel):
         self.sigmoid = nn.Sigmoid()
         self.condLayerNorm = LayerNorm(hidden_size=config.hidden_size,
                                        conditional_size=config.hidden_size*2)
-
+        self.loss_fn = BCELoss(reduction='sum')
 
     def get_model_lr(self):
         return super(TransformerForHphtlinker, self).get_model_lr() + [
@@ -55,21 +58,24 @@ class TransformerForHphtlinker(TransformerModel):
         subject = torch.cat([start, end], 2)
         return subject[:, 0]
 
-    def forward_for_subject(self, **batch):
-        subject_labels, subject_ids, object_labels = None, None, None
-        if 'subject_labels' in batch:
-            subject_labels: torch.Tensor = batch.pop('subject_labels')
-            subject_ids: torch.Tensor = batch.pop('subject_ids')
-            object_labels: torch.Tensor = batch.pop('object_labels')
+    def forward_for_stage1(self, **batch):
+        # outputs = self(**batch)
+        # last_hidden = outputs[0]
+        # hidden_output = self.dropout(last_hidden)
+        hidden_output = batch['hidden_output']
+        subject_preds = self.sigmoid(self.subject_layer(hidden_output)) ** 2
+        return subject_preds
 
-        outputs = self(**batch)
-        last_hidden = outputs[0]
-        logits = self.dropout(last_hidden)
-        subject_preds = self.sigmoid(self.subject_layer(logits)) ** 2
+    def forward_for_stage2(self, **batch):
+        hidden_output = batch['hidden_output']
+        subject_ids = batch['subject_ids']
+        subject_output = self.__extract_subject([hidden_output, subject_ids])
+        subject_output = self.condLayerNorm([hidden_output, subject_output])
+        object_preds = self.sigmoid(self.object_layer(subject_output)) ** 4
+        object_preds = torch.reshape(object_preds, shape=(*object_preds.shape[:2], self.config.num_labels, 2))
+        return object_preds
 
-    def forward_for_objectp(self, **inputs):...
-
-    def compute_loss(self,batch) -> tuple:
+    def compute_loss(self,batch: dict) -> tuple:
         subject_labels,subject_ids,object_labels = None,None,None
         if 'subject_labels' in batch:
             subject_labels: torch.Tensor = batch.pop('subject_labels')
@@ -77,38 +83,47 @@ class TransformerForHphtlinker(TransformerModel):
             object_labels: torch.Tensor = batch.pop('object_labels')
 
         outputs = self(**batch)
-        last_hidden = outputs[0]
-        logits = self.dropout(last_hidden)
-        subject_preds = self.sigmoid(self.subject_layer(logits)) ** 2
+        hidden_output = outputs[0]
+        if self.model.training:
+            hidden_output = self.dropout(hidden_output)
+
+        inputs = {k:v for k,v in batch.items()}
+        inputs['hidden_output'] = hidden_output
+        subject_preds = self.forward_for_stage1(**inputs)
+
 
         if subject_labels is not None:
-            subject_output = self.__extract_subject([last_hidden, subject_ids])
-            subject_output = self.condLayerNorm([last_hidden, subject_output])
+            inputs['subject_ids'] = subject_ids
+            object_preds = self.forward_for_stage2(**inputs)
+            loss = self.loss_fn(subject_preds, subject_labels) + self.loss_fn(object_preds, object_labels)
+            outputs = (loss, subject_preds, object_preds, subject_labels, subject_ids, object_labels)
 
-            object_preds = self.sigmoid(self.object_layer(subject_output)) ** 4
-            object_preds = torch.reshape(object_preds, shape=(*object_preds.shape[:2], self.config.num_labels, 2))
-
-            loss = self.BCELoss(subject_preds, subject_labels) + self.BCELoss(object_preds, object_labels)
-
-            outputs = (loss,subject_preds,object_preds,subject_labels,subject_ids,object_labels)
         else:
+            inputs.pop('hidden_output')
             subject_preds[:, [0, -1]] *= 0
             start = torch.where(subject_preds[0, :, 0] > 0.6)[0]
             end = torch.where(subject_preds[0, :, 1] > 0.5)[0]
-            subjects = []
+            subject_ids: list = []
             for i in start:
                 j = end[end >= i]
                 if len(j) > 0:
                     j = j[0]
-                    subjects.append((i, j))
+                    subject_ids.append((i, j))
 
-            subject_ids = torch.tensor(subjects,dtype=torch.int64).to(subject_preds.device)
+            object_preds = None
+            if subject_ids:
+                inputs['input_ids'] = np.repeat(inputs['input_ids'], len(subject_ids), 0)
+                inputs['token_type_ids'] = np.repeat(inputs['token_type_ids'], len(subject_ids), 0)
+                inputs['attention_mask'] = np.repeat(inputs['attention_mask'], len(subject_ids), 0)
 
-            subject_output = self.__extract_subject([last_hidden, subject_ids])
-            subject_output = self.condLayerNorm([last_hidden, subject_output])
+                subjects_ids = np.array(subject_ids)
+                outputs = self(**batch)
+                hidden_output = outputs[0]
 
-            object_preds = self.sigmoid(self.object_layer(subject_output)) ** 4
-            object_preds = torch.reshape(object_preds, shape=(*object_preds.shape[:2], self.config.num_labels, 2))
+                inputs['subjects_ids'] = subjects_ids
+                inputs['hidden_output'] = hidden_output
+                object_preds = self.forward_for_stage1(**inputs)
+
             outputs = (subject_preds, object_preds)
 
         return outputs

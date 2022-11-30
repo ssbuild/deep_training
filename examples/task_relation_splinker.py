@@ -51,8 +51,13 @@ train_info_args = {
 
 
 class NN_DataHelper(DataHelper):
+    index = 0
+    def on_data_ready(self):
+        self.index = -1
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
+        self.index += 1
+
         tokenizer: BertTokenizer
         tokenizer, max_seq_length, predicate2id, mode = user_data
         sentence, entities, re_list = data
