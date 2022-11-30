@@ -26,7 +26,7 @@ def loss_for_pointer(y_true, y_pred):
     loss = multilabel_categorical_crossentropy(y_true, y_pred)
     return loss
 
-#true (batch,num_labels,seq) , preds (batch,num_labels,seq,2)
+
 
 def sparse_multilabel_categorical_crossentropy(y_true, y_pred, mask_zero=False,epsilon=1e-7,inf=1e12):
     zeros = torch.zeros_like(y_pred[..., :1])

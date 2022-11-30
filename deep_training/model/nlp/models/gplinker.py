@@ -14,9 +14,6 @@ from ..losses.loss_globalpointer import loss_for_gplinker
 __all__ = [
     'TransformerForGplinker'
 ]
-
-
-
 def extract_spoes(outputs: typing.List, threshold=1e-8):
     batch_spoes = []
     for logit1,logit2,logit3 in zip(outputs[0],outputs[1],outputs[2]):
@@ -88,11 +85,6 @@ class TransformerForGplinker(TransformerModel):
         else:
             outputs = (logits1, logits2, logits3)
         return outputs
-
-
-
-
-
 
 
 
