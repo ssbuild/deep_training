@@ -16,7 +16,7 @@ from pytorch_lightning import Trainer
 from deep_training.data_helper import make_dataset_with_args, load_dataset_with_args, \
     load_tokenizer_and_config_with_args
 from transformers import HfArgumentParser, BertTokenizer
-from deep_training.model.nlp.models.transformer import TransformerModel
+from deep_training.model.nlp.models.transformer import TransformerModel, TransformerLightningModule
 from deep_training.model.nlp.losses.circle_loss import CircleLoss
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
 
@@ -50,7 +50,7 @@ class NN_DataHelper(DataHelper):
     # 切分词
     def on_data_process(self,data: typing.Any, user_data: tuple):
         tokenizer: BertTokenizer
-        tokenizer,max_seq_length,label2id,mode = user_data
+        tokenizer, max_seq_length, do_lower_case, label2id, mode = user_data
         sentence,label_str = data
 
         o = tokenizer(sentence, max_length=max_seq_length, truncation=True, add_special_tokens=True, )
@@ -130,9 +130,10 @@ class NN_DataHelper(DataHelper):
         return o
 
 
-class MyTransformer(TransformerModel):
+class MyTransformer(TransformerLightningModule):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
+        self.model = TransformerModel.from_pretrained(*args,**kwargs)
 
         self.feat_head = nn.Linear(config.hidden_size, 512, bias=False)
         self.loss_fn = CircleLoss(m=0.25, gamma=32)
@@ -163,23 +164,30 @@ if __name__== '__main__':
 
     dataHelper = NN_DataHelper(data_args.data_backend)
     tokenizer, config, label2id, id2label = load_tokenizer_and_config_with_args(dataHelper, model_args, training_args,data_args)
-    save_fn_args = (tokenizer, data_args.max_seq_length,label2id)
 
-    print(label2id, id2label)
-    print('*' * 30, config.num_labels)
+    token_fn_args_dict = {
+        'train': (tokenizer, data_args.train_max_seq_length, model_args.do_lower_case, label2id, 'train'),
+        'eval': (tokenizer, data_args.eval_max_seq_length, model_args.do_lower_case, label2id, 'eval'),
+        'test': (tokenizer, data_args.test_max_seq_length, model_args.do_lower_case, label2id, 'test')
+    }
 
     N = 1
     train_files, eval_files, test_files = [], [], []
     for i in range(N):
         intermediate_name = data_args.intermediate_name + '_{}'.format(i)
-        logging.info('make data {}...'.format(intermediate_name))
-        train_file, eval_file, test_file = make_dataset_with_args(dataHelper, save_fn_args, data_args,
-                                                                  intermediate_name=intermediate_name)
-        train_files.append(train_file)
-        eval_files.append(eval_file)
-        test_files.append(test_file)
+        if data_args.do_train:
+            train_files.append(
+                make_dataset_with_args(dataHelper, data_args.train_file, token_fn_args_dict['train'], data_args,
+                                       intermediate_name=intermediate_name, shuffle=True, mode='train'))
+        if data_args.do_eval:
+            eval_files.append(
+                make_dataset_with_args(dataHelper, data_args.eval_file, token_fn_args_dict['eval'], data_args,
+                                       intermediate_name=intermediate_name, shuffle=False, mode='eval'))
+        if data_args.do_test:
+            test_files.append(
+                make_dataset_with_args(dataHelper, data_args.test_file, token_fn_args_dict['test'], data_args,
+                                       intermediate_name=intermediate_name, shuffle=False, mode='test'))
 
-    print(train_files, eval_files, test_files)
     dm = load_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
     

@@ -15,7 +15,7 @@ from pytorch_lightning import Trainer
 from deep_training.data_helper import make_dataset_with_args, load_dataset_with_args, \
     load_tokenizer_and_config_with_args
 from transformers import HfArgumentParser, BertTokenizer
-from deep_training.model.nlp.models.transformer import TransformerForSequenceClassification
+from deep_training.model.nlp.models.transformer import TransformerForSequenceClassification, TransformerLightningModule
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
 
 
@@ -130,10 +130,10 @@ class NN_DataHelper(DataHelper):
         return o
 
 
-
-class MyTransformer(TransformerForSequenceClassification):
+class MyTransformer(TransformerLightningModule):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
+        self.model = TransformerForSequenceClassification.from_pretrained(*args,**kwargs)
 
     def compute_loss(self,batch) -> tuple:
         outputs = self(**batch)
