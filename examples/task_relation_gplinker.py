@@ -224,9 +224,9 @@ class NN_DataHelper(DataHelper):
 
 
 class MyTransformer(TransformerLightningModule):
-    def __init__(self,eval_labels, config,with_efficient, *args, **kwargs):
-        super(MyTransformer, self).__init__(config,*args, **kwargs)
-        self.model = TransformerForGplinker.from_pretrained(config,with_efficient,*args, **kwargs)
+    def __init__(self,eval_labels,*args, **kwargs):
+        super(MyTransformer, self).__init__(*args, **kwargs)
+        self.model = TransformerForGplinker.from_pretrained(*args, **kwargs)
         self.index = 0
         self.eval_labels = eval_labels
 

@@ -139,9 +139,9 @@ class NN_DataHelper(DataHelper):
 
 
 class MyTransformer(TransformerLightningModule):
-    def __init__(self,config,prompt_args,prompt_type=0,*args,**kwargs):
-        super(MyTransformer, self).__init__(config,*args,**kwargs)
-        self.model = PrefixTransformerForSequenceClassification.from_pretrained(config,prompt_args=prompt_args,prompt_type=prompt_type,*args,**kwargs)
+    def __init__(self,*args,**kwargs):
+        super(MyTransformer, self).__init__(*args,**kwargs)
+        self.model = PrefixTransformerForSequenceClassification.from_pretrained(*args,**kwargs)
         self.loss_fct = CrossEntropyLoss(ignore_index=self.config.pad_token_id)
 
     def compute_loss(self, batch) -> tuple:
@@ -218,7 +218,7 @@ if __name__== '__main__':
     dm = load_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
     
-    model = MyTransformer(config,prompt_args=prompt_args,model_args=model_args,training_args=training_args)
+    model = MyTransformer(config=config,prompt_args=prompt_args,model_args=model_args,training_args=training_args)
     checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],

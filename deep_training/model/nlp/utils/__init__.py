@@ -2,13 +2,13 @@
 # @Time    : 2022/11/15 13:33
 import random
 import typing
-
 from torch.optim import AdamW
 from transformers import get_linear_schedule_with_warmup
+from deep_training.data_helper import TrainingArguments
 
 
 def configure_optimizers(model_attrs: typing.Union[typing.List,typing.Tuple],
-                         hparams: typing.Dict,
+                         training_args: TrainingArguments,
                          estimated_stepping_batches: int):
 
     no_decay = ["bias", "LayerNorm.weight"]
@@ -17,7 +17,7 @@ def configure_optimizers(model_attrs: typing.Union[typing.List,typing.Tuple],
         opt += [
             {
                 "params": [p for n, p in a.named_parameters() if not any(nd in n for nd in no_decay)],
-                "weight_decay": hparams.training_args.weight_decay, "lr": lr,
+                "weight_decay": training_args.weight_decay, "lr": lr,
             },
             {
                 "params": [p for n, p in a.named_parameters() if any(nd in n for nd in no_decay)],
@@ -25,10 +25,10 @@ def configure_optimizers(model_attrs: typing.Union[typing.List,typing.Tuple],
             },
         ]
 
-    optimizer = AdamW(opt, lr=hparams.training_args.learning_rate, eps=hparams.training_args.adam_epsilon)
+    optimizer = AdamW(opt, lr=training_args.learning_rate, eps=training_args.adam_epsilon)
     scheduler = get_linear_schedule_with_warmup(
         optimizer,
-        num_warmup_steps=hparams.training_args.warmup_steps,
+        num_warmup_steps=training_args.warmup_steps,
         num_training_steps=estimated_stepping_batches
         # num_training_steps=self.trainer.estimated_stepping_batches,
     )

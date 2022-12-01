@@ -17,7 +17,7 @@ import logging
 from pytorch_lightning import Trainer
 from deep_training.data_helper import make_dataset_with_args, load_dataset_with_args, \
     load_tokenizer_and_config_with_args
-from deep_training.model.nlp.models.transformer import TransformerModel
+from deep_training.model.nlp.models.transformer import TransformerModel, TransformerLightningModule
 from deep_training.model.nlp.losses.ContrastiveLoss import ContrastiveLoss
 from deep_training.utils.func import seq_pading
 
@@ -125,12 +125,13 @@ class NN_DataHelper(DataHelper):
 
         return o
 
-
-class MyTransformer(TransformerModel):
+class MyTransformer(TransformerLightningModule):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
+        config = self.config
         self.feat_head = nn.Linear(config.hidden_size, 512, bias=False)
         self.loss_fn = ContrastiveLoss(size_average=False,margin=0.5)
+        self.model.from_pretrained(*args,**kwargs)
 
     def get_model_lr(self):
         return super(MyTransformer, self).get_model_lr() + [

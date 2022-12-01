@@ -47,13 +47,15 @@ train_info_args = {
 
 
 class NN_DataHelper(DataHelper):
-    index = 0
+    index = -1
     eval_labels = []
     # 切分成开始
     def on_data_ready(self):
-        self.index = 0
+        self.index = -1
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
+        self.index += 1
+
         tokenizer: BertTokenizer
         tokenizer, max_seq_length, do_lower_case, label2id, mode = user_data
         sentence, label_dict = data
@@ -91,7 +93,7 @@ class NN_DataHelper(DataHelper):
             'labels': labels,
             'seqlen': seqlen,
         }
-        self.index += 1
+
         if self.index < 5:
             print(tokens)
             print(input_ids[:seqlen])
@@ -148,9 +150,9 @@ class NN_DataHelper(DataHelper):
 
 
 class MyTransformer(TransformerLightningModule):
-    def __init__(self,eval_labels,config,with_efficient, *args, **kwargs):
-        super(MyTransformer, self).__init__(config,*args, **kwargs)
-        self.model = TransformerForPointer.from_pretrained(config,with_efficient, *args, **kwargs)
+    def __init__(self,eval_labels,*args, **kwargs):
+        super(MyTransformer, self).__init__(*args, **kwargs)
+        self.model = TransformerForPointer.from_pretrained(*args, **kwargs)
         self.model.eval_labels = eval_labels
 
 
@@ -187,7 +189,7 @@ if __name__ == '__main__':
 
 
     dm = load_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
-    model = MyTransformer(dataHelper.eval_labels,config,with_efficient=True, model_args=model_args, training_args=training_args)
+    model = MyTransformer(dataHelper.eval_labels,with_efficient=True,config=config, model_args=model_args, training_args=training_args)
     checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],

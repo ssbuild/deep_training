@@ -204,7 +204,7 @@ if __name__== '__main__':
 
     dm = load_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
-    model = MyTransformer(config,model_args=model_args,training_args=training_args)
+    model = MyTransformer(config=config,model_args=model_args,training_args=training_args)
     checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],

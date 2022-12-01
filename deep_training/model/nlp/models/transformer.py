@@ -39,7 +39,13 @@ from transformers import (
 )
 
 class TransformerBase(PreTrainedModel):
-    def __init__(self,config,*args,**kwargs):
+    def __init__(self,*args,**kwargs):
+        config = None
+        for item in args + tuple(kwargs.values()):
+            if isinstance(item, PretrainedConfig):
+                config = item
+                break
+        assert config is not None,ValueError('config is None')
         super(TransformerBase, self).__init__(config)
         self.config = config
         self.base_model_prefix = None
@@ -116,7 +122,7 @@ class TransformerBase(PreTrainedModel):
 
 
 class TransformerLightningModule(pl.LightningModule):
-    def __init__(self, config, model_args: ModelArguments, training_args: TrainingArguments):
+    def __init__(self, config: PretrainedConfig, model_args: ModelArguments, training_args: TrainingArguments,*args,**kwargs):
         super(TransformerLightningModule, self).__init__()
         if hasattr(config, 'task_specific_params') or config.task_specific_params is None:
             config.task_specific_params = {}
@@ -126,7 +132,10 @@ class TransformerLightningModule(pl.LightningModule):
             if training_args.learning_rate_for_task is not None else training_args.learning_rate
         print(training_args)
         print(model_args)
-        self.save_hyperparameters(ignore=['config'])
+        try:
+            self.save_hyperparameters(ignore=['config'])
+        except:
+            pass
         self.config = config
         self.model_args = model_args
         self.training_args = training_args
@@ -158,12 +167,11 @@ class TransformerLightningModule(pl.LightningModule):
         return self.model(**inputs)
 
     def configure_optimizers(self):
-        return configure_optimizers(self.get_model_lr(), self.hparams,self.trainer.estimated_stepping_batches)
+        return configure_optimizers(self.get_model_lr(), self.training_args,self.trainer.estimated_stepping_batches)
 
     def training_step(self, batch, batch_idx):
         outputs = self.compute_loss(batch)
         loss = outputs[0]
-
         if isinstance(loss,dict):
             self.log_dict(loss,prog_bar=True)
         else:
@@ -199,20 +207,18 @@ class TransformerLightningModule(pl.LightningModule):
 
 
 class TransformerModel(TransformerBase):
-    def __init__(self, config,*args,**kwargs):
-        super(TransformerModel, self).__init__(config,*args,**kwargs)
-        config = self.config
-        model = AutoModel.from_config(config)
+    def __init__(self, *args,**kwargs):
+        super(TransformerModel, self).__init__(*args,**kwargs)
+        model = AutoModel.from_config(self.config)
         self.set_model(model)
         
 
 
 class TransformerModelForUnilm(TransformerModel):
     def __init__(self,*args: Any, **kwargs: Any):
-        super().__init__( *args, **kwargs)
-        config = self.config
+        super().__init__(*args, **kwargs)
         self.loss_fct = CrossEntropyLoss(ignore_index=self.config.pad_token_id)
-        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        self.lm_head = nn.Linear(self.config.hidden_size, self.config.vocab_size, bias=False)
 
     def get_model_lr(self):
         return super(TransformerModelForUnilm, self).get_model_lr() + \
@@ -229,6 +235,7 @@ class TransformerModelForUnilm(TransformerModel):
         lm_logits = self.lm_head(hidden_states)
 
         if labels is not None:
+            labels = labels.long()
             shift_logits = lm_logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
             loss = self.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
@@ -243,19 +250,17 @@ class TransformerModelForUnilm(TransformerModel):
 
 class TransformerForCausalLM(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
-        super().__init__( *args, **kwargs)
-        config = self.config
-        model = AutoModelForCausalLM.from_config(config)
+        super().__init__(*args, **kwargs)
+        model = AutoModelForCausalLM.from_config(self.config)
         self.set_model(model)
 
 
 
 
 class TransformerForMaskLM(TransformerBase):
-    def __init__(self, config, *args: Any, **kwargs: Any):
-        super().__init__(config, *args, **kwargs)
-        config = self.config
-        model = AutoModelForMaskedLM.from_config(config)
+    def __init__(self,  *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        model = AutoModelForMaskedLM.from_config(self.config)
         self.set_model(model)
 
 
@@ -264,18 +269,16 @@ class TransformerForMaskLM(TransformerBase):
 class TransformerForSeq2SeqLM(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        config = self.config
-        model = AutoModelForSeq2SeqLM.from_config(config)
+        model = AutoModelForSeq2SeqLM.from_config(self.config)
         self.set_model(model)
 
         
 
 
 class TransformerForSequenceClassification(TransformerBase):
-    def __init__(self, config, *args: Any, **kwargs: Any):
-        super().__init__(config, *args, **kwargs)
-        config = self.config
-        model = AutoModelForSequenceClassification.from_config(config)
+    def __init__(self,  *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        model = AutoModelForSequenceClassification.from_config(self.config)
         self.set_model(model)
 
         
@@ -284,8 +287,7 @@ class TransformerForSequenceClassification(TransformerBase):
 class TransformerForQuestionAnswering(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        config = self.config
-        model = AutoModelForQuestionAnswering.from_config(config)
+        model = AutoModelForQuestionAnswering.from_config(self.config)
         self.set_model(model)
 
         
@@ -294,8 +296,7 @@ class TransformerForQuestionAnswering(TransformerBase):
 class TransformerForVisualQuestionAnswering(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        config = self.config
-        model = AutoModelForVisualQuestionAnswering.from_config(config)
+        model = AutoModelForVisualQuestionAnswering.from_config(self.config)
         self.set_model(model)
 
         
@@ -308,8 +309,7 @@ class TransformerForVisualQuestionAnswering(TransformerBase):
 class TransformerForTokenClassification(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        config = self.config
-        model = AutoModelForTokenClassification.from_config(config)
+        model = AutoModelForTokenClassification.from_config(self.config)
         self.set_model(model)
         
 
@@ -319,8 +319,7 @@ class TransformerForTokenClassification(TransformerBase):
 class TransformerForMultipleChoice(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        config = self.config
-        model = AutoModelForMultipleChoice.from_config(config)
+        model = AutoModelForMultipleChoice.from_config(self.config)
         self.set_model(model)
         
 
@@ -329,8 +328,7 @@ class TransformerForMultipleChoice(TransformerBase):
 class TransformerForNextSentencePrediction(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        config = self.config
-        model = AutoModelForNextSentencePrediction.from_config(config)
+        model = AutoModelForNextSentencePrediction.from_config(self.config)
         self.set_model(model)
 
 
@@ -340,8 +338,7 @@ class TransformerForNextSentencePrediction(TransformerBase):
 class TransformerForImageClassification(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        config = self.config
-        model = AutoModelForImageClassification.from_config(config)
+        model = AutoModelForImageClassification.from_config(self.config)
         self.set_model(model)
 
 
@@ -350,8 +347,7 @@ class TransformerForImageClassification(TransformerBase):
 class TransformerForImageSegmentation(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        config = self.config
-        model = AutoModelForImageSegmentation.from_config(config)
+        model = AutoModelForImageSegmentation.from_config(self.config)
         self.set_model(model)
         
 
@@ -361,9 +357,8 @@ class TransformerForImageSegmentation(TransformerBase):
 
 class TransformerForSemanticSegmentation(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
-        super().__init__( *args, **kwargs)
-        config = self.config
-        model = AutoModelForSemanticSegmentation.from_config(config)
+        super().__init__(*args, **kwargs)
+        model = AutoModelForSemanticSegmentation.from_config(self.config)
         self.set_model(model)
         
 
@@ -372,8 +367,7 @@ class TransformerForSemanticSegmentation(TransformerBase):
 class TransformerForObjectDetection(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        config = self.config
-        model =  AutoModelForObjectDetection.from_config(config)
+        model =  AutoModelForObjectDetection.from_config(self.config)
         self.set_model(model)
         
 
@@ -382,8 +376,7 @@ class TransformerForObjectDetection(TransformerBase):
 class TransformerForAudioClassification(TransformerBase):
     def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        config = self.config
-        model = AutoModelForAudioClassification.from_config(config)
+        model = AutoModelForAudioClassification.from_config(self.config)
         self.set_model(model)
         
 
@@ -393,8 +386,7 @@ class TransformerForAudioClassification(TransformerBase):
 class TransformerForMaskedImageModeling(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        config = self.config
-        model = AutoModelForMaskedImageModeling.from_config(config)
+        model = AutoModelForMaskedImageModeling.from_config(self.config)
         self.set_model(model)
 
 

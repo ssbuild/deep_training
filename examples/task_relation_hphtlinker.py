@@ -215,9 +215,9 @@ class NN_DataHelper(DataHelper):
 
 
 class MyTransformer(TransformerLightningModule):
-    def __init__(self,eval_labels, config, *args, **kwargs):
-        super(MyTransformer, self).__init__(config,*args, **kwargs)
-        self.model = TransformerForHphtlinker.from_pretrained(config,*args, **kwargs)
+    def __init__(self,eval_labels, *args, **kwargs):
+        super(MyTransformer, self).__init__(*args, **kwargs)
+        self.model = TransformerForHphtlinker.from_pretrained(*args, **kwargs)
         self.eval_labels = eval_labels
         self.index = 0
 

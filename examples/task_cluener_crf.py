@@ -53,11 +53,12 @@ train_info_args = {
 
 
 class NN_DataHelper(DataHelper):
-    index = 0
+    index = 1
     def on_data_ready(self):
-        self.index = 0
+        self.index = -1
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
+        self.index += 1
         tokenizer: BertTokenizer
         tokenizer, max_seq_length, do_lower_case, label2id, mode = user_data
         sentence, label_dict = data
@@ -103,8 +104,6 @@ class NN_DataHelper(DataHelper):
             'labels': labels,
             'seqlen': seqlen,
         }
-
-        self.index += 1
         if self.index < 5:
             print(tokens)
             print(input_ids[:seqlen])

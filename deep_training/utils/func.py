@@ -19,9 +19,9 @@ def is_chinese_char(cp):
     return True
   return False
 
-def seq_padding(arr, max_seq_length,dtype=np.int32,pad_val=0):
-  pad_len = max_seq_length - len(arr)
-  return np.pad(arr, (0, pad_len), 'constant', constant_values=(pad_val, pad_val)) if pad_len > 0 else np.asarray(arr,dtype=dtype)
+def seq_padding(arr_obj, max_seq_length,dtype=np.int32,pad_val=0):
+  pad_len = max_seq_length - len(arr_obj)
+  return np.pad(arr_obj, (0, pad_len), 'constant', constant_values=(pad_val, pad_val)) if pad_len > 0 else np.asarray(arr_obj,dtype=dtype)
 
 
 def seq_pading(array_list, max_seq_length,dtype=np.int64,pad_val=0):

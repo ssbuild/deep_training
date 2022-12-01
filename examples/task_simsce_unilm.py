@@ -3,10 +3,10 @@ import json
 import logging
 import os
 import sys
-
+sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
+
 import typing
 import numpy as np
 import torch
@@ -16,7 +16,7 @@ from pytorch_lightning import Trainer
 from deep_training.data_helper import make_dataset_with_args, load_dataset_with_args, \
     load_tokenizer_and_config_with_args
 from transformers import HfArgumentParser, BertTokenizer
-from deep_training.model.nlp.models.transformer import TransformerModelForUnilm
+from deep_training.model.nlp.models.transformer import TransformerModelForUnilm, TransformerLightningModule
 from deep_training.model.nlp.losses.contrast import compute_simcse_loss
 from deep_training.model.nlp.layers.mask import unilm_mask
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
@@ -109,11 +109,12 @@ class NN_DataHelper(DataHelper):
         o['labels'] = o['labels'][:, :max_len]
         return o
 
-
-class MyTransformer(TransformerModelForUnilm):
+class MyTransformer(TransformerLightningModule):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
+        config = self.config
         self.sim_head = nn.Linear(config.hidden_size, 512, bias=False)
+        self.model = TransformerModelForUnilm.from_pretrained(*args, **kwargs)
 
     def get_model_lr(self):
         return super(MyTransformer, self).get_model_lr() + [

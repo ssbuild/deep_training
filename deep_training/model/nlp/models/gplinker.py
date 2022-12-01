@@ -38,8 +38,8 @@ def extract_spoes(outputs: typing.List, threshold=1e-8):
 
 
 class TransformerForGplinker(TransformerModel):
-    def __init__(self,config, with_efficient, *args, **kwargs):
-        super(TransformerForGplinker, self).__init__(config, with_efficient,*args, **kwargs)
+    def __init__(self, with_efficient, *args, **kwargs):
+        super(TransformerForGplinker, self).__init__(*args, **kwargs)
         self.dropout = nn.Dropout(self.config.hidden_dropout_prob)
         PointerLayerObject = EfficientPointerLayer if with_efficient else PointerLayer
         self.entities_layer = PointerLayerObject(self.config.hidden_size, 2, 64)

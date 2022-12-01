@@ -47,15 +47,15 @@ class NN_DataHelper(DataHelper):
         tokenizer, max_seq_length, do_lower_case, label2id, mode = user_data
         x = data
         assert isinstance(x,tuple)
-        print(max_seq_length)
         o = tokenizer.encode_plus(text=x[0], text_pair=x[1], max_length=max_seq_length, truncation=True)
-        seqlen = np.asarray(o['input_ids'],dtype=np.int32)
-        input_ids  = seq_padding(o['input_ids'],max_seq_length=max_seq_length,pad_val=tokenizer.pad_token_id)
+        seqlen = np.asarray(len(o['input_ids']),dtype=np.int32)
+        input_ids = seq_padding(o['input_ids'],max_seq_length=max_seq_length,pad_val=tokenizer.pad_token_id)
         token_type_ids = seq_padding(o['token_type_ids'],max_seq_length=max_seq_length,pad_val=0)
 
         d = {
             'input_ids': input_ids,
             'token_type_ids': token_type_ids,
+            'labels': input_ids,
             'seqlen': seqlen
         }
         return d
@@ -90,10 +90,9 @@ class NN_DataHelper(DataHelper):
             o[k] = torch.stack(o[k])
 
         max_len = torch.max(o.pop('seqlen'))
-
         o['input_ids'] = o['input_ids'][:, :max_len]
         o['token_type_ids'] = o['token_type_ids'][:, :max_len]
-        o['labels'] =  o['input_ids']
+        o['labels'] = o['labels'][:, :max_len]
         return o
 
 class MyTransformer(TransformerLightningModule):
@@ -136,7 +135,7 @@ if __name__== '__main__':
     dm = load_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
     
-    model = MyTransformer(config,model_args=model_args,training_args=training_args)
+    model = MyTransformer(config=config,model_args=model_args,training_args=training_args)
     checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True, every_n_train_steps=1000)
     trainer = Trainer(
         callbacks=[checkpoint_callback],

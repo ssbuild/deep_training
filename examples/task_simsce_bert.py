@@ -4,10 +4,8 @@ import logging
 import os
 import random
 import sys
-
-from pytorch_lightning.callbacks import ModelCheckpoint
-
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
+from pytorch_lightning.callbacks import ModelCheckpoint
 import typing
 import torch
 from torch.nn import CrossEntropyLoss
@@ -16,7 +14,7 @@ from torch import nn
 from pytorch_lightning import Trainer
 from deep_training.data_helper import make_dataset_with_args, load_dataset_with_args, \
     load_tokenizer_and_config_with_args
-from deep_training.model.nlp.models.transformer import TransformerModel
+from deep_training.model.nlp.models.transformer import TransformerModel, TransformerLightningModule
 from deep_training.model.nlp.losses.contrast import compute_simcse_loss
 from transformers import HfArgumentParser, BertTokenizer
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments,MlmDataArguments
@@ -117,13 +115,14 @@ class NN_DataHelper(DataHelper):
         o['weight'] = o['weight'][:, :max_len]
         return o
 
-
-class MyTransformer(TransformerModel):
+class MyTransformer(TransformerLightningModule):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
+        config = self.config
         self.mlm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
         self.sim_head = nn.Linear(config.hidden_size, 512, bias=False)
         self.loss_fct = CrossEntropyLoss(reduction='none', ignore_index=self.config.pad_token_id)
+        self.model = TransformerModel.from_pretrained(*args,**kwargs)
 
     def get_model_lr(self):
         return super(MyTransformer, self).get_model_lr() + [
