@@ -45,7 +45,9 @@ train_info_args = {
     'weight_decay': 0,
     'warmup_steps': 0,
     'output_dir': './output',
-    'max_seq_length': 512,
+    'train_max_seq_length': 200,
+    'eval_max_seq_length': 512,
+    'test_max_seq_length': 512,
     'pre_seq_len': 16
 }
 
@@ -137,25 +139,28 @@ class NN_DataHelper(DataHelper):
 
 
 class MyTransformer(TransformerLightningModule):
-    def __init__(self,prompt_type=0,*args,**kwargs):
-        super(MyTransformer, self).__init__(*args,**kwargs)
-        self.model = PrefixTransformerForSequenceClassification.from_pretrained(prompt_type=prompt_type,*args,**kwargs)
+    def __init__(self,config,prompt_args,prompt_type=0,*args,**kwargs):
+        super(MyTransformer, self).__init__(config,*args,**kwargs)
+        self.model = PrefixTransformerForSequenceClassification.from_pretrained(config,prompt_args=prompt_args,prompt_type=prompt_type,*args,**kwargs)
         self.loss_fct = CrossEntropyLoss(ignore_index=self.config.pad_token_id)
 
-    def compute_loss(self,batch) -> tuple:
-        labels: torch.Tensor = batch.pop('labels',None)
-        outputs = self.get_transformer_outputs(batch)
+    def compute_loss(self, batch) -> tuple:
+        labels: torch.Tensor = batch.pop('labels', None)
+        outputs = self(**batch)
         pooled_output = outputs[1]
-        pooled_output = self.dropout(pooled_output)
-        logits = self.classifier(pooled_output)
+        if self.model.training:
+            pooled_output = self.model.dropout(pooled_output)
+        logits = self.model.classifier(pooled_output)
         if labels is not None:
-            loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-            acc = torch.sum(torch.eq(labels.view(-1),torch.argmax(logits,dim=1,keepdim=False))) / labels.view(-1).size()[0]
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
+            acc = torch.sum(torch.eq(labels.view(-1), torch.argmax(logits, dim=1, keepdim=False))) / \
+                  labels.view(-1).size()[0]
             loss_dict = {
-                'train_loss': loss,
-                'acc':acc
+                'loss': loss,
+                'acc': acc
             }
-            outputs = (loss_dict,logits,labels)
+            outputs = (loss_dict, logits, labels)
         else:
             outputs = (logits,)
         return outputs
@@ -181,20 +186,16 @@ class MyTransformer(TransformerLightningModule):
 
 if __name__== '__main__':
     parser = HfArgumentParser((ModelArguments, TrainingArguments, DataArguments, PrefixModelArguments))
-    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        model_args, training_args, data_args, prompt_args = parser.parse_json_file(
-            json_file=os.path.abspath(sys.argv[1]))
-    else:
-        model_args, training_args, data_args, prompt_args = parser.parse_args_into_dataclasses()
+    model_args, training_args, data_args, prompt_args = parser.parse_dict(train_info_args)
 
     dataHelper = NN_DataHelper(data_args.data_backend)
     tokenizer, config, label2id, id2label = load_tokenizer_and_config_with_args(dataHelper, model_args, training_args,data_args)
-    save_fn_args = (tokenizer, data_args.max_seq_length,label2id,training_args.pre_seq_len)
+    save_fn_args = (tokenizer, data_args.max_seq_length,label2id,prompt_args.pre_seq_len)
 
     token_fn_args_dict = {
-        'train': (tokenizer, data_args.train_max_seq_length,training_args.pre_seq_len, model_args.do_lower_case, label2id, 'train'),
-        'eval': (tokenizer, data_args.eval_max_seq_length,training_args.pre_seq_len, model_args.do_lower_case, label2id, 'eval'),
-        'test': (tokenizer, data_args.test_max_seq_length,training_args.pre_seq_len, model_args.do_lower_case, label2id, 'test')
+        'train': (tokenizer, data_args.train_max_seq_length,prompt_args.pre_seq_len, model_args.do_lower_case, label2id, 'train'),
+        'eval': (tokenizer, data_args.eval_max_seq_length,prompt_args.pre_seq_len, model_args.do_lower_case, label2id, 'eval'),
+        'test': (tokenizer, data_args.test_max_seq_length,prompt_args.pre_seq_len, model_args.do_lower_case, label2id, 'test')
     }
 
     N = 1
@@ -217,7 +218,7 @@ if __name__== '__main__':
     dm = load_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
     
-    model = MyTransformer(prompt_args=prompt_args,config=config,model_args=model_args,training_args=training_args)
+    model = MyTransformer(config,prompt_args=prompt_args,model_args=model_args,training_args=training_args)
     checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],

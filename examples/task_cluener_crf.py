@@ -156,7 +156,6 @@ class NN_DataHelper(DataHelper):
         o['attention_mask'] = o['attention_mask'][:, :max_len]
         if 'token_type_ids' in o:
             o['token_type_ids'] = o['token_type_ids'][:, :max_len]
-
         o['labels'] = o['labels'][:,:max_len]
         return o
 

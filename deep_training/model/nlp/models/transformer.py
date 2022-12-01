@@ -166,6 +166,8 @@ class TransformerLightningModule(pl.LightningModule):
 
         if isinstance(loss,dict):
             self.log_dict(loss,prog_bar=True)
+        else:
+            self.log('loss',loss,prog_bar=False)
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
@@ -250,8 +252,8 @@ class TransformerForCausalLM(TransformerBase):
 
 
 class TransformerForMaskLM(TransformerBase):
-    def __init__(self, config,model_args:ModelArguments,  *args: Any, **kwargs: Any):
-        super().__init__(config,model_args, *args, **kwargs)
+    def __init__(self, config, *args: Any, **kwargs: Any):
+        super().__init__(config, *args, **kwargs)
         config = self.config
         model = AutoModelForMaskedLM.from_config(config)
         self.set_model(model)
@@ -270,8 +272,8 @@ class TransformerForSeq2SeqLM(TransformerBase):
 
 
 class TransformerForSequenceClassification(TransformerBase):
-    def __init__(self, config,model_args:ModelArguments,  *args: Any, **kwargs: Any):
-        super().__init__(config,model_args, *args, **kwargs)
+    def __init__(self, config, *args: Any, **kwargs: Any):
+        super().__init__(config, *args, **kwargs)
         config = self.config
         model = AutoModelForSequenceClassification.from_config(config)
         self.set_model(model)

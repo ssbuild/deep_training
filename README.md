@@ -40,9 +40,9 @@
   - 例子 <strong>cluener 全局指针提取</strong>
   - 例子 <strong>cluener crf提取</strong>
 - <strong>关系提取</strong>
-  - 例子 <strong>gplinker 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[法研杯2022信息抽取数据](https://github.com/ssbuild/cail2022-info-extract)
-  - 例子 <strong>hphtlinker 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[法研杯2022信息抽取数据](https://github.com/ssbuild/cail2022-info-extract)
-  - 例子 <strong>spliner 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[法研杯2022信息抽取数据](https://github.com/ssbuild/cail2022-info-extract)
+  - 例子 <strong>gplinker 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[duie和法研杯第一阶段数据](https://github.com/ssbuild/cail2022-info-extract)
+  - 例子 <strong>hphtlinker 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[duie和法研杯第一阶段数据](https://github.com/ssbuild/cail2022-info-extract)
+  - 例子 <strong>spliner 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[duie和法研杯第一阶段数据](https://github.com/ssbuild/cail2022-info-extract)
 - <strong> prompt 系列</strong>: 
   - 例子 <strong>prefixprompt tnews中文分类</strong>
   - 例子 <strong>prefixtuning tnews 中文分类</strong>

@@ -13,11 +13,10 @@ from pytorch_lightning import Trainer
 from deep_training.data_helper import make_dataset_with_args, load_dataset_with_args, \
     load_tokenizer_and_config_with_args
 from transformers import BertTokenizer
-from deep_training.model.nlp.models.transformer import TransformerModelForUnilm
+from deep_training.model.nlp.models.transformer import TransformerModelForUnilm, TransformerLightningModule
 from transformers import HfArgumentParser
 from deep_training.data_helper import ModelArguments, DataArguments, TrainingArguments
-from deep_training.utils.func import seq_pading
-
+from deep_training.utils.func import seq_padding
 
 train_info_args = {
     'devices':  '1',
@@ -45,13 +44,15 @@ class NN_DataHelper(DataHelper):
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
         tokenizer: BertTokenizer
-        tokenizer,max_seq_length,mode = user_data
+        tokenizer, max_seq_length, do_lower_case, label2id, mode = user_data
         x = data
         assert isinstance(x,tuple)
+        print(max_seq_length)
         o = tokenizer.encode_plus(text=x[0], text_pair=x[1], max_length=max_seq_length, truncation=True)
-        input_array = [o['input_ids'],o['token_type_ids']]
-        seqlen = np.asarray(input_array[0],dtype=np.int64)
-        input_ids ,token_type_ids = seq_pading(input_array,max_seq_length=max_seq_length,pad_val=tokenizer.pad_token_id)
+        seqlen = np.asarray(o['input_ids'],dtype=np.int32)
+        input_ids  = seq_padding(o['input_ids'],max_seq_length=max_seq_length,pad_val=tokenizer.pad_token_id)
+        token_type_ids = seq_padding(o['token_type_ids'],max_seq_length=max_seq_length,pad_val=0)
+
         d = {
             'input_ids': input_ids,
             'token_type_ids': token_type_ids,
@@ -95,10 +96,10 @@ class NN_DataHelper(DataHelper):
         o['labels'] =  o['input_ids']
         return o
 
-
-class MyTransformer(TransformerModelForUnilm):
-    def __init__(self,*args,**kwargs):
+class MyTransformer(TransformerLightningModule):
+    def __init__(self, *args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
+        self.model = TransformerModelForUnilm.from_pretrained(*args,**kwargs)
 
 
 if __name__== '__main__':
@@ -107,24 +108,35 @@ if __name__== '__main__':
 
     dataHelper = NN_DataHelper(data_args.data_backend)
     tokenizer, config, label2id, id2label = load_tokenizer_and_config_with_args(dataHelper, model_args, training_args,data_args)
-    save_fn_args = (tokenizer, data_args.max_seq_length)
 
+
+    token_fn_args_dict = {
+        'train': (tokenizer, data_args.train_max_seq_length, model_args.do_lower_case, label2id, 'train'),
+        'eval': (tokenizer, data_args.eval_max_seq_length, model_args.do_lower_case, label2id, 'eval'),
+        'test': (tokenizer, data_args.test_max_seq_length, model_args.do_lower_case, label2id, 'test')
+    }
 
     N = 1
     train_files, eval_files, test_files = [], [], []
     for i in range(N):
         intermediate_name = data_args.intermediate_name + '_{}'.format(i)
-        logging.info('make data {}...'.format(intermediate_name))
-        train_file, eval_file, test_file = make_dataset_with_args(dataHelper, save_fn_args, data_args,
-                                                                  intermediate_name=intermediate_name)
-        train_files.append(train_file)
-        eval_files.append(eval_file)
-        test_files.append(test_file)
+        if data_args.do_train:
+            train_files.append(
+                make_dataset_with_args(dataHelper, data_args.train_file, token_fn_args_dict['train'], data_args,
+                                       intermediate_name=intermediate_name, shuffle=True, mode='train'))
+        if data_args.do_eval:
+            eval_files.append(
+                make_dataset_with_args(dataHelper, data_args.eval_file, token_fn_args_dict['eval'], data_args,
+                                       intermediate_name=intermediate_name, shuffle=False, mode='eval'))
+        if data_args.do_test:
+            test_files.append(
+                make_dataset_with_args(dataHelper, data_args.test_file, token_fn_args_dict['test'], data_args,
+                                       intermediate_name=intermediate_name, shuffle=False, mode='test'))
 
     dm = load_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
     
-    model = MyTransformer(config=config,model_args=model_args,training_args=training_args)
+    model = MyTransformer(config,model_args=model_args,training_args=training_args)
     checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True, every_n_train_steps=1000)
     trainer = Trainer(
         callbacks=[checkpoint_callback],

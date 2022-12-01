@@ -151,7 +151,7 @@ class MyTransformer(TransformerLightningModule):
         if labels is not None:
             labels = torch.squeeze(labels, dim=1)
             loss = self.loss_fn(logits,labels)
-            outputs = (loss,logits)
+            outputs = (loss,logits,labels)
         else:
             outputs = (logits,)
         return outputs
@@ -191,7 +191,7 @@ if __name__== '__main__':
     dm = load_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
 
     model = MyTransformer(config=config,model_args=model_args,training_args=training_args)
-    checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True, every_n_epochs=1)
+    checkpoint_callback = ModelCheckpoint(monitor="loss", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
         check_val_every_n_epoch=1 if data_args.do_eval else None,

@@ -202,7 +202,7 @@ class DataArguments:
         default='dataset', metadata={"help": "dataset文件名前缀"}
     )
     output_dir: Optional[str] = field(
-        default=None, metadata={"help": "模型输出路径"}
+        default='./output', metadata={"help": "模型输出路径"}
     )
     overwrite_cache: bool = field(
         default=False, metadata={"help": "Overwrite the cached training and evaluation sets"}
