@@ -4,9 +4,7 @@ import os
 import sys
 import typing
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
-from deep_training.model.nlp.models.transformer import TransformerLightningModule
-
-
+from deep_training.model.nlp.models.transformer import TransformerLightningModule, TransformerMeta
 
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
@@ -161,10 +159,9 @@ class NN_DataHelper(DataHelper):
         o['labels'] = o['labels'][:,:max_len]
         return o
 
-class MyTransformer(TransformerLightningModule):
+class MyTransformer(PrefixTransformerForCRF, metaclass=TransformerMeta):
     def __init__(self, *args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
-        self.model = PrefixTransformerForCRF.from_pretrained(*args,**kwargs)
 
     def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
         preds_all, labels_all = [], []
@@ -220,10 +217,9 @@ if __name__== '__main__':
 
     dm = load_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
     model = MyTransformer(prompt_args=prompt_args,config=config,model_args=model_args,training_args=training_args)
-    checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True,every_n_epochs=1)
+    checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True,every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
-        check_val_every_n_epoch=1 if data_args.do_eval else None,
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",

@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import json
-import logging
 import os
 import sys
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
@@ -9,7 +8,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from sklearn.metrics import f1_score, classification_report
 
-from deep_training.model.nlp.models.transformer import TransformerLightningModule
+from deep_training.model.nlp.models.transformer import TransformerMeta
 import numpy as np
 from deep_training.data_helper import DataHelper
 from deep_training.data_helper import ModelArguments, TrainingArguments, PrefixModelArguments, \
@@ -48,6 +47,7 @@ train_info_args = {
     'train_max_seq_length': 200,
     'eval_max_seq_length': 512,
     'test_max_seq_length': 512,
+    'prompt_type': 1,
     'pre_seq_len': 16
 }
 
@@ -138,10 +138,9 @@ class NN_DataHelper(DataHelper):
         return o
 
 
-class MyTransformer(TransformerLightningModule):
+class MyTransformer(PrefixTransformerForSequenceClassification, metaclass=TransformerMeta):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
-        self.model = PrefixTransformerForSequenceClassification.from_pretrained(*args,**kwargs)
         self.loss_fct = CrossEntropyLoss(ignore_index=self.config.pad_token_id)
 
     def compute_loss(self, batch) -> tuple:
@@ -222,7 +221,6 @@ if __name__== '__main__':
     checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
-        check_val_every_n_epoch=1 if data_args.do_eval else None,
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",

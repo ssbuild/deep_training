@@ -70,8 +70,20 @@ def block_class(className):
 
 class ExceptClassMeta(type):
     def __new__(cls, name,bases,attr,*args,**kwargs):
-        excepts = kwargs.pop('excepts',None)
+        excepts = kwargs.pop('except',None)
         return super(ExceptClassMeta, cls).__new__(cls, name,tuple(_ for _ in bases if not str(_).endswith('__.{}\'>'.format(excepts))) if excepts is not None else bases,attr)
 
 class ExceptCLASS(metaclass=ExceptClassMeta):...
 
+
+
+
+def get_value_from_args(key,dtype,*args,**kwargs):
+    value = kwargs.get(key, None)
+    if value is not None:
+        for item in args:
+            if isinstance(item,dtype):
+                value = item
+                break
+    assert value is not None, ValueError('no param ',key)
+    return value

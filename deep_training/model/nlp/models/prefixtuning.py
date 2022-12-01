@@ -17,7 +17,7 @@ from ..layers.prefix_encoder import PrefixEncoder
 from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer, f1_metric_for_pointer
 from ..losses.loss_globalpointer import loss_for_pointer
 from ..metrics.pointer import metric_for_pointer
-
+from ..utils import get_value_from_args
 
 __all__ = [
     'PrefixTransformerForModel',
@@ -26,8 +26,12 @@ __all__ = [
     'PrefixTransformerForCRF'
 ]
 
+
+
+
 class PrefixTransformerForModel(TransformerModel):
-    def __init__(self,prompt_args: PrefixModelArguments, *args: Any, **kwargs: Any):
+    def __init__(self, *args: Any, **kwargs: Any):
+        prompt_args = get_value_from_args('prompt_args', PrefixModelArguments, *args, **kwargs)
         super().__init__(*args, **kwargs)
         self.prompt_args = prompt_args
         config = self.config
@@ -145,8 +149,8 @@ class PrefixTransformerForModel(TransformerModel):
 
 
 class PrefixTransformerForSequenceClassification(PrefixTransformerForModel):
-    def __init__(self, prompt_args: PrefixModelArguments, *args: Any, **kwargs: Any):
-        super().__init__(prompt_args, *args, **kwargs)
+    def __init__(self,  *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
         self.classifier = torch.nn.Linear(self.config.hidden_size, self.config.num_labels)
 
     def get_model_lr(self):
@@ -195,8 +199,8 @@ class PrefixTransformerForSequenceClassification(PrefixTransformerForModel):
 
 
 class PrefixTransformerForTokenClassification(PrefixTransformerForModel):
-    def __init__(self, prompt_args: PrefixModelArguments,  *args: Any, **kwargs: Any):
-        super().__init__(prompt_args, *args, **kwargs)
+    def __init__(self, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
         self.num_labels = self.config.num_labels
         self.classifier = torch.nn.Linear(self.config.hidden_size,  self.config.num_labels)
 
@@ -237,9 +241,9 @@ class PrefixTransformerForTokenClassification(PrefixTransformerForModel):
 
 
 class PrefixTransformerPointer(PrefixTransformerForModel):
-    def __init__(self,prompt_args: PrefixModelArguments,  *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         with_efficient = kwargs.pop('with_efficient', True)
-        super().__init__(prompt_args,*args, **kwargs)
+        super().__init__(*args, **kwargs)
         PointerLayerObject = EfficientPointerLayer if with_efficient else PointerLayer
         self.pointer_layer = PointerLayerObject(self.config.hidden_size, self.config.num_labels, 64)
 
@@ -290,8 +294,8 @@ class PrefixTransformerPointer(PrefixTransformerForModel):
 
 
 class PrefixTransformerForCRF(PrefixTransformerForModel):
-    def __init__(self,prompt_args, training_args: argparse.Namespace,*args, **kwargs):
-        super().__init__(prompt_args, training_args, *args, **kwargs)
+    def __init__(self,*args, **kwargs):
+        super().__init__(*args, **kwargs)
         config = self.config
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)

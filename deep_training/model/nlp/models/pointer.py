@@ -66,4 +66,4 @@ class TransformerForPointer(TransformerModel):
         f1, str_report = metric_for_pointer(trues, preds, label2id)
         print(f1)
         print(str_report)
-        # self.log('val_f1', f1, prog_bar=True)
+        self.log('val_f1', f1, prog_bar=True)

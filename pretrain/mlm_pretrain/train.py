@@ -15,10 +15,41 @@ import logging
 from torch.nn import CrossEntropyLoss
 from pytorch_lightning import Trainer
 from transformers import BertTokenizerFast,HfArgumentParser
-from deep_training.model.nlp.models.transformer import TransformerForMaskLM
+from deep_training.model.nlp.models.transformer import TransformerForMaskLM, TransformerMeta
 from deep_training.data_helper import load_tokenizer_and_config_with_args, make_dataset_with_args, \
     load_dataset_with_args
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments,MlmDataArguments
+
+
+train_info_args = {
+    'devices':  '1',
+    'data_backend': 'leveldb',
+    'model_type': 'bert',
+    'model_name_or_path': '/data/nlp/pre_models/torch/bert/bert-base-chinese',
+    'tokenizer_name': '/data/nlp/pre_models/torch/bert/bert-base-chinese',
+    'config_name': '/data/nlp/pre_models/torch/bert/bert-base-chinese/config.json',
+    'do_train': True,
+    'train_file': '/data/nlp/nlp_train_data/thucnews/train.json',
+    'learning_rate': 5e-5,
+    'max_epochs': 3,
+    'train_batch_size': 10,
+    'test_batch_size': 2,
+    'adam_epsilon': 1e-8,
+    'gradient_accumulation_steps': 1,
+    'max_grad_norm': 1.0,
+    'weight_decay': 0,
+    'warmup_steps': 0,
+    'output_dir': './output',
+    'train_max_seq_length': 512,
+    'eval_max_seq_length': 512,
+    'test_max_seq_length': 512,
+    'do_lower_case': False,
+    'do_whole_word_mask': True,
+    'max_predictions_per_seq': 20,
+    'dupe_factor': 5,
+    'masked_lm_prob': 0.15
+}
+
 
 
 
@@ -26,7 +57,8 @@ class NN_DataHelper(DataHelper):
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: typing.Any):
         tokenizer: BertTokenizerFast
-        tokenizer,max_seq_length, rng, do_whole_word_mask, max_predictions_per_seq, masked_lm_prob,mode = user_data
+        tokenizer,max_seq_length,do_lower_case, label2id,\
+        rng, do_whole_word_mask, max_predictions_per_seq, masked_lm_prob,mode = user_data
 
         documents = data
         document_text_string = ''.join(documents)
@@ -92,7 +124,7 @@ class NN_DataHelper(DataHelper):
         o['weight'] = o['weight'][:, :max_len]
         return o
 
-class MyTransformer(TransformerForMaskLM):
+class MyTransformer(TransformerForMaskLM,metaclass=TransformerMeta):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
         self.loss_fct = CrossEntropyLoss(reduction='none',ignore_index=self.config.pad_token_id)
@@ -102,7 +134,7 @@ class MyTransformer(TransformerForMaskLM):
         loss = self.loss_fct(y_preds,y_trues)
         loss = loss * weight
         loss = torch.sum(loss, dtype=torch.float) / (torch.sum(weight, dtype=torch.float) + 1e-8)
-        return loss
+        return loss.mean()
 
     def compute_loss(self,batch) -> tuple:
         labels,weight = None,None
@@ -110,47 +142,65 @@ class MyTransformer(TransformerForMaskLM):
             weight = batch.pop('weight')
             labels = batch.pop('labels')
         outputs = self(**batch)
-        if labels is None:
-            logits = outputs[0]
-            loss = self._compute_loss(labels,logits,weight)
-            outputs = (loss,*outputs)
+        logits = outputs[0]
+        if labels is not  None:
+            loss = self.compute_loss_mlm(labels,logits,weight)
+            outputs = (loss,logits,labels)
+        else:
+            outputs = (logits, )
         return outputs
 
 
 if __name__== '__main__':
-    parser = HfArgumentParser((ModelArguments, TrainingArguments, DataArguments, MlmDataArguments))
-    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        model_args, training_args, data_args, mlm_data_args = parser.parse_json_file(
-            json_file=os.path.abspath(sys.argv[1]))
-    else:
-        model_args, training_args, data_args, mlm_data_args = parser.parse_args_into_dataclasses()
+
+    parser = HfArgumentParser((ModelArguments, TrainingArguments, DataArguments,MlmDataArguments))
+    model_args, training_args, data_args, mlm_data_args = parser.parse_dict(train_info_args)
 
     dataHelper = NN_DataHelper(data_args.data_backend)
-    tokenizer, config, label2id, id2label = load_tokenizer_and_config_with_args(dataHelper, model_args, training_args,data_args)
+    tokenizer, config, label2id, id2label = load_tokenizer_and_config_with_args(dataHelper, model_args, training_args,
+                                                                                data_args)
+
     rng = random.Random(training_args.seed)
-    save_fn_args = (tokenizer, data_args.max_seq_length,
-                    rng, mlm_data_args.do_whole_word_mask, mlm_data_args.max_predictions_per_seq,
-                    mlm_data_args.masked_lm_prob)
+    token_fn_args_dict = {
+        'train': (tokenizer, data_args.train_max_seq_length, model_args.do_lower_case, label2id,
+                  rng, mlm_data_args.do_whole_word_mask, mlm_data_args.max_predictions_per_seq,
+                  mlm_data_args.masked_lm_prob,
+                  'train'),
+        'eval': (tokenizer, data_args.eval_max_seq_length, model_args.do_lower_case, label2id,
+                 rng, mlm_data_args.do_whole_word_mask, mlm_data_args.max_predictions_per_seq,
+                 mlm_data_args.masked_lm_prob,
+                 'eval'),
+        'test': (tokenizer, data_args.test_max_seq_length, model_args.do_lower_case, label2id,
+                 rng, mlm_data_args.do_whole_word_mask, mlm_data_args.max_predictions_per_seq,
+                 mlm_data_args.masked_lm_prob,
+                 'test')
+    }
 
 
-    N = training_args.dupe_factor
+    N = mlm_data_args.dupe_factor
     train_files,eval_files,test_files = [],[],[]
     for i in range(N):
         intermediate_name = data_args.intermediate_name + '_{}'.format(i)
-        logging.info('make data {}...'.format(intermediate_name))
-        train_file, eval_file, test_file = make_dataset_with_args(dataHelper, save_fn_args, data_args, intermediate_name=intermediate_name)
-        train_files.append(train_file)
-        eval_files.append(eval_file)
-        test_files.append(test_file)
+        if data_args.do_train:
+            train_files.append(
+                make_dataset_with_args(dataHelper, data_args.train_file, token_fn_args_dict['train'], data_args,
+                                       intermediate_name=intermediate_name, shuffle=True, mode='train'))
+        if data_args.do_eval:
+            eval_files.append(
+                make_dataset_with_args(dataHelper, data_args.eval_file, token_fn_args_dict['eval'], data_args,
+                                       intermediate_name=intermediate_name, shuffle=False, mode='eval'))
+        if data_args.do_test:
+            test_files.append(
+                make_dataset_with_args(dataHelper, data_args.test_file, token_fn_args_dict['test'], data_args,
+                                       intermediate_name=intermediate_name, shuffle=False, mode='test'))
 
     print(train_files, eval_files, test_files)
     dm = load_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
     
     model = MyTransformer(config=config,model_args=model_args,training_args=training_args)
-    checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_top_k=5, every_n_train_steps=1000)
+    checkpoint_callback = ModelCheckpoint(monitor="loss", save_top_k=10, every_n_train_steps=1000)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
-        check_val_every_n_epoch=1 if data_args.do_eval else None,
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",

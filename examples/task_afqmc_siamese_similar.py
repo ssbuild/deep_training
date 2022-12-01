@@ -17,7 +17,7 @@ import logging
 from pytorch_lightning import Trainer
 from deep_training.data_helper import make_dataset_with_args, load_dataset_with_args, \
     load_tokenizer_and_config_with_args
-from deep_training.model.nlp.models.transformer import TransformerModel, TransformerLightningModule
+from deep_training.model.nlp.models.transformer import TransformerModel, TransformerMeta
 from deep_training.model.nlp.losses.ContrastiveLoss import ContrastiveLoss
 from deep_training.utils.func import seq_pading
 
@@ -60,7 +60,8 @@ class NN_DataHelper(DataHelper):
     # 切分词
     def on_data_process(self,data: typing.Any, user_data: tuple):
         tokenizer: BertTokenizer
-        tokenizer,max_seq_length,label2id,mode = user_data
+        tokenizer, max_seq_length, do_lower_case, label2id, mode = user_data
+
         sentence1,sentence2,label_str = data
         labels = np.asarray(1 - label2id[label_str] if label_str is not None else 0, dtype=np.int64)
 
@@ -125,13 +126,12 @@ class NN_DataHelper(DataHelper):
 
         return o
 
-class MyTransformer(TransformerLightningModule):
+class MyTransformer(TransformerModel, metaclass=TransformerMeta):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
         config = self.config
         self.feat_head = nn.Linear(config.hidden_size, 512, bias=False)
         self.loss_fn = ContrastiveLoss(size_average=False,margin=0.5)
-        self.model.from_pretrained(*args,**kwargs)
 
     def get_model_lr(self):
         return super(MyTransformer, self).get_model_lr() + [
@@ -140,13 +140,14 @@ class MyTransformer(TransformerLightningModule):
 
     def compute_loss(self,batch):
         labels: torch.Tensor = batch.pop('labels',None)
-        logits1 = self.feat_head(self(**batch)[0][:, 0, :])
         if labels is not None:
-            labels = labels.float()
             batch2 = {
                 "input_ids": batch.pop('input_ids_2'),
                 "attention_mask": batch.pop('attention_mask_2'),
             }
+        logits1 = self.feat_head(self(**batch)[0][:, 0, :])
+        if labels is not None:
+            labels = labels.float()
             logits2 = self.feat_head(self(**batch2)[0][:, 0, :])
             loss = self.loss_fn([logits1, logits2], labels)
             outputs = (loss,logits1,logits2)
@@ -157,22 +158,7 @@ class MyTransformer(TransformerLightningModule):
 
 
 
-class MyModelCheckpoint(ModelCheckpoint):
-    def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
-        """Save a checkpoint at the end of the training epoch."""
-        if not self._should_skip_saving_checkpoint(trainer) and self._save_on_train_epoch_end:
-            monitor_candidates = self._monitor_candidates(trainer)
-            if self._every_n_epochs >= 1 and (trainer.current_epoch + 1) % self._every_n_epochs == 0:
-                self._save_topk_checkpoint(trainer, monitor_candidates)
-            self._save_last_checkpoint(trainer, monitor_candidates)
 
-    def on_validation_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
-        """Save a checkpoint at the end of the validation stage."""
-        if not self._should_skip_saving_checkpoint(trainer) and not self._save_on_train_epoch_end:
-            monitor_candidates = self._monitor_candidates(trainer)
-            if self._every_n_epochs >= 1 and (trainer.current_epoch + 1) % self._every_n_epochs == 0:
-                self._save_topk_checkpoint(trainer, monitor_candidates)
-            self._save_last_checkpoint(trainer, monitor_candidates)
 
 
 if __name__== '__main__':
@@ -180,30 +166,37 @@ if __name__== '__main__':
     model_args, training_args, data_args = parser.parse_dict(train_info_args)
 
     dataHelper = NN_DataHelper(data_args.data_backend)
-    tokenizer,config,label2id, id2label = load_tokenizer_and_config_with_args(dataHelper,model_args, data_args, training_args)
+    tokenizer, config, label2id, id2label = load_tokenizer_and_config_with_args(dataHelper, model_args, training_args,data_args)
 
+    token_fn_args_dict = {
+        'train': (tokenizer, data_args.train_max_seq_length, model_args.do_lower_case, label2id, 'train'),
+        'eval': (tokenizer, data_args.eval_max_seq_length, model_args.do_lower_case, label2id, 'eval'),
+        'test': (tokenizer, data_args.test_max_seq_length, model_args.do_lower_case, label2id, 'test')
+    }
 
-    save_fn_args = (tokenizer, data_args.max_seq_length,label2id)
     N = 1
     train_files, eval_files, test_files = [], [], []
     for i in range(N):
         intermediate_name = data_args.intermediate_name + '_{}'.format(i)
-        logging.info('make data {}...'.format(intermediate_name))
-        train_file, eval_file, test_file = make_dataset_with_args(dataHelper, save_fn_args, data_args,
-                                                                  intermediate_name=intermediate_name)
-        train_files.append(train_file)
-        eval_files.append(eval_file)
-        test_files.append(test_file)
+        if data_args.do_train:
+            train_files.append(
+                make_dataset_with_args(dataHelper, data_args.train_file, token_fn_args_dict['train'], data_args,
+                                       intermediate_name=intermediate_name, shuffle=True, mode='train'))
+        if data_args.do_eval:
+            eval_files.append(
+                make_dataset_with_args(dataHelper, data_args.eval_file, token_fn_args_dict['eval'], data_args,
+                                       intermediate_name=intermediate_name, shuffle=False, mode='eval'))
+        if data_args.do_test:
+            test_files.append(
+                make_dataset_with_args(dataHelper, data_args.test_file, token_fn_args_dict['test'], data_args,
+                                       intermediate_name=intermediate_name, shuffle=False, mode='test'))
 
-    print(train_files, eval_files, test_files)
-    dm = load_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
+    dm = load_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files,allow_train_shuffle=False)
 
-    
     model = MyTransformer(config=config, model_args=model_args, training_args=training_args)
     checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True,every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
-        check_val_every_n_epoch=1 if data_args.do_eval else None,
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",

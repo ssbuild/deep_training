@@ -10,12 +10,11 @@ from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 import numpy as np
 from deep_training.data_helper import DataHelper
 import torch
-import logging
 from pytorch_lightning import Trainer
 from deep_training.data_helper import make_dataset_with_args, load_dataset_with_args, \
     load_tokenizer_and_config_with_args
 from transformers import HfArgumentParser, BertTokenizer
-from deep_training.model.nlp.models.transformer import TransformerForSequenceClassification, TransformerLightningModule
+from deep_training.model.nlp.models.transformer import TransformerForSequenceClassification, TransformerMeta
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
 
 
@@ -42,7 +41,9 @@ train_info_args = {
     'weight_decay': 0,
     'warmup_steps': 0,
     'output_dir': './output',
-    'max_seq_length': 512
+    'train_max_seq_length': 380,
+    'eval_max_seq_length': 512,
+    'test_max_seq_length': 512,
 }
 
 
@@ -129,11 +130,9 @@ class NN_DataHelper(DataHelper):
             o['token_type_ids'] = o['token_type_ids'][:, :max_len]
         return o
 
-
-class MyTransformer(TransformerLightningModule):
+class MyTransformer(TransformerForSequenceClassification, metaclass=TransformerMeta):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
-        self.model = TransformerForSequenceClassification.from_pretrained(*args,**kwargs)
 
     def compute_loss(self,batch) -> tuple:
         outputs = self(**batch)
@@ -208,7 +207,6 @@ if __name__== '__main__':
     checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
-        check_val_every_n_epoch=1 if data_args.do_eval else None,
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",

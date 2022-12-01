@@ -13,7 +13,8 @@ from pytorch_lightning import Trainer
 from deep_training.data_helper import make_dataset_with_args, load_dataset_with_args, \
     load_tokenizer_and_config_with_args
 from transformers import BertTokenizer
-from deep_training.model.nlp.models.transformer import TransformerModelForUnilm, TransformerLightningModule
+from deep_training.model.nlp.models.transformer import TransformerModelForUnilm, TransformerLightningModule, \
+    TransformerMeta
 from transformers import HfArgumentParser
 from deep_training.data_helper import ModelArguments, DataArguments, TrainingArguments
 from deep_training.utils.func import seq_padding
@@ -95,10 +96,9 @@ class NN_DataHelper(DataHelper):
         o['labels'] = o['labels'][:, :max_len]
         return o
 
-class MyTransformer(TransformerLightningModule):
+class MyTransformer(TransformerModelForUnilm, metaclass=TransformerMeta):
     def __init__(self, *args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
-        self.model = TransformerModelForUnilm.from_pretrained(*args,**kwargs)
 
 
 if __name__== '__main__':
@@ -139,7 +139,6 @@ if __name__== '__main__':
     checkpoint_callback = ModelCheckpoint(monitor="val_loss", save_last=True, every_n_train_steps=1000)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
-        check_val_every_n_epoch=1 if data_args.do_eval else None,
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",

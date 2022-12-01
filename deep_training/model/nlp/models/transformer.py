@@ -7,12 +7,13 @@ import typing
 from typing import Any
 import torch
 import pytorch_lightning as pl
+from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.models.auto.auto_factory import _get_model_class
-from deep_training.data_helper import TrainingArguments, ModelArguments
+from deep_training.data_helper import TrainingArguments, ModelArguments, PrefixModelArguments, DataArguments
 from ..layers.mask import lm_mask,unilm_mask
-from ..utils import configure_optimizers
+from ..utils import configure_optimizers, get_value_from_args
 
 from transformers import (
     CONFIG_MAPPING,
@@ -38,60 +39,71 @@ from transformers import (
     get_linear_schedule_with_warmup, AutoModelForPreTraining, AutoModel, PreTrainedModel
 )
 
-class TransformerBase(PreTrainedModel):
+class TransformerMeta(type):
+    def __new__(cls, name, base, attr,*args,**kwargs):
+        alter = tuple(b for b in base if issubclass(b,TransformerBase))
+        cls_ = super(TransformerMeta, cls).__new__(cls, name, (TransformerLightningModule,) + tuple(b for b in base if not issubclass(b, TransformerBase)), attr)
+        cls_.__ALTER_CLASS__ = alter
+        return cls_
+
+class TransformerBase(nn.Module):
     def __init__(self,*args,**kwargs):
-        config = None
-        for item in args + tuple(kwargs.values()):
-            if isinstance(item, PretrainedConfig):
-                config = item
-                break
-        assert config is not None,ValueError('config is None')
-        super(TransformerBase, self).__init__(config)
+        config = get_value_from_args('config',PretrainedConfig,*args,**kwargs)
+        super(TransformerBase, self).__init__()
         self.config = config
         self.base_model_prefix = None
 
-    def forward(self, **inputs):
-        return self.model(**inputs)
+    def forward(self,  *args, **kwargs):
+        return self.model(*args, **kwargs)
 
     def compute_loss(self, batch) -> tuple:
         return self.model(**batch)
 
     def post_init(self):
-        return super(TransformerBase, self).post_init()
+        return self.model.post_init()
 
     def init_weights(self):
-        return super(TransformerBase, self).init_weights()
+        return self.model.init_weights()
 
-    @classmethod
-    def from_pretrained(cls, *args, **kwargs):
-        config,model_args = None,None
-        for item in args + tuple(kwargs.values()):
-            if isinstance(item, PretrainedConfig):
-                config = item
-            if isinstance(item, ModelArguments):
-                model_args = item
 
-        args_new = tuple(item for item in args if
-                      not isinstance(item, ModelArguments) and not isinstance(item, TrainingArguments) and not isinstance(item,
-                                                                                                                    PretrainedConfig))
-        kwargs_new = {k: v for k, v in kwargs.items() if
-                      not isinstance(v, ModelArguments) and not isinstance(v, TrainingArguments) and not isinstance(v,
-                                                                                                                    PretrainedConfig)}
+    def from_pretrained(self,CLS, *args, **kwargs):
 
-        model_kwargs = {
-            "cache_dir": model_args.cache_dir,
-            "revision": model_args.model_revision,
-            "use_auth_token": True if model_args.use_auth_token else None,
-        }
-        instance = super(TransformerBase, cls).from_pretrained(
-            model_args.model_name_or_path,
-            *args_new,
-            **kwargs_new,
-            from_tf=bool(".ckpt" in model_args.model_name_or_path),
-            config=config,
-            **model_kwargs
-        )
-        return instance
+        config = get_value_from_args('config', PretrainedConfig, *args, **kwargs)
+        model_args = get_value_from_args('model_args', ModelArguments, *args, **kwargs)
+
+        if model_args.model_name_or_path:
+            args_new = tuple(v for v in args
+                             if not isinstance(v, ModelArguments) and \
+                             not isinstance(v, TrainingArguments) and \
+                             not isinstance(v,PretrainedConfig) and \
+                             not isinstance(v,PrefixModelArguments) and \
+                             not isinstance(v,DataArguments)
+                             )
+            kwargs_new = {k: v for k, v in kwargs.items()
+                          if not isinstance(v, ModelArguments) and \
+                          not isinstance(v, TrainingArguments) and \
+                          not isinstance(v, PretrainedConfig) and \
+                          not isinstance(v, PrefixModelArguments) and \
+                          not isinstance(v, DataArguments)
+                          }
+
+            model_kwargs = {
+                "cache_dir": model_args.cache_dir,
+                "revision": model_args.model_revision,
+                "use_auth_token": True if model_args.use_auth_token else None,
+            }
+            cls_ = CLS.from_pretrained(
+                model_args.model_name_or_path,
+                *args_new,
+                **kwargs_new,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
+                config=config,
+                **model_kwargs
+            )
+        else:
+            cls_ = CLS.from_config(config)
+            cls_.post_init()
+        return cls_
 
     @property
     def model(self):
@@ -114,6 +126,7 @@ class TransformerBase(PreTrainedModel):
             if o is None:
                 continue
             setattr(self,k,o)
+
         setattr(self, self.base_model_prefix, model)
 
     def get_model_lr(self):
@@ -122,7 +135,10 @@ class TransformerBase(PreTrainedModel):
 
 
 class TransformerLightningModule(pl.LightningModule):
-    def __init__(self, config: PretrainedConfig, model_args: ModelArguments, training_args: TrainingArguments,*args,**kwargs):
+    def __init__(self, *args,**kwargs):
+        config = get_value_from_args('config',PretrainedConfig,*args,**kwargs)
+        model_args = get_value_from_args('model_args', ModelArguments, *args, **kwargs)
+        training_args = get_value_from_args('training_args', TrainingArguments, *args, **kwargs)
         super(TransformerLightningModule, self).__init__()
         if hasattr(config, 'task_specific_params') or config.task_specific_params is None:
             config.task_specific_params = {}
@@ -139,22 +155,46 @@ class TransformerLightningModule(pl.LightningModule):
         self.config = config
         self.model_args = model_args
         self.training_args = training_args
-        self.__model : TransformerBase
+        self.__model : TransformerBase = None
+        if hasattr(self,'__ALTER_CLASS__') and len(self.__ALTER_CLASS__) > 0:
+            self.set_model(self.__ALTER_CLASS__[0](*args, **kwargs))
 
     @property
-    def model(self) -> TransformerBase:
+    def model(self):
         return self.__model
 
     @model.setter
-    def model(self,model):
+    def model(self, model):
+        self.set_model(model)
+
+    def set_model(self, model):
         assert model is not None
         self.__model = model
         self.__model.log = self.log
         self.__model.log_dict = self.log_dict
-        if hasattr(self.__model,'validation_epoch_end'):
-            cname = self.validation_epoch_end.__qualname__
-            if cname.endswith('.{}.validation_epoch_end'.format('LightningModule')) or cname.endswith('.{}.validation_epoch_end'.format('TransformerLightningModule')) :
-                self.validation_epoch_end = self.__model.validation_epoch_end
+
+        # if hasattr(self.__model,'validation_epoch_end'):
+        #     cname = self.validation_epoch_end.__qualname__
+        #     if cname.endswith('.{}.validation_epoch_end'.format('LightningModule')) or cname.endswith('.{}.validation_epoch_end'.format('TransformerLightningModule')) :
+        #         self.validation_epoch_end = self.__model.validation_epoch_end
+
+        event_ = [
+            'training_step',
+            'training_step_end',
+            'training_epoch_end',
+            'validation_step',
+            'validation_step_end',
+            'validation_epoch_end',
+            'test_step',
+            'test_step_end',
+            'test_epoch_end',
+            'predict_step'
+        ]
+        for e in event_:
+            a = getattr(self.__model, e,None)
+            if a is not None:
+                setattr(self,e,a)
+
 
     def get_model_lr(self):
         return self.model.get_model_lr()
@@ -205,12 +245,10 @@ class TransformerLightningModule(pl.LightningModule):
 
 
 
-
 class TransformerModel(TransformerBase):
     def __init__(self, *args,**kwargs):
         super(TransformerModel, self).__init__(*args,**kwargs)
-        model = AutoModel.from_config(self.config)
-        self.set_model(model)
+        self.set_model( self.from_pretrained(AutoModel,*args,**kwargs))
         
 
 
@@ -251,8 +289,7 @@ class TransformerModelForUnilm(TransformerModel):
 class TransformerForCausalLM(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        model = AutoModelForCausalLM.from_config(self.config)
-        self.set_model(model)
+        self.set_model(self.from_pretrained(AutoModelForCausalLM, *args, **kwargs))
 
 
 
@@ -260,8 +297,7 @@ class TransformerForCausalLM(TransformerBase):
 class TransformerForMaskLM(TransformerBase):
     def __init__(self,  *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        model = AutoModelForMaskedLM.from_config(self.config)
-        self.set_model(model)
+        self.set_model(self.from_pretrained(AutoModelForMaskedLM, *args, **kwargs))
 
 
 
@@ -269,8 +305,7 @@ class TransformerForMaskLM(TransformerBase):
 class TransformerForSeq2SeqLM(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        model = AutoModelForSeq2SeqLM.from_config(self.config)
-        self.set_model(model)
+        self.set_model(self.from_pretrained(AutoModelForSeq2SeqLM, *args, **kwargs))
 
         
 
@@ -278,8 +313,7 @@ class TransformerForSeq2SeqLM(TransformerBase):
 class TransformerForSequenceClassification(TransformerBase):
     def __init__(self,  *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        model = AutoModelForSequenceClassification.from_config(self.config)
-        self.set_model(model)
+        self.set_model(self.from_pretrained(AutoModelForSequenceClassification, *args, **kwargs))
 
         
 
@@ -287,8 +321,7 @@ class TransformerForSequenceClassification(TransformerBase):
 class TransformerForQuestionAnswering(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        model = AutoModelForQuestionAnswering.from_config(self.config)
-        self.set_model(model)
+        self.set_model(self.from_pretrained(AutoModelForQuestionAnswering, *args, **kwargs))
 
         
 
@@ -296,8 +329,7 @@ class TransformerForQuestionAnswering(TransformerBase):
 class TransformerForVisualQuestionAnswering(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        model = AutoModelForVisualQuestionAnswering.from_config(self.config)
-        self.set_model(model)
+        self.set_model(self.from_pretrained(AutoModelForVisualQuestionAnswering, *args, **kwargs))
 
         
 
@@ -309,8 +341,7 @@ class TransformerForVisualQuestionAnswering(TransformerBase):
 class TransformerForTokenClassification(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        model = AutoModelForTokenClassification.from_config(self.config)
-        self.set_model(model)
+        self.set_model(self.from_pretrained(AutoModelForTokenClassification, *args, **kwargs))
         
 
         
@@ -319,8 +350,7 @@ class TransformerForTokenClassification(TransformerBase):
 class TransformerForMultipleChoice(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        model = AutoModelForMultipleChoice.from_config(self.config)
-        self.set_model(model)
+        self.set_model(self.from_pretrained(AutoModelForMultipleChoice, *args, **kwargs))
         
 
         
@@ -328,8 +358,7 @@ class TransformerForMultipleChoice(TransformerBase):
 class TransformerForNextSentencePrediction(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        model = AutoModelForNextSentencePrediction.from_config(self.config)
-        self.set_model(model)
+        self.set_model(self.from_pretrained(AutoModelForNextSentencePrediction, *args, **kwargs))
 
 
         
@@ -338,8 +367,7 @@ class TransformerForNextSentencePrediction(TransformerBase):
 class TransformerForImageClassification(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        model = AutoModelForImageClassification.from_config(self.config)
-        self.set_model(model)
+        self.set_model(self.from_pretrained(AutoModelForImageClassification, *args, **kwargs))
 
 
 
@@ -347,8 +375,7 @@ class TransformerForImageClassification(TransformerBase):
 class TransformerForImageSegmentation(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        model = AutoModelForImageSegmentation.from_config(self.config)
-        self.set_model(model)
+        self.set_model(self.from_pretrained(AutoModelForImageSegmentation, *args, **kwargs))
         
 
         
@@ -358,8 +385,7 @@ class TransformerForImageSegmentation(TransformerBase):
 class TransformerForSemanticSegmentation(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        model = AutoModelForSemanticSegmentation.from_config(self.config)
-        self.set_model(model)
+        self.set_model(self.from_pretrained(AutoModelForSemanticSegmentation, *args, **kwargs))
         
 
         
@@ -367,8 +393,7 @@ class TransformerForSemanticSegmentation(TransformerBase):
 class TransformerForObjectDetection(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        model =  AutoModelForObjectDetection.from_config(self.config)
-        self.set_model(model)
+        self.set_model(self.from_pretrained(AutoModelForObjectDetection, *args, **kwargs))
         
 
 
@@ -376,8 +401,7 @@ class TransformerForObjectDetection(TransformerBase):
 class TransformerForAudioClassification(TransformerBase):
     def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        model = AutoModelForAudioClassification.from_config(self.config)
-        self.set_model(model)
+        self.set_model(self.from_pretrained(AutoModelForAudioClassification, *args, **kwargs))
         
 
         
@@ -386,8 +410,7 @@ class TransformerForAudioClassification(TransformerBase):
 class TransformerForMaskedImageModeling(TransformerBase):
     def __init__(self,*args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        model = AutoModelForMaskedImageModeling.from_config(self.config)
-        self.set_model(model)
+        self.set_model(self.from_pretrained(AutoModelForMaskedImageModeling, *args, **kwargs))
 
 
 

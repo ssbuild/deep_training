@@ -1,12 +1,9 @@
 # -*- coding: utf-8 -*-
 import json
-import logging
 import os
 import sys
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
 from pytorch_lightning.callbacks import ModelCheckpoint
-
-
 import typing
 import numpy as np
 import torch
@@ -16,14 +13,14 @@ from pytorch_lightning import Trainer
 from deep_training.data_helper import make_dataset_with_args, load_dataset_with_args, \
     load_tokenizer_and_config_with_args
 from transformers import HfArgumentParser, BertTokenizer
-from deep_training.model.nlp.models.transformer import TransformerModelForUnilm, TransformerLightningModule
+from deep_training.model.nlp.models.transformer import TransformerModelForUnilm, TransformerMeta
 from deep_training.model.nlp.losses.contrast import compute_simcse_loss
 from deep_training.model.nlp.layers.mask import unilm_mask
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
 
 
 train_info_args = {
-    'device' '1' 
+    'devices':'1',
     'data_backend': 'leveldb',
     'model_type': 'bert',
     'model_name_or_path': '/data/nlp/pre_models/torch/bert/bert-base-chinese',
@@ -48,7 +45,7 @@ class NN_DataHelper(DataHelper):
     # 切分词
     def on_data_process(self, data: typing.Any, user_data: tuple):
         tokenizer: BertTokenizer
-        tokenizer,max_seq_length,mode = user_data
+        tokenizer,max_seq_length,do_lower_case,label2id,mode = user_data
         x = data
         assert isinstance(x,tuple)
 
@@ -109,12 +106,13 @@ class NN_DataHelper(DataHelper):
         o['labels'] = o['labels'][:, :max_len]
         return o
 
-class MyTransformer(TransformerLightningModule):
+
+
+class MyTransformer(TransformerModelForUnilm, metaclass=TransformerMeta):
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
         config = self.config
         self.sim_head = nn.Linear(config.hidden_size, 512, bias=False)
-        self.model = TransformerModelForUnilm.from_pretrained(*args, **kwargs)
 
     def get_model_lr(self):
         return super(MyTransformer, self).get_model_lr() + [
@@ -125,13 +123,13 @@ class MyTransformer(TransformerLightningModule):
         labels = batch.pop('labels',None)
         batch['attention_mask'] = unilm_mask(batch['token_type_ids'])
         outputs = self(**batch)
-        lm_logits = self.lm_head(outputs[0])
+        lm_logits = self.model.lm_head(outputs[0])
         simcse_logits = self.sim_head(outputs[1])
 
         if labels is not None:
             shift_logits = lm_logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
-            loss1 = self.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            loss1 = self.model.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
             loss2 = compute_simcse_loss(simcse_logits)
             loss = loss1 + loss2
             loss_dict = {
@@ -153,19 +151,29 @@ if __name__== '__main__':
 
     dataHelper = NN_DataHelper(data_args.data_backend)
     tokenizer, config, label2id, id2label = load_tokenizer_and_config_with_args(dataHelper, model_args, training_args,data_args)
-    save_fn_args = (tokenizer, data_args.max_seq_length)
 
+    token_fn_args_dict = {
+        'train': (tokenizer, data_args.train_max_seq_length, model_args.do_lower_case, label2id, 'train'),
+        'eval': (tokenizer, data_args.eval_max_seq_length, model_args.do_lower_case, label2id, 'eval'),
+        'test': (tokenizer, data_args.test_max_seq_length, model_args.do_lower_case, label2id, 'test')
+    }
 
     N = 1
     train_files, eval_files, test_files = [], [], []
     for i in range(N):
         intermediate_name = data_args.intermediate_name + '_{}'.format(i)
-        logging.info('make data {}...'.format(intermediate_name))
-        train_file, eval_file, test_file = make_dataset_with_args(dataHelper, save_fn_args, data_args,
-                                                                  intermediate_name=intermediate_name)
-        train_files.append(train_file)
-        eval_files.append(eval_file)
-        test_files.append(test_file)
+        if data_args.do_train:
+            train_files.append(
+                make_dataset_with_args(dataHelper, data_args.train_file, token_fn_args_dict['train'], data_args,
+                                       intermediate_name=intermediate_name, shuffle=True, mode='train'))
+        if data_args.do_eval:
+            eval_files.append(
+                make_dataset_with_args(dataHelper, data_args.eval_file, token_fn_args_dict['eval'], data_args,
+                                       intermediate_name=intermediate_name, shuffle=False, mode='eval'))
+        if data_args.do_test:
+            test_files.append(
+                make_dataset_with_args(dataHelper, data_args.test_file, token_fn_args_dict['test'], data_args,
+                                       intermediate_name=intermediate_name, shuffle=False, mode='test'))
 
     dm = load_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files, allow_train_shuffle=False)
 
@@ -173,7 +181,7 @@ if __name__== '__main__':
     checkpoint_callback = ModelCheckpoint(monitor="loss", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
-        max_epochs=training_args.max_epochs,
+         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",
         devices=data_args.devices,  # limiting got iPython runs

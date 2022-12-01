@@ -4,7 +4,7 @@ import os
 import sys
 import typing
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
-from deep_training.model.nlp.models.transformer import TransformerLightningModule
+from deep_training.model.nlp.models.transformer import TransformerLightningModule, TransformerMeta
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from seqmetric.metrics import f1_score, classification_report
@@ -158,10 +158,9 @@ class NN_DataHelper(DataHelper):
         o['labels'] = o['labels'][:,:max_len]
         return o
 
-class MyTransformer(TransformerLightningModule):
+class MyTransformer(TransformerForCRF, metaclass=TransformerMeta):
     def __init__(self, *args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
-        self.model = TransformerForCRF.from_pretrained(*args,**kwargs)
 
     def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
         preds_all,labels_all = [],[]
@@ -226,7 +225,7 @@ if __name__ == '__main__':
     trainer = Trainer(
         log_every_n_steps = 10,
         callbacks=[checkpoint_callback],
-        max_epochs=training_args.max_epochs,
+         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",
         devices=data_args.devices,  # limiting got iPython runs

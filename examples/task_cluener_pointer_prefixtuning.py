@@ -8,7 +8,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
 
-from deep_training.model.nlp.models.transformer import TransformerLightningModule
+from deep_training.model.nlp.models.transformer import TransformerLightningModule, TransformerMeta
 
 from deep_training.data_helper import DataHelper
 import torch
@@ -151,11 +151,9 @@ class NN_DataHelper(DataHelper):
         o['labels'] = o['labels'][:, :, :max_len, :max_len]
         return o
 
-
-class MyTransformer(TransformerLightningModule):
+class MyTransformer(PrefixTransformerPointer, metaclass=TransformerMeta):
     def __init__(self,eval_labels, *args, **kwargs):
         super(MyTransformer, self).__init__(*args, **kwargs)
-        self.model = PrefixTransformerPointer.from_pretrained( *args, **kwargs)
         self.model.eval_labels = eval_labels
 
 
@@ -196,7 +194,7 @@ if __name__== '__main__':
     checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
-        max_epochs=training_args.max_epochs,
+         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",
         devices=data_args.devices,  # limiting got iPython runs
