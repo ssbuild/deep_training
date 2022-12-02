@@ -2,6 +2,7 @@
 
 from setuptools import setup, find_packages
 
+ignore = ['test','tests']
 setup(
     name='deep_training',
     version='0.0.1',
@@ -11,7 +12,7 @@ setup(
     url='https://github.com/ssbuild/deep_training',
     author='ssbuild',
     author_email='9727464@qq.com',
-    install_requires=['pytorch-lightning>=1.7','fastdataset>=0.8.1','numpy',
+    install_requires=['pytorch-lightning>=1.7','fastdataset>=0.9.2','numpy',
                       'transformer','seqmetric','sklearn','scipy','scikit-learn'],
-    packages=find_packages()
+    packages=[p for p in find_packages() if  p not in ignore]
 )

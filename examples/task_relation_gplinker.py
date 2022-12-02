@@ -292,10 +292,10 @@ if __name__ == '__main__':
     checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
-         max_epochs=training_args.max_epochs,
+        max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",
-        devices=data_args.devices,  # limiting got iPython runs
+        devices=data_args.devices,  
         enable_progress_bar=True,
         default_root_dir=data_args.output_dir,
         gradient_clip_val=training_args.max_grad_norm,

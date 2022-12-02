@@ -19,3 +19,4 @@ class BCELoss(nn.Module):
             loss = torch.sum(torch.sum(loss,dim=2), dim=1) / torch.sum(mask, dim=1)
         loss = loss.mean()
         return loss
+

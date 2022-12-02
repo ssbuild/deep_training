@@ -2,7 +2,8 @@
 import json
 import os
 import sys
-sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
+sys.path.append('..')
+
 
 from deep_training.model.nlp.metrics.pointer import metric_for_spo
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
@@ -38,7 +39,7 @@ train_info_args = {
     'eval_file': '/data/nlp/nlp_train_data/myrelation/re_labels.json',
     'label_file': '/data/nlp/nlp_train_data/myrelation/labels.json',
     'learning_rate': 5e-5,
-    'max_epochs': 3,
+    'max_epochs': 10,
     'train_batch_size': 10,
     'eval_batch_size': 2,
     'test_batch_size': 2,
@@ -204,8 +205,6 @@ class NN_DataHelper(DataHelper):
         max_len = torch.max(o.pop('seqlen'))
         o['input_ids'] = o['input_ids'][:, :max_len]
         o['attention_mask'] = o['attention_mask'][:, :max_len]
-        if 'token_type_ids' in o:
-            o['token_type_ids'] = o['token_type_ids'][:, :max_len]
         o['subject_labels'] = o['subject_labels'][:, :max_len]
         # o['subject_ids'] = o['subject_ids']
         o['object_labels'] = o['object_labels'][:, :max_len]
@@ -222,9 +221,9 @@ class MyTransformer(TransformerForHphtlinker, metaclass=TransformerMeta):
 
     def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
         self.index += 1
-        if self.index < 3:
-            self.log('val_f1', 0.0, prog_bar=True)
-            return
+        # if self.index <= 1:
+        #     self.log('val_f1', 0.0, prog_bar=True)
+        #     return
 
         y_preds, y_trues = [], []
         idx = 0
@@ -286,7 +285,7 @@ if __name__== '__main__':
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",
-        devices=data_args.devices,  # limiting got iPython runs
+        devices=data_args.devices,  
         enable_progress_bar=True,
         default_root_dir=data_args.output_dir,
         gradient_clip_val=training_args.max_grad_norm,

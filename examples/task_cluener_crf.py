@@ -3,7 +3,7 @@ import json
 import os
 import sys
 import typing
-sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)),'..'))
+
 from deep_training.model.nlp.models.transformer import TransformerLightningModule, TransformerMeta
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
@@ -228,7 +228,7 @@ if __name__ == '__main__':
          max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",
-        devices=data_args.devices,  # limiting got iPython runs
+        devices=data_args.devices,  
         enable_progress_bar=True,
         default_root_dir=data_args.output_dir,
         gradient_clip_val=training_args.max_grad_norm,
