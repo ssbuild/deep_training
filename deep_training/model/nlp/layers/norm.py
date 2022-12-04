@@ -6,17 +6,15 @@ from torch import nn
 
 
 class LayerNorm(nn.Module):
-    def __init__(self, hidden_size, eps=1e-12, conditional_size=False, weight=True, bias=True, norm_mode='normal',
+    def __init__(self, hidden_size, eps=1e-12, conditional_size=None, weight=True, bias=True, norm_mode='normal',
                  **kwargs):
-        """layernorm 层，这里自行实现，目的是为了兼容 conditianal layernorm，使得可以做条件文本生成、条件分类等任务
+        """layernorm 层，这里自行实现
            条件layernorm来自于苏剑林的想法，详情：https://spaces.ac.cn/archives/7124
         """
         super(LayerNorm, self).__init__()
 
-        # 兼容roformer_v2不包含weight
         if weight:
             self.weight = nn.Parameter(torch.ones(hidden_size))
-        # 兼容t5不包含bias项, 和t5使用的RMSnorm
         if bias:
             self.bias = nn.Parameter(torch.zeros(hidden_size))
         self.norm_mode = norm_mode

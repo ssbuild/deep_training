@@ -2,7 +2,7 @@
 # @Time    : 2022/11/15 13:33
 import random
 import typing
-from torch.optim import AdamW
+from torch.optim import AdamW,Adam
 from transformers import get_linear_schedule_with_warmup
 from deep_training.data_helper import TrainingArguments
 
@@ -25,6 +25,7 @@ def configure_optimizers(model_attrs: typing.Union[typing.List,typing.Tuple],
             },
         ]
 
+    # optimizer = Adam(opt, training_args.learning_rate)
     optimizer = AdamW(opt, lr=training_args.learning_rate, eps=training_args.adam_epsilon)
     scheduler = get_linear_schedule_with_warmup(
         optimizer,

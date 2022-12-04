@@ -29,7 +29,7 @@ train_info_args = {
     'config_name':'/data/nlp/pre_models/torch/bert/bert-base-chinese/config.json',
     'do_train': True,
     'do_eval': True,
-     # 'train_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
+    #  'train_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
     # 'eval_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
     # 'label_file': '/data/nlp/nlp_train_data/relation/law/relation_label.json',
     # 'train_file': '/data/nlp/nlp_train_data/myrelation/duie/duie_train.json',
@@ -38,7 +38,7 @@ train_info_args = {
     'train_file': '/data/nlp/nlp_train_data/myrelation/re_labels.json',
     'eval_file': '/data/nlp/nlp_train_data/myrelation/re_labels.json',
     'label_file': '/data/nlp/nlp_train_data/myrelation/labels.json',
-    'learning_rate': 5e-5,
+    'learning_rate': 1e-5,
     'max_epochs': 10,
     'train_batch_size': 10,
     'eval_batch_size': 2,
@@ -71,9 +71,8 @@ class NN_DataHelper(DataHelper):
             tokens = tokens[0:(max_seq_length - 2)]
         input_ids = tokenizer.convert_tokens_to_ids(['CLS'] +tokens + ['SEP'] )
         seqlen = len(input_ids)
-        attention_mask = [1] * seqlen
         input_ids = np.asarray(input_ids, dtype = np.int64)
-        attention_mask = np.asarray(attention_mask, dtype=np.int64)
+        attention_mask = np.asarray([1] * seqlen, dtype=np.int64)
         spoes = {}
         real_label = []
         for s, p, o in spo_list:
@@ -91,36 +90,44 @@ class NN_DataHelper(DataHelper):
         subject_labels = np.zeros((max_seq_length, 2),dtype=np.float32)
         subject_ids = np.zeros((2,),dtype=np.int64)
         object_labels = np.zeros((max_seq_length, len(predicate2id), 2),dtype=np.float32)
+
         if spoes:
             for s in spoes:
                 subject_labels[s[0], 0] = 1
                 subject_labels[s[1], 1] = 1
-            # 随机选一个subject（这里没有实现错误！这就是想要的效果！！）
-            start, end = np.array(list(spoes.keys())).T
-            start = np.random.choice(start)
-            end = np.random.choice(end[end >= start])
-            subject_ids[0] = start
-            subject_ids[1] = end
 
-            for o in spoes.get((start,end), []):
-                object_labels[o[0], o[2], 0] = 1
-                object_labels[o[1], o[2], 1] = 1
+            for _ in range(1):
+                # 随机选一个subject（这里没有实现错误！这就是想要的效果！！）
+                start, end = np.array(list(spoes.keys())).T
+                start = np.random.choice(start)
+                end = np.random.choice(end[end >= start])
+                subject_ids[0] = start
+                subject_ids[1] = end
+                flag = False
+                for o in spoes.get((start,end), []):
+                    object_labels[o[0], o[2], 0] = 1
+                    object_labels[o[1], o[2], 1] = 1
+                    flag = True
+                if flag:
+                    break
         pad_len = max_seq_length - seqlen
         if pad_len > 0:
-            pad_val = tokenizer.pad_token_id
-            input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
+            input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(tokenizer.pad_token_id, tokenizer.pad_token_id))
             attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(0, 0))
         d = {
             'input_ids': input_ids,
             'attention_mask': attention_mask,
+            'subject_ids': subject_ids,
             'subject_labels': subject_labels,
-            'subject_ids':subject_ids,
             'object_labels': object_labels,
-            'seqlen': seqlen
+            'seqlen': np.asarray(seqlen,dtype=np.int32)
         }
         if self.index < 5:
             print(tokens)
             print(input_ids[:seqlen])
+            # print(subject_labels[:seqlen])
+            # print(subject_ids)
+            # print(object_labels[:seqlen])
 
         if mode == 'eval':
             self.eval_labels.append(real_label)
@@ -219,6 +226,7 @@ class MyTransformer(TransformerForHphtlinker, metaclass=TransformerMeta):
         self.eval_labels = eval_labels
         self.index = 0
 
+
     def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
         self.index += 1
         # if self.index <= 1:
@@ -228,7 +236,7 @@ class MyTransformer(TransformerForHphtlinker, metaclass=TransformerMeta):
         y_preds, y_trues = [], []
         idx = 0
         for o in outputs:
-            logits1, logits2, _, _, _ = o['outputs']
+            logits1, logits2, _, _ = o['outputs']
             output_labels = self.eval_labels[idx * len(logits1):(idx + 1) * len(logits1)]
             idx += 1
             p_spoes = extract_spoes([logits1, logits2])

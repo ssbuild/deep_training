@@ -203,6 +203,7 @@ class TransformerLightningModule(pl.LightningModule):
     def compute_loss(self,batch):
         return self.model.compute_loss(batch)
 
+
     def forward(self, **inputs):
         return self.model(**inputs)
 
@@ -222,16 +223,29 @@ class TransformerLightningModule(pl.LightningModule):
         outputs = self.compute_loss(batch)
         loss = outputs[0]
         o = {}
-        if isinstance(loss, dict):
-            o = loss
-            if 'loss' in o:
-                o['val_loss'] = o.pop('loss')
-        else:
-            o['val_loss'] = loss.cpu().numpy()
+        if loss is not None:
+            if isinstance(loss, dict):
+                o = loss
+                if 'loss' in o:
+                    o['val_loss'] = o.pop('loss')
+            else:
+                o['val_loss'] = loss.cpu().numpy()
 
         out = outputs[1:]
         if isinstance(out,(tuple,list)):
-            o['outputs'] = [t.cpu().numpy() for t in out]
+            o['outputs'] = []
+            obj = o['outputs']
+            for t in out:
+                if t is None:
+                    obj.append(t)
+                elif isinstance(t,torch.Tensor):
+                    obj.append(t.cpu().numpy())
+                elif isinstance(t, list):
+                    obj.append([tt.cpu().numpy() for tt in t])
+                elif isinstance(t, dict):
+                    obj.append({k:v.cpu().numpy() for k,v in t.items()})
+                else:
+                    raise ValueError('not support')
         else:
             o['outputs'] = [out.cpu().numpy()]
         return o
