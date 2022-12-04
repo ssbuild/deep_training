@@ -76,9 +76,10 @@ class TransformerForHphtlinker(TransformerModel):
 
     def forward_for_net(self,  **batch):
         inputs = {k:v for k,v in batch.items()}
-        inputs['output_hidden_states'] = True
         outputs = self(**inputs)
         hidden_output = outputs[0]
+        if self.training:
+            hidden_output = self.dropout(hidden_output)
         return hidden_output
 
     def forward_for_subject(self, **batch):
