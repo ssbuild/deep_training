@@ -244,7 +244,6 @@ class NN_DataHelper(DataHelper):
             for spo in spos:
                 if spo[0]>=max_len or spo[1] >= max_len or spo[3] >= max_len or spo[4] >= max_len:
                     continue
-                # print(max_len,spo[0],spo[1],spo[3],spo[4],'---------',get_pos(spo[0],spo[1]),get_pos(spo[3],spo[4]))
                 e[get_pos(spo[0],spo[1])] = 1
                 e[get_pos(spo[3],spo[4])] = 1
                 if spo[0] <= spo[3]:

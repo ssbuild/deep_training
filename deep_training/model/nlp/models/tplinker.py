@@ -31,15 +31,34 @@ def extract_spoes(outputs):
             e_map.add(seq_map[e])
 
         subs = {}
-        for p,e in zip(heads.nonzero()):
-            if p not in subs:
-                subs[p] = []
-            subs[p].append(seq_map[e])
         objs = {}
-        for p,e in zip(tails.nonzero()):
-            if p not in objs:
-                objs[p] = []
-            objs[p].append(seq_map[e])
+        for p1,h in zip(heads.nonzero()):
+            tagid1 = heads[p1,h]
+            for p2, t in zip(tails.nonzero()):
+                if p1 != p2:
+                    continue
+                pt1 = (h[0], t[0])
+                pt2 = (h[1], t[1])
+                if pt1 not in e_map or pt2 not in e_map:
+                    continue
+                tagid2 = tails[p2, t]
+
+                if tagid1 == 1:
+                    ...
+                else:
+                    ...
+
+                # if pt1[0] <= pt2[0]:
+                #
+                # tagid = heads[p][e]
+                # pt = seq_map[e]
+                # if tagid == 1:
+                #     subs[p].append(pt[0])
+                #     objs[p].append(pt[1])
+                # else:
+                #     subs[p].append(pt[1])
+                #     objs[p].append(pt[0])
+
 
         spoes = []
         for p in set(subs.keys()) & set(objs.keys()):
