@@ -15,23 +15,56 @@ def extract_spoes(outputs):
     ents: np.ndarray
     heads: np.ndarray
     tails: np.ndarray
+    batch_result = []
+    seq_map = None
     for ents, heads, tails in zip(outputs[0].argmax(-1),outputs[1].argmax(-1),outputs[2].argmax(-1)):
+        seqlen = len(outputs[0])
+
+        if seq_map is None:
+            seq_map = {}
+            get_pos = lambda x0, x1: x0 * seqlen + x1 - x0 * (x0 + 1) // 2
+            for i in range(seqlen):
+                for j in range(i,seqlen):
+                    seq_map[get_pos(i,j)] = (i,j)
+        e_map = set()
         for e in ents.nonzero():
-            ...
+            e_map.add(seq_map[e])
 
-        for h in heads.nonzero():
-            ...
+        subs = {}
+        for p,e in zip(heads.nonzero()):
+            if p not in subs:
+                subs[p] = []
+            subs[p].append(seq_map[e])
+        objs = {}
+        for p,e in zip(tails.nonzero()):
+            if p not in objs:
+                objs[p] = []
+            objs[p].append(seq_map[e])
 
-        for t in tails.nonzero():
-            ...
-
+        spoes = []
+        for p in set(subs.keys()) & set(objs.keys()):
+            h,t = subs[p], objs[p]
+            if h not in e_map or t not in e_map:
+                continue
+            spoes.append((h[0] - 1,t[0]-1,p,h[1]-1,t[1]-1))
+        batch_result.append(spoes)
+    return batch_result
 
 class TransformerForTplinker(TransformerModel):
     def __init__(self,  *args, **kwargs):
-        tplinker_args = kwargs.get('tplinker_args',None)
+        tplinker_args = kwargs.pop('tplinker_args',None)
         shaking_type = tplinker_args.shaking_type if tplinker_args else None
         inner_enc_type = tplinker_args.inner_enc_type if tplinker_args else None
+
+        dist_emb_size = tplinker_args.dist_emb_size if tplinker_args else -1
+        ent_add_dist = tplinker_args.ent_add_dist if tplinker_args else -1
+        rel_add_dist = tplinker_args.rel_add_dist if tplinker_args else -1
         super(TransformerForTplinker, self).__init__(*args, **kwargs)
+
+        self.dist_emb_size = dist_emb_size
+        self.ent_add_dist = ent_add_dist
+        self.rel_add_dist = rel_add_dist
+
         self.dropout = nn.Dropout(self.config.hidden_dropout_prob)
         self.handshakingkernel = HandshakingKernel(self.config.hidden_size,shaking_type,inner_enc_type)
 
@@ -51,9 +84,10 @@ class TransformerForTplinker(TransformerModel):
         return super(TransformerForTplinker, self).get_model_lr() + [
             (self.handshakingkernel, self.config.task_specific_params['learning_rate_for_task']),
             (self.ent_fc, self.config.task_specific_params['learning_rate_for_task']),
-            (layer, self.config.task_specific_params['learning_rate_for_task'] for layer in self.head_rel_fc_list),
-            (layer, self.config.task_specific_params['learning_rate_for_task'] for layer in self.tail_rel_fc_list),
-        ]
+
+        ] + \
+        list((layer, self.config.task_specific_params['learning_rate_for_task']) for layer in self.head_rel_fc_list) + \
+        list((layer, self.config.task_specific_params['learning_rate_for_task']) for layer in self.tail_rel_fc_list)
 
     def compute_loss(self, batch):
         entity_labels: torch.Tensor = batch.pop('entity_labels', None)
@@ -64,12 +98,12 @@ class TransformerForTplinker(TransformerModel):
         logits = outputs[0]
         if self.model.training:
             logits = self.dropout(logits)
-        shaking_hiddens = self.handshakingkernel(logits, attention_mask)
+        shaking_hiddens = self.handshakingkernel(logits)
         shaking_hiddens4ent = shaking_hiddens
         shaking_hiddens4rel = shaking_hiddens
 
         # add distance embeddings if it is set
-        if self.dist_emb_size != -1:
+        if self.dist_emb_size > 0:
             # set self.dist_embbedings
             hidden_size = shaking_hiddens.size()[-1]
             if self.dist_embbedings is None:

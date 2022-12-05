@@ -34,15 +34,15 @@ train_info_args = {
     # 'train_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
     # 'eval_file': '/data/nlp/nlp_train_data/relation/law/step1_train-fastlabel.json',
     # 'label_file': '/data/nlp/nlp_train_data/relation/law/relation_label.json',
-    'train_file': '/data/nlp/nlp_train_data/myrelation/duie/duie_train.json',
-    'eval_file': '/data/nlp/nlp_train_data/myrelation/duie/duie_dev.json',
-    'label_file': '/data/nlp/nlp_train_data/myrelation/duie/duie_schema.json',
-    # 'train_file': '/data/nlp/nlp_train_data/myrelation/re_labels.json',
-    # 'eval_file': '/data/nlp/nlp_train_data/myrelation/re_labels.json',
-    # 'label_file': '/data/nlp/nlp_train_data/myrelation/labels.json',
+    # 'train_file': '/data/nlp/nlp_train_data/myrelation/duie/duie_train.json',
+    # 'eval_file': '/data/nlp/nlp_train_data/myrelation/duie/duie_dev.json',
+    # 'label_file': '/data/nlp/nlp_train_data/myrelation/duie/duie_schema.json',
+    'train_file': '/data/nlp/nlp_train_data/myrelation/re_labels.json',
+    'eval_file': '/data/nlp/nlp_train_data/myrelation/re_labels.json',
+    'label_file': '/data/nlp/nlp_train_data/myrelation/labels.json',
     'learning_rate': 5e-5,
     'max_epochs': 15,
-    'train_batch_size': 38,
+    'train_batch_size': 10,
     'eval_batch_size': 4,
     'test_batch_size': 2,
     'adam_epsilon': 1e-8,
@@ -55,7 +55,6 @@ train_info_args = {
     'shaking_type': 'cln_plus',
     'inner_enc_type': 'mix_pooling',
 }
-
 
 
 @dataclass
@@ -73,6 +72,30 @@ class TplinkerArguments:
         metadata={
             "help": (
                 "one of ['mix_pooling','lstm'] "
+            )
+        },
+    )
+    dist_emb_size: typing.Optional[int] = field(
+        default=-1,
+        metadata={
+            "help": (
+                "dist_emb_size"
+            )
+        },
+    )
+    ent_add_dist: typing.Optional[bool] = field(
+        default=None,
+        metadata={
+            "help": (
+                "ent_add_dist "
+            )
+        },
+    )
+    rel_add_dist: typing.Optional[bool] = field(
+        default=None,
+        metadata={
+            "help": (
+                "rel_add_dist "
             )
         },
     )
@@ -102,10 +125,6 @@ class NN_DataHelper(DataHelper):
         input_ids = np.asarray(input_ids, dtype=np.int32)
         attention_mask = np.asarray(attention_mask, dtype=np.int32)
 
-        max_target_len = 60
-        # spo_labels = np.zeros(shape=(max_target_len, 5), dtype=np.int32)
-
-
 
         spo_labels = []
         real_label = []
@@ -117,10 +136,7 @@ class NN_DataHelper(DataHelper):
             if s[1] < max_seq_length - 2 and o[1] < max_seq_length - 2:
                 spo_labels.append((s[0], s[1], p, o[0], o[1]))
 
-        spo_labels = spo_labels[:max_target_len]
         spo_labels = np.asarray(spo_labels, dtype=np.int32)
-        targetlen = len(spo_labels)
-        targetlen = np.asarray(targetlen, dtype=np.int32)
         pad_len = max_seq_length - len(input_ids)
         if pad_len > 0:
             pad_val = tokenizer.pad_token_id
@@ -131,7 +147,6 @@ class NN_DataHelper(DataHelper):
             'attention_mask': attention_mask,
             'spo_labels': spo_labels,
             'seqlen': seqlen,
-            'targetlen': targetlen,
         }
 
         if self.index < 5:
@@ -158,8 +173,8 @@ class NN_DataHelper(DataHelper):
         id2label = {i: label for i, label in enumerate(labels)}
 
 
-        self.label2id = label2id
-        self.id2label = id2label
+        NN_DataHelper.label2id = label2id
+        NN_DataHelper.id2label = id2label
         return label2id, id2label
 
     # 读取文件
@@ -207,10 +222,11 @@ class NN_DataHelper(DataHelper):
 
     @staticmethod
     def collect_fn(batch):
+        bs = len(batch)
         o = {}
         spo_labels = []
         for i, b in enumerate(batch):
-            spo_labels.append( b.pop('spo_labels',[]))
+            spo_labels.append(b.pop('spo_labels',[]))
             if i == 0:
                 for k in b:
                     o[k] = [torch.tensor(b[k])]
@@ -219,35 +235,33 @@ class NN_DataHelper(DataHelper):
                     o[k].append(torch.tensor(b[k]))
         for k in o:
             o[k] = torch.stack(o[k])
-
         max_len = torch.max(o.pop('seqlen'))
-        max_tarlen = torch.max(o.pop('targetlen'))
-
-
-        entity_labels = torch.zeros(size=(len(batch),(max_len * max_len + 1) // 2),dtype=torch.long)
-        head_labels = torch.zeros(size=(len(batch),len(NN_DataHelper.label2id), (max_len * max_len + 1) // 2), dtype=torch.long)
-        tail_labels = torch.zeros(size=(len(batch),len(NN_DataHelper.label2id), (max_len * max_len + 1) // 2), dtype=torch.long)
-
-        for i,spos in enumerate(spo_labels):
-            e = entity_labels[i]
+        entity_labels = torch.zeros(size=(bs,max_len * (max_len + 1) // 2),dtype=torch.long)
+        head_labels = torch.zeros(size=(bs,len(NN_DataHelper.label2id), max_len * (max_len + 1) // 2), dtype=torch.long)
+        tail_labels = torch.zeros(size=(bs,len(NN_DataHelper.label2id), max_len * (max_len + 1) // 2), dtype=torch.long)
+        get_pos = lambda x0,x1: x0 * max_len +x1 - x0 * (x0+1) // 2
+        for spos,e,h,t in zip(spo_labels,entity_labels,head_labels,tail_labels):
             for spo in spos:
-                ...
-
-
-
-        entity_labels_ =  o['entity_labels'][:, :, :max_tarlen]
-        head_labels_ = o['head_labels'][:, :, :max_tarlen]
-        tail_labels = o['tail_labels_'][:, :, :max_tarlen]
-        for i in range(max_tarlen):
-
-
+                if spo[0]>=max_len or spo[1] >= max_len or spo[3] >= max_len or spo[4] >= max_len:
+                    continue
+                # print(max_len,spo[0],spo[1],spo[3],spo[4],'---------',get_pos(spo[0],spo[1]),get_pos(spo[3],spo[4]))
+                e[get_pos(spo[0],spo[1])] = 1
+                e[get_pos(spo[3],spo[4])] = 1
+                if spo[0] <= spo[3]:
+                    h[spo[2]][get_pos(spo[0],spo[3])] = 1
+                else:
+                    h[spo[2]][get_pos(spo[3],spo[0])] = 2
+                if spo[1] <= spo[4]:
+                    t[spo[2]][get_pos(spo[1],spo[4])] = 1
+                else:
+                    t[spo[2]][get_pos(spo[4],spo[1])] = 2
         o['input_ids'] = o['input_ids'][:, :max_len]
         o['attention_mask'] = o['attention_mask'][:, :max_len]
         if 'token_type_ids' in o:
             o['token_type_ids'] = o['token_type_ids'][:, :max_len]
-        o['entity_labels'] = o['entity_labels'][:, :, :max_tarlen]
-        o['head_labels'] = o['head_labels'][:, :, :max_tarlen]
-        o['tail_labels'] = o['tail_labels'][:, :, :max_tarlen]
+        o['entity_labels'] = entity_labels
+        o['head_labels'] = head_labels
+        o['tail_labels'] = tail_labels
         return o
 
 

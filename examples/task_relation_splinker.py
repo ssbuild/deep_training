@@ -117,9 +117,7 @@ class NN_DataHelper(DataHelper):
         }
         return d
 
-        # 读取标签
-
-    @staticmethod
+    # 读取标签
     def read_labels_from_file(self,files: typing.List):
         labels = []
         label_filename = files[0]

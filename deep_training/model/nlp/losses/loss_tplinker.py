@@ -5,9 +5,10 @@ from torch import nn
 
 
 class TplinkerLoss(nn.Module):
-    def __init__(self,*args,**kwargs):
+    def __init__(self,reduction='sum'):
         super(TplinkerLoss, self).__init__()
-        self.criterion = nn.CrossEntropyLoss(reduction='none')
+        self.reduction = reduction
+        self.criterion = nn.CrossEntropyLoss(reduction=self.reduction)
 
     def forward(self,inputs: torch.Tensor,targets: torch.Tensor):
         loss = self.criterion(inputs.view(-1, inputs.size()[-1]),targets.view(-1))
