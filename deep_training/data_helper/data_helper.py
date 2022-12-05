@@ -33,8 +33,7 @@ class DataHelperBase(object):
     def on_data_process(self, data: typing.Any, user_data: tuple):
         return make_gpt2_sample(data, user_data)
 
-    @staticmethod
-    def read_labels_from_file(files: typing.List[str]):
+    def read_labels_from_file(self,files: typing.List[str]):
         if not files:
             return None, None
         label_fname = files[0]
@@ -54,8 +53,7 @@ class DataHelperBase(object):
         return label2id, id2label
 
     # 读取文件
-    @staticmethod
-    def read_data_from_file(files: typing.List[str], mode: str):
+    def read_data_from_file(self,files: typing.List[str], mode: str):
         D = []
         for filename in files:
             with open(filename, 'r', encoding='utf-8') as f:

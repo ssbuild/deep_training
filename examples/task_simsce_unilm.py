@@ -74,8 +74,7 @@ class NN_DataHelper(DataHelper):
 
 
     # 读取文件
-    @staticmethod
-    def read_data_from_file(files:typing.List,mode:str):
+    def read_data_from_file(self,files:typing.List,mode:str):
         D = []
         for filename in files:
             with open(filename, mode='r', encoding='utf-8') as f:

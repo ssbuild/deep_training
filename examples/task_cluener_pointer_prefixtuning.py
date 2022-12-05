@@ -8,7 +8,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 
 
 
-from deep_training.model.nlp.models.transformer import TransformerLightningModule, TransformerMeta
+from deep_training.model.nlp.models.transformer import TransformerMeta
 
 from deep_training.data_helper import DataHelper
 import torch
@@ -108,8 +108,7 @@ class NN_DataHelper(DataHelper):
         return d
 
     # 读取标签
-    @staticmethod
-    def read_labels_from_file(label_fname: str):
+    def read_labels_from_file(self,files: typing.List[str]):
         labels = [
             'address', 'book', 'company', 'game', 'government', 'movie', 'name', 'organization', 'position', 'scene'
         ]
@@ -118,8 +117,7 @@ class NN_DataHelper(DataHelper):
         return label2id, id2label
 
     # 读取文件
-    @staticmethod
-    def read_data_from_file(files: typing.List, mode: str):
+    def read_data_from_file(self,files: typing.List, mode: str):
         D = []
         for filename in files:
             with open(filename, mode='r', encoding='utf-8') as f:

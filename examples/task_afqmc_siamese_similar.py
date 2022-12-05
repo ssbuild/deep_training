@@ -79,16 +79,14 @@ class NN_DataHelper(DataHelper):
         return d
 
     #读取标签
-    @staticmethod
-    def read_labels_from_file(files: str):
+    def read_labels_from_file(self,files: typing.List[str]):
         D = ['0','1']
         label2id = {label: i for i, label in enumerate(D)}
         id2label = {i: label for i, label in enumerate(D)}
         return label2id, id2label
 
     # 读取文件
-    @staticmethod
-    def read_data_from_file(files: typing.List,mode:str):
+    def read_data_from_file(self,files: typing.List,mode:str):
         D = []
         for filename in files:
             with open(filename, mode='r', encoding='utf-8') as f:

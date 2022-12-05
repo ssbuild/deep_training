@@ -113,9 +113,8 @@ class TransformerForHphtlinker(TransformerModel):
                     j = j[0]
                     subject_ids.append((i, j))
             if subject_ids:
-                n = len(subject_ids)
                 subject_ids = torch.tensor(subject_ids,dtype=torch.long).to(hidden_output.device)
-                hidden_output = torch.repeat_interleave(hidden_output.unsqueeze(0),n,0)
+                hidden_output = torch.repeat_interleave(hidden_output.unsqueeze(0),len(subject_ids),0)
                 object_preds = self.forward_for_object(hidden_output, subject_ids)
                 object_preds_list.append(object_preds)
             else:

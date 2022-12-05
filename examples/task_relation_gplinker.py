@@ -7,7 +7,7 @@ import typing
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)), '..'))
 
 from deep_training.model.nlp.metrics.pointer import metric_for_spo
-from deep_training.model.nlp.models.transformer import TransformerLightningModule, TransformerMeta
+from deep_training.model.nlp.models.transformer import TransformerMeta
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from pytorch_lightning.callbacks import ModelCheckpoint
 from deep_training.data_helper import DataHelper
@@ -136,8 +136,7 @@ class NN_DataHelper(DataHelper):
         return d
 
     # 读取标签
-    @staticmethod
-    def read_labels_from_file(files: typing.List):
+    def read_labels_from_file(self,files: typing.List):
         labels = []
         label_filename = files[0]
         with open(label_filename, mode='r', encoding='utf-8') as f:
@@ -153,8 +152,7 @@ class NN_DataHelper(DataHelper):
         return label2id, id2label
 
     # 读取文件
-    @staticmethod
-    def read_data_from_file(files: typing.List, mode: str):
+    def read_data_from_file(self,files: typing.List, mode: str):
         D = []
         for filename in files:
             with open(filename, mode='r', encoding='utf-8') as f:

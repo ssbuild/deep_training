@@ -87,7 +87,7 @@ class LayerNorm2(nn.Module):
             outputs = outputs - mean
         if self.scale:
             variance = torch.mean(outputs ** 2, dim=-1).unsqueeze(-1)
-            std = (variance + self.epsilon) ** 2
+            std = (variance + self.epsilon) ** 0.5
             outputs = outputs / std
             outputs = outputs * gamma
         if self.center:

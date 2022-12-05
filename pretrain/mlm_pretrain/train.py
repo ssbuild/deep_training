@@ -77,11 +77,10 @@ class NN_DataHelper(DataHelper):
 
 
     # 读取文件
-    @staticmethod
-    def read_data_from_file(input_files: typing.List,mode:str):
+    def read_data_from_file(self,files: typing.List,mode:str):
         D = []
         line_no = 0
-        for input_file in input_files:
+        for input_file in files:
             with open(input_file, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
                 for line in lines:
