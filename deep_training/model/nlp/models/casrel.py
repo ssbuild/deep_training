@@ -5,7 +5,7 @@ import torch
 from torch import nn
 from .transformer import TransformerModel
 from ..layers.norm import LayerNorm
-from ..losses.loss_hphtlinker import BCELossForHphtLinker
+from ..losses.loss_casrel import LossForCasRel
 
 __all__ = [
     'TransformerForHphtlinker'
@@ -52,7 +52,7 @@ class TransformerForHphtlinker(TransformerModel):
         self.sigmoid = nn.Sigmoid()
         self.cond_norm_layer = LayerNorm(hidden_size=config.hidden_size,
                                          conditional_size=config.hidden_size*2)
-        self.loss_fn = BCELossForHphtLinker(reduction='none')
+        self.loss_fn = LossForCasRel(reduction='none')
 
     def get_model_lr(self):
         return super(TransformerForHphtlinker, self).get_model_lr() + [

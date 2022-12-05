@@ -15,8 +15,8 @@
   - prefixtuning 分类 , prefixtuning 分类 , prefixtuning 指针提取命名实体 , prefixtuning crf 提取命名实体
 - <strong>2022年11月12</strong>: 
   - gplinker (全局指针提取)
-  - hphtlinker (半指针半标注提取 half pointer and half tages)
-  - spliner (全指针提取 sigmoid pointer or simple pointer)
+  - casrel (A Novel Cascade Binary Tagging Framework for Relational Triple Extraction 参考 https://github.com/weizhepei/CasRel)
+  - spliner (指针提取关系 sigmoid pointer or simple pointer)
 - <strong>2022年11月11</strong>: 
   - cluener_pointer 中文命名实体提取 和 cluener crf 中文命名实体提取
   - tnews 中文分类
@@ -41,7 +41,7 @@
   - 例子 <strong>cluener crf提取</strong>
 - <strong>关系提取</strong>
   - 例子 <strong>gplinker 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[duie和法研杯第一阶段数据](https://github.com/ssbuild/cail2022-info-extract)
-  - 例子 <strong>hphtlinker 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[duie和法研杯第一阶段数据](https://github.com/ssbuild/cail2022-info-extract)
+  - 例子 <strong>casrel 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[duie和法研杯第一阶段数据](https://github.com/ssbuild/cail2022-info-extract)
   - 例子 <strong>spliner 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[duie和法研杯第一阶段数据](https://github.com/ssbuild/cail2022-info-extract)
 - <strong> prompt 系列</strong>: 
   - 例子 <strong>prefixprompt tnews中文分类</strong>

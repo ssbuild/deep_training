@@ -16,7 +16,7 @@ import torch
 from pytorch_lightning import Trainer
 from deep_training.data_helper import make_dataset_with_args, load_dataset_with_args, \
     load_tokenizer_and_config_with_args
-from deep_training.model.nlp.models.hphtlinker import TransformerForHphtlinker, extract_spoes
+from deep_training.model.nlp.models.casrel import TransformerForHphtlinker, extract_spoes
 from transformers import HfArgumentParser, BertTokenizer
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
 

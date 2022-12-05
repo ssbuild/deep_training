@@ -1,13 +1,13 @@
 # @Time    : 2022/12/5 0:32
 # @Author  : tk
-# @FileName: loss_hphtlinker.py
+# @FileName: loss_casrel.py
 import torch
 from torch import nn
 
 
-class BCELossForHphtLinker(nn.Module):
+class LossForCasRel(nn.Module):
     def __init__(self, reduction='none'):
-        super(BCELossForHphtLinker, self).__init__()
+        super(LossForCasRel, self).__init__()
         self.reduction = reduction
         self.criterion = nn.BCELoss(reduction=self.reduction)
 
