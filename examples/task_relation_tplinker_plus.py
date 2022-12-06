@@ -170,6 +170,8 @@ class NN_DataHelper(DataHelper):
             'id2rel': {i: l for i, l in enumerate(labels)},
             'ent2id': {l: i for i, l in enumerate(labels_e)},
             'id2ent': {i: l for i, l in enumerate(labels_e)},
+            'label2id': NN_DataHelper.label2id,
+            'id2label': NN_DataHelper.id2label,
         }
         self.task_specific_params = task_specific_params
         return task_specific_params
