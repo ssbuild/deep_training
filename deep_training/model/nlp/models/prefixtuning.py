@@ -210,7 +210,7 @@ class PrefixTransformerForTokenClassification(PrefixTransformerForModel):
         ]
 
 
-    def compute_loss(self, batch):
+    def compute_loss(self, batch,batch_idx):
         labels = batch.pop('labels',None)
         attention_mask = batch['attention_mask']
         outputs = self(batch)
@@ -253,7 +253,7 @@ class PrefixTransformerPointer(PrefixTransformerForModel):
         ]
 
 
-    def compute_loss(self, batch) -> tuple:
+    def compute_loss(self, batch,batch_idx) -> tuple:
         labels: torch.Tensor = batch.pop('labels', None)
         outputs = self(**batch)
         logits = outputs[0]
@@ -307,7 +307,7 @@ class PrefixTransformerForCRF(PrefixTransformerForModel):
             (self.crf, self.config.task_specific_params['learning_rate_for_task']),
         ]
 
-    def compute_loss(self, batch):
+    def compute_loss(self, batch,batch_idx):
         labels: torch.Tensor = batch.pop('labels', None)
         attention_mask = batch['attention_mask']
         outputs = self(**batch)

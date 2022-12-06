@@ -20,7 +20,7 @@ from deep_training.data_helper import make_dataset_with_args, load_dataset_with_
     load_tokenizer_and_config_with_args
 from transformers import HfArgumentParser, BertTokenizer
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
-from deep_training.model.nlp.models.tplinker import TransformerForTplinker, extract_spoes
+from deep_training.model.nlp.models.tplinker import TransformerForTplinker, extract_spoes, TplinkerArguments
 
 train_info_args = {
     'devices': 1,
@@ -52,53 +52,13 @@ train_info_args = {
     'warmup_steps': 0,
     'output_dir': './output',
     'max_seq_length': 160,
+    #tplinker args
     'shaking_type': 'cln_plus',
     'inner_enc_type': 'mix_pooling',
+    'dist_emb_size': -1,
+    'ent_add_dist': False,
+    'rel_add_dist': False,
 }
-
-
-@dataclass
-class TplinkerArguments:
-    shaking_type: typing.Optional[str] = field(
-        default='cln_plus',
-        metadata={
-            "help": (
-                "one of ['cat','cat_plus','cln','cln_plus']"
-            )
-        },
-    )
-    inner_enc_type: typing.Optional[str] = field(
-        default='mix_pooling',
-        metadata={
-            "help": (
-                "one of ['mix_pooling','lstm'] "
-            )
-        },
-    )
-    dist_emb_size: typing.Optional[int] = field(
-        default=-1,
-        metadata={
-            "help": (
-                "dist_emb_size"
-            )
-        },
-    )
-    ent_add_dist: typing.Optional[bool] = field(
-        default=None,
-        metadata={
-            "help": (
-                "ent_add_dist "
-            )
-        },
-    )
-    rel_add_dist: typing.Optional[bool] = field(
-        default=None,
-        metadata={
-            "help": (
-                "rel_add_dist "
-            )
-        },
-    )
 
 
 class NN_DataHelper(DataHelper):
@@ -273,9 +233,9 @@ class MyTransformer(TransformerForTplinker, metaclass=TransformerMeta):
 
     def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
         self.index += 1
-        if self.index < 2:
-            self.log('val_f1', 0.0, prog_bar=True)
-            return
+        # if self.index < 2:
+        #     self.log('val_f1', 0.0, prog_bar=True)
+        #     return
 
         threshold = 1e-7
         y_preds, y_trues = [], []

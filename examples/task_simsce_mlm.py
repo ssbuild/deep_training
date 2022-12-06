@@ -135,7 +135,7 @@ class MyTransformer(TransformerModel, metaclass=TransformerMeta):
         loss = torch.sum(loss, dtype=torch.float) / (torch.sum(weight, dtype=torch.float) + 1e-8)
         return loss
 
-    def compute_loss(self, batch):
+    def compute_loss(self, batch,batch_idx):
         labels,weight = None,None
         if 'labels' in batch:
             labels = batch.pop('labels')

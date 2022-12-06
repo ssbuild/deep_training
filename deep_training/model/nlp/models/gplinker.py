@@ -56,7 +56,7 @@ class TransformerForGplinker(TransformerModel):
             (self.tails_layer, self.config.task_specific_params['learning_rate_for_task']),
         ]
 
-    def compute_loss(self, batch):
+    def compute_loss(self, batch,batch_idx):
         entity_labels: torch.Tensor = batch.pop('entity_labels', None)
         head_labels: torch.Tensor = batch.pop('head_labels', None)
         tail_labels: torch.Tensor = batch.pop('tail_labels', None)

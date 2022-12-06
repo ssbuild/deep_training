@@ -56,8 +56,9 @@ class TransformerBase(nn.Module):
     def forward(self,  *args, **kwargs):
         return self.model(*args, **kwargs)
 
-    def compute_loss(self, batch) -> tuple:
-        return self.model(**batch)
+    def compute_loss(self, *args,**kwargs) -> tuple:
+        kwargs.pop('batch_idx',None)
+        return self.model(*args, **kwargs)
 
     def post_init(self):
         return self.model.post_init()
@@ -116,11 +117,12 @@ class TransformerBase(nn.Module):
         self.set_model(model)
 
     def set_model(self, model):
-        keep_keys = [
-            'config_class','load_tf_weights','base_model_prefix','supports_gradient_checkpointing','_init_weights','_set_gradient_checkpointing',
-            '_keys_to_ignore_on_load_missing','_keys_to_ignore_on_load_unexpected','_no_split_modules','is_parallelizable','_shift_right','main_input_name',
-            '_get_feat_extract_output_lengths','_get_feature_vector_attention_mask',#dummy_inputs
-        ]
+        # keep_keys = [
+        #     'config_class','load_tf_weights','base_model_prefix','supports_gradient_checkpointing','_init_weights','_set_gradient_checkpointing',
+        #     '_keys_to_ignore_on_load_missing','_keys_to_ignore_on_load_unexpected','_no_split_modules','is_parallelizable','_shift_right','main_input_name',
+        #     '_get_feat_extract_output_lengths','_get_feature_vector_attention_mask',#dummy_inputs
+        # ]
+        keep_keys = ['config_class','base_model_prefix']
         for k in keep_keys:
             o = getattr(model,k,None)
             if o is None:
@@ -170,9 +172,13 @@ class TransformerLightningModule(pl.LightningModule):
     def set_model(self, model):
         assert model is not None
         self.__model = model
-        self.__model.log = self.log
-        self.__model.log_dict = self.log_dict
 
+        copy_attr = [
+            'log','log_dict','current_epoch','global_step','global_rank'
+        ]
+        for k in copy_attr:
+            setattr(self.__model,k,getattr(self,k))
+        # setattr(self.__model, 'estimated_stepping_batches', self.trainer.estimated_stepping_batches)
         # if hasattr(self.__model,'validation_epoch_end'):
         #     cname = self.validation_epoch_end.__qualname__
         #     if cname.endswith('.{}.validation_epoch_end'.format('LightningModule')) or cname.endswith('.{}.validation_epoch_end'.format('TransformerLightningModule')) :
@@ -200,18 +206,19 @@ class TransformerLightningModule(pl.LightningModule):
         return self.model.get_model_lr()
 
 
-    def compute_loss(self,batch):
-        return self.model.compute_loss(batch)
+    def compute_loss(self,*args, **kwargs):
+        return self.model.compute_loss(*args, **kwargs)
 
 
     def forward(self, **inputs):
         return self.model(**inputs)
 
     def configure_optimizers(self):
+        setattr(self.__model, 'estimated_stepping_batches', self.trainer.estimated_stepping_batches)
         return configure_optimizers(self.get_model_lr(), self.training_args,self.trainer.estimated_stepping_batches)
 
     def training_step(self, batch, batch_idx):
-        outputs = self.compute_loss(batch)
+        outputs = self.compute_loss(batch,batch_idx=batch_idx)
         loss = outputs[0]
         if isinstance(loss,dict):
             self.log_dict(loss,prog_bar=True)
@@ -220,7 +227,7 @@ class TransformerLightningModule(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        outputs = self.compute_loss(batch)
+        outputs = self.compute_loss(batch,batch_idx=batch_idx)
         loss = outputs[0]
         o = {}
         if loss is not None:
@@ -252,7 +259,7 @@ class TransformerLightningModule(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         x, y = batch
-        outputs = self.compute_loss(x)
+        outputs = self.compute_loss(x,batch_idx=batch_idx)
         return [t.cpu().numpy() for t in outputs]
 
 

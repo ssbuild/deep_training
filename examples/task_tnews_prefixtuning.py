@@ -137,7 +137,7 @@ class MyTransformer(PrefixTransformerForSequenceClassification, metaclass=Transf
         super(MyTransformer, self).__init__(*args,**kwargs)
 
 
-    def compute_loss(self, batch) -> tuple:
+    def compute_loss(self, batch,batch_idx) -> tuple:
         labels: torch.Tensor = batch.pop('labels',None)
         outputs = self(**batch)
         pooled_output = outputs[1]

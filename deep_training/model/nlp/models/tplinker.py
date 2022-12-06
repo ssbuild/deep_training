@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/12/5 9:27
+import typing
+from dataclasses import dataclass, field
+
 import numpy as np
 import math
 import torch
@@ -11,6 +14,50 @@ __all__ = [
     'TransformerForTplinker'
 ]
 
+@dataclass
+class TplinkerArguments:
+    shaking_type: typing.Optional[str] = field(
+        default='cln_plus',
+        metadata={
+            "help": (
+                "one of ['cat','cat_plus','cln','cln_plus']"
+            )
+        },
+    )
+    inner_enc_type: typing.Optional[str] = field(
+        default='mix_pooling',
+        metadata={
+            "help": (
+                "one of ['mix_pooling','lstm'] "
+            )
+        },
+    )
+    dist_emb_size: typing.Optional[int] = field(
+        default=-1,
+        metadata={
+            "help": (
+                "dist_emb_size"
+            )
+        },
+    )
+    ent_add_dist: typing.Optional[bool] = field(
+        default=None,
+        metadata={
+            "help": (
+                "ent_add_dist "
+            )
+        },
+    )
+    rel_add_dist: typing.Optional[bool] = field(
+        default=None,
+        metadata={
+            "help": (
+                "rel_add_dist "
+            )
+        },
+    )
+
+
 def extract_spoes(outputs):
     ents: np.ndarray
     heads: np.ndarray
@@ -19,7 +66,6 @@ def extract_spoes(outputs):
     seq_map = None
     for ents, heads, tails in zip(outputs[0].argmax(-1),outputs[1].argmax(-1),outputs[2].argmax(-1)):
         seqlen = len(outputs[0])
-
         if seq_map is None:
             seq_map = {}
             get_pos = lambda x0, x1: x0 * seqlen + x1 - x0 * (x0 + 1) // 2
@@ -27,13 +73,13 @@ def extract_spoes(outputs):
                 for j in range(i,seqlen):
                     seq_map[get_pos(i,j)] = (i,j)
         e_map = set()
-        for e in ents.nonzero():
+        for e in ents.nonzero()[0]:
             e_map.add(seq_map[e])
 
         spoes = []
-        for p1,h in zip(heads.nonzero()):
+        for p1,h in zip(*heads.nonzero()):
             tagid1 = heads[p1,h]
-            for p2, t in zip(tails.nonzero()):
+            for p2, t in zip(*tails.nonzero()):
                 tagid2 = tails[p2, t]
                 if p1 != p2 or tagid1 == tagid2:
                     continue
@@ -42,7 +88,7 @@ def extract_spoes(outputs):
                 if pt1 not in e_map or pt2 not in e_map:
                     continue
                 s,o= (pt1,pt2) if tagid1 == 1 else (pt2,pt1)
-                spoes.append((s[0] - 1,s[1]-1,p1,o[0]-1,o[1]-1))
+                spoes.append((s[0]-1,s[1]-1,p1,o[0]-1,o[1]-1))
         batch_result.append(spoes)
     return batch_result
 
@@ -85,7 +131,7 @@ class TransformerForTplinker(TransformerModel):
         list((layer, self.config.task_specific_params['learning_rate_for_task']) for layer in self.head_rel_fc_list) + \
         list((layer, self.config.task_specific_params['learning_rate_for_task']) for layer in self.tail_rel_fc_list)
 
-    def compute_loss(self, batch):
+    def compute_loss(self, batch,batch_idx):
         entity_labels: torch.Tensor = batch.pop('entity_labels', None)
         head_labels: torch.Tensor = batch.pop('head_labels', None)
         tail_labels: torch.Tensor = batch.pop('tail_labels', None)
@@ -143,16 +189,25 @@ class TransformerForTplinker(TransformerModel):
         for fc in self.tail_rel_fc_list:
             tail_rel_shaking_outputs_list.append(fc(shaking_hiddens4rel))
 
-        # b,t, s*(s+1)/2,3
+
         head_rel_shaking_outputs = torch.stack(head_rel_shaking_outputs_list, dim=1)
-        # b,t, s*(s+1)/2,3
         tail_rel_shaking_outputs = torch.stack(tail_rel_shaking_outputs_list, dim=1)
 
         if entity_labels is not None:
+            z = (2 * self.config.num_labels + 1)
+            current_step = self.global_step
+
+            total_steps = self.estimated_stepping_batches
+            if total_steps == float('inf'):
+                total_steps = 5000
+
+            w_ent = max(1 / z + 1 - current_step / total_steps, 1 / z)
+            w_rel = min((self.config.num_labels / z) * current_step / total_steps, (self.config.num_labels / z))
+
             loss1 = self.loss_fn(ent_shaking_outputs, entity_labels)
             loss2 = self.loss_fn(head_rel_shaking_outputs, head_labels)
             loss3 = self.loss_fn(tail_rel_shaking_outputs, tail_labels)
-            loss = (loss1 + loss2 + loss3) / 3
+            loss = w_ent * loss1 + w_rel * loss2 + w_rel * loss3
             loss_dict = {'loss': loss,
                          'loss_entities': loss1,
                          'loss_head': loss2,
