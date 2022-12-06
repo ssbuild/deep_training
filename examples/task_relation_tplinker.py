@@ -50,8 +50,8 @@ train_info_args = {
     'warmup_steps': 0,
     'output_dir': './output',
     'train_max_seq_length': 200,
-    'eval_max_seq_length': 512,
-    'test_max_seq_length': 512,
+    'eval_max_seq_length': 200,
+    'test_max_seq_length': 200,
     # tplinker args
     'shaking_type': 'cln_plus',  # one of ['cat','cat_plus','cln','cln_plus']
     'inner_enc_type': 'mean_pooling',  # one of ['mix_pooling','mean_pooling','max_pooling','lstm']
@@ -242,7 +242,7 @@ class MyTransformer(TransformerForTplinker, metaclass=TransformerMeta):
         #     self.log('val_f1', 0.0, prog_bar=True)
         #     return
 
-        threshold = 1e-7
+
         y_preds, y_trues = [], []
 
         idx = 0

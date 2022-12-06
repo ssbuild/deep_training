@@ -47,15 +47,19 @@ def extract_spoes(batch_outputs: typing.List,
                   rel2id,# 关系id映射
                   threshold=1e-8):
     batch_result = []
-    seq_map = None
+
+    def get_position(pos_val,seqlen, start, end):
+        i = math.floor((end + start) / 2)
+        j = int((pos_val + i * (i + 1) / 2) - i * seqlen)
+        if j >= 0 and j < seqlen:
+            return (i, j)
+        if j >= seqlen:
+            return get_position(pos_val,seqlen, i, end)
+        return get_position(pos_val, seqlen,0, i)
+
+
     for shaking_hidden in batch_outputs:
-        seqlen = len(batch_outputs)
-        if seq_map is None:
-            seq_map = {}
-            get_pos = lambda x0, x1: x0 * seqlen + x1 - x0 * (x0 + 1) // 2
-            for i in range(seqlen):
-                for j in range(i, seqlen):
-                    seq_map[get_pos(i, j)] = (i, j)
+        seqlen = shaking_hidden.shape[0]
         es = []
         es_set = set()
         sh,oh,st,ot = {},{},{},{}
@@ -63,13 +67,13 @@ def extract_spoes(batch_outputs: typing.List,
             tag: str = id2label[tag_id]
             tag,tag2 = tag.rsplit('_',2)
             if tag2 == 'EE':
-                es.append((*seq_map[pos],tag_id))
-                es_set.add(seq_map[pos])
+                es.append((*get_position(pos,seqlen,0,seqlen),tag_id))
+                es_set.add(get_position(pos,seqlen,0,seqlen))
             else:
                 obj = eval(tag2.lower())
                 if tag not in obj:
                     obj[tag] = []
-                obj[tag].append(seq_map[pos])
+                obj[tag].append(get_position(pos,seqlen,0,seqlen))
         subs,objs = {},{}
         for k,list1 in sh.items():
             list2 = st.get(k,[])

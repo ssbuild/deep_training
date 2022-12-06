@@ -65,7 +65,7 @@ def extract_spoes(outputs):
     batch_result = []
     seq_map = None
     for ents, heads, tails in zip(outputs[0].argmax(-1),outputs[1].argmax(-1),outputs[2].argmax(-1)):
-        seqlen = len(outputs[0])
+        seqlen = ents.shape[0]
         if seq_map is None:
             seq_map = {}
             get_pos = lambda x0, x1: x0 * seqlen + x1 - x0 * (x0 + 1) // 2

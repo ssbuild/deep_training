@@ -142,7 +142,7 @@ class TransformerLightningModule(pl.LightningModule):
         model_args = get_value_from_args('model_args', ModelArguments, *args, **kwargs)
         training_args = get_value_from_args('training_args', TrainingArguments, *args, **kwargs)
         super(TransformerLightningModule, self).__init__()
-        if hasattr(config, 'task_specific_params') or config.task_specific_params is None:
+        if not hasattr(config, 'task_specific_params') or config.task_specific_params is None:
             config.task_specific_params = {}
         task_specific_params = config.task_specific_params
         task_specific_params['learning_rate'] = training_args.learning_rate

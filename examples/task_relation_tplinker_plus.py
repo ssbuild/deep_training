@@ -50,8 +50,8 @@ train_info_args = {
     'warmup_steps': 0,
     'output_dir': './output',
     'train_max_seq_length': 200,
-    'eval_max_seq_length': 512,
-    'test_max_seq_length': 512,
+    'eval_max_seq_length': 200,
+    'test_max_seq_length': 200,
     #tplinker_plus args
     'shaking_type': 'cln_plus', #one of ['cat','cat_plus','cln','cln_plus']
     'inner_enc_type': 'mean_pooling', #one of ['mix_pooling','mean_pooling','max_pooling','lstm']
@@ -94,13 +94,14 @@ class NN_DataHelper(DataHelper):
             if s < max_seq_length - 1 and e < max_seq_length - 1:
                 k = l + '_EE'
                 if k not in label2id:
-                    #忽略无关紧要的实体，实体没在关系模型中
-                    logging.warning('entity {} is valid ， it may be not in relation...'.format(l))
+                    #忽略无关紧要的实体
+                    # logging.warning('entity {} is valid ， it may be not in relation...'.format(l))
                     continue
                 labels.append((label2id[k],s,e))
 
+        rel2id = self.task_specific_params['rel2id']
         for s, p, o in spo_list:
-            real_label_re.append((s[0], s[1], p, o[0], o[1]))
+            real_label_re.append((s[0], s[1], rel2id[p], o[0], o[1]))
             s = (s[0] + 1, s[1] + 1)
             o = (o[0] + 1, o[1] + 1)
             if s[1] < max_seq_length - 1 and o[1] < max_seq_length - 1:
@@ -160,6 +161,18 @@ class NN_DataHelper(DataHelper):
         NN_DataHelper.label2id = label2id
         NN_DataHelper.id2label = id2label
         return label2id, id2label
+
+    def on_task_specific_params(self):
+        labels = list(set([i.rsplit('_', 2)[0] for i in NN_DataHelper.label2id if not i.endswith('_EE')]))
+        labels_e = list(set([i.rsplit('_', 2)[0] for i in NN_DataHelper.label2id if i.endswith('_EE')]))
+        task_specific_params = {
+            'rel2id': {l: i for i, l in enumerate(labels)},
+            'id2rel': {i: l for i, l in enumerate(labels)},
+            'ent2id': {l: i for i, l in enumerate(labels_e)},
+            'id2ent': {i: l for i, l in enumerate(labels_e)},
+        }
+        self.task_specific_params = task_specific_params
+        return task_specific_params
 
     # 读取文件
     def read_data_from_file(self,files: typing.List, mode: str):
@@ -228,13 +241,14 @@ class NN_DataHelper(DataHelper):
             o[k] = torch.stack(o[k])
         max_len = torch.max(o.pop('seqlen'))
 
-        shaking_len = int(max_len * (max_len + 1) // 2)
+        shaking_len = int(max_len * (max_len + 1) / 2)
         labels = torch.zeros(size=(bs,shaking_len , len(NN_DataHelper.label2id)), dtype=torch.long)
-        get_pos = lambda x0, x1: x0 * max_len + x1 - x0 * (x0 + 1) // 2
+        get_pos = lambda x0, x1: x0 * max_len + int(x1 - x0 * (x0 + 1) / 2)
 
         for linfo, label in zip(labels_info, labels):
             for l, s, e in linfo:
-                if s >= max_len or e >= max_len:
+                assert s <= e
+                if s >= max_len - 1 or e >= max_len - 1:
                     continue
                 label[get_pos(s, e)][l] = 1
 
@@ -251,14 +265,9 @@ class MyTransformer(TransformerForTplinkerPlus, metaclass=TransformerMeta):
         super(MyTransformer, self).__init__(*args, **kwargs)
         self.index = 0
         self.eval_labels = eval_labels
+        self.rel2id = self.config.task_specific_params['rel2id']
+        self.id2rel = self.config.task_specific_params['id2rel']
 
-        labels = [i for i in self.config.label2id if not i.endswith('_EE')]
-        self.rel2id = {l.rsplit('_',2)[0]:i for i,l in enumerate(labels)}
-        self.id2rel = {i:l.rsplit('_',2)[0] for i,l in enumerate(labels)}
-
-        print('*' * 30)
-        print(self.rel2id)
-        print(self.id2rel)
 
 
     def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:

@@ -33,6 +33,9 @@ class DataPreprocessHelper(object):
     def on_data_process(self, data: typing.Any, user_data: tuple):
         return make_gpt2_sample(data, user_data)
 
+    def on_task_specific_params(self) -> typing.Dict:
+        return None
+
     def read_labels_from_file(self,files: typing.List[str]):
         if not files:
             return None, None

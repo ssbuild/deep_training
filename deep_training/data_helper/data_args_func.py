@@ -34,7 +34,7 @@ def get_filename_no_ext(filename):
 def get_filename_replace_dir(filename,new_path_dir,ext=None):
     return os.path.join(new_path_dir,get_filename_no_ext(filename) + '.' + ext)
 
-def load_tokenizer_and_config_with_args(dataHelper,model_args: ModelArguments,
+def load_tokenizer_and_config_with_args(dataHelper: DataHelper,model_args: ModelArguments,
                                         training_args:TrainingArguments,
                                         data_args: DataArguments,
                                         task_specific_params=None):
@@ -48,8 +48,13 @@ def load_tokenizer_and_config_with_args(dataHelper,model_args: ModelArguments,
                                 use_auth_token=model_args.use_auth_token,
                                )
 
+
     if task_specific_params is None:
         task_specific_params = {}
+
+    task_params = dataHelper.on_task_specific_params()
+    if task_params is not None:
+        task_specific_params.update(task_params)
 
     task_specific_params['learning_rate'] = training_args.learning_rate
     task_specific_params['learning_rate_for_task'] = training_args.learning_rate_for_task \
@@ -79,7 +84,8 @@ def load_tokenizer_and_config_with_args(dataHelper,model_args: ModelArguments,
 
     if hasattr(config,'num_labels'):
         print('*' * 30,'num_labels=', config.num_labels)
-        print(label2id, id2label)
+        print(label2id)
+        print(id2label)
 
     return  tokenizer,config,label2id, id2label
 
