@@ -30,42 +30,19 @@ def extract_spoes(outputs):
         for e in ents.nonzero():
             e_map.add(seq_map[e])
 
-        subs = {}
-        objs = {}
+        spoes = []
         for p1,h in zip(heads.nonzero()):
             tagid1 = heads[p1,h]
             for p2, t in zip(tails.nonzero()):
-                if p1 != p2:
+                tagid2 = tails[p2, t]
+                if p1 != p2 or tagid1 == tagid2:
                     continue
                 pt1 = (h[0], t[0])
                 pt2 = (h[1], t[1])
                 if pt1 not in e_map or pt2 not in e_map:
                     continue
-                tagid2 = tails[p2, t]
-
-                if tagid1 == 1:
-                    ...
-                else:
-                    ...
-
-                # if pt1[0] <= pt2[0]:
-                #
-                # tagid = heads[p][e]
-                # pt = seq_map[e]
-                # if tagid == 1:
-                #     subs[p].append(pt[0])
-                #     objs[p].append(pt[1])
-                # else:
-                #     subs[p].append(pt[1])
-                #     objs[p].append(pt[0])
-
-
-        spoes = []
-        for p in set(subs.keys()) & set(objs.keys()):
-            h,t = subs[p], objs[p]
-            if h not in e_map or t not in e_map:
-                continue
-            spoes.append((h[0] - 1,t[0]-1,p,h[1]-1,t[1]-1))
+                s,o= (pt1,pt2) if tagid1 == 1 else (pt2,pt1)
+                spoes.append((s[0] - 1,s[1]-1,p1,o[0]-1,o[1]-1))
         batch_result.append(spoes)
     return batch_result
 
