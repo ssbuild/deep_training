@@ -127,7 +127,7 @@ class NN_DataHelper(DataHelper):
         return D
 
     @staticmethod
-    def collect_fn(batch):
+    def collate_fn(batch):
         o = {}
         for i, b in enumerate(batch):
             if i == 0:

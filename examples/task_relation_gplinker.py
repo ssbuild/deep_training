@@ -49,7 +49,9 @@ train_info_args = {
     'weight_decay': 0,
     'warmup_steps': 0,
     'output_dir': './output',
-    'max_seq_length': 160,
+    'train_max_seq_length': 380,
+    'eval_max_seq_length': 512,
+    'test_max_seq_length': 512,
 }
 
 
@@ -195,7 +197,7 @@ class NN_DataHelper(DataHelper):
         return D
 
     @staticmethod
-    def collect_fn(batch):
+    def collate_fn(batch):
         o = {}
         for i, b in enumerate(batch):
             if i == 0:

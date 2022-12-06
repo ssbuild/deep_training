@@ -23,7 +23,7 @@ __all__ = [
 
 
 
-class DataHelperBase(object):
+class DataPreprocessHelper(object):
 
     def on_data_ready(self):...
 
@@ -64,32 +64,62 @@ class DataHelperBase(object):
                     D.append(line)
         return D
 
+class DataTransformHelper(object):
     @staticmethod
-    def collect_fn(batch):
-        o = {}
-        for i, b in enumerate(batch):
-            if i == 0:
-                for k in b:
-                    o[k] = [torch.tensor(b[k])]
-            else:
-                for k in b:
-                    o[k].append(torch.tensor(b[k]))
-        for k in o:
-            o[k] = torch.stack(o[k])
+    def collate_fn(batch):
+        return batch
+        # o = {}
+        # for i, b in enumerate(batch):
+        #     if i == 0:
+        #         for k in b:
+        #             o[k] = [torch.tensor(b[k])]
+        #     else:
+        #         for k in b:
+        #             o[k].append(torch.tensor(b[k]))
+        # for k in o:
+        #     o[k] = torch.stack(o[k])
+        #
+        # max_len = torch.max(o.pop('seqlen'))
+        #
+        # o['input_ids'] = o['input_ids'][:, :max_len]
+        # o['attention_mask'] = o['attention_mask'][:, :max_len]
+        # if 'token_type_ids' in o:
+        #     o['token_type_ids'] = o['token_type_ids'][:, :max_len]
+        # o['labels'] = o['labels'][:, :max_len]
+        # return o
 
-        max_len = torch.max(o.pop('seqlen'))
+    @staticmethod
+    def transform(x):
+        return x
+    @staticmethod
+    def batch_transform(batch):
+        return batch
+        # o = {}
+        # for i, b in enumerate(batch):
+        #     if i == 0:
+        #         for k in b:
+        #             o[k] = [torch.tensor(b[k])]
+        #     else:
+        #         for k in b:
+        #             o[k].append(torch.tensor(b[k]))
+        # for k in o:
+        #     o[k] = torch.stack(o[k])
+        #
+        # max_len = torch.max(o.pop('seqlen'))
+        #
+        # o['input_ids'] = o['input_ids'][:, :max_len]
+        # o['attention_mask'] = o['attention_mask'][:, :max_len]
+        # if 'token_type_ids' in o:
+        #     o['token_type_ids'] = o['token_type_ids'][:, :max_len]
+        # o['labels'] = o['labels'][:, :max_len]
+        # return o
 
-        o['input_ids'] = o['input_ids'][:, :max_len]
-        o['attention_mask'] = o['attention_mask'][:, :max_len]
-        if 'token_type_ids' in o:
-            o['token_type_ids'] = o['token_type_ids'][:, :max_len]
-        o['labels'] = o['labels'][:, :max_len]
-        return o
 
-
-
-class DataHelper(DataHelperBase):
+class DataHelper(DataPreprocessHelper,DataTransformHelper):
     def __init__(self,backend: typing.Union[E_file_backend, str],data_process_fn=None,*args,**kwargs):
+        DataPreprocessHelper.__init__(self)
+        DataTransformHelper.__init__(self)
+
         self.backend = backend
         self.data_process_fn = self.on_data_process if data_process_fn is None else data_process_fn
 
@@ -101,8 +131,10 @@ class DataHelper(DataHelperBase):
            cycle_length=1,
            block_length=1):
         return NumpyReaderAdapter.load(files, self.backend , options,
-                                data_key_prefix_list=data_key_prefix_list, num_key=num_key,
-                                cycle_length=cycle_length, block_length=block_length)
+                                       data_key_prefix_list=data_key_prefix_list,
+                                       num_key=num_key,
+                                       cycle_length=cycle_length,
+                                       block_length=block_length)
 
     """
         cycle_length for IterableDataset
@@ -114,7 +146,9 @@ class DataHelper(DataHelperBase):
                  files: typing.Union[typing.List, str],
                  batch_size: int,
                  num_workers: int = 0,
+                 collate_fn:typing.Callable = None,
                  transform_fn: typing.Callable = None,
+                 batch_transform_fn: typing.Callable = None,
                  shuffle=False,
                  infinite=False,
                  cycle_length=4, block_length=4):
@@ -136,27 +170,36 @@ class DataHelper(DataHelperBase):
         dataHelper = self
         dataset = dataHelper.load_numpy_dataset(files, cycle_length=cycle_length, block_length=block_length)
 
-        collate_fn = dataHelper.collect_fn
         if isinstance(dataset, typing.Iterator):
             dataset: IterableDatasetBase
             if transform_fn:
                 dataset = dataset.apply(transform_fn)
             if shuffle:
                 dataset = dataset.shuffle(1024)
+
+            if batch_transform_fn:
+                dataset = dataset.batch(batch_size).apply(batch_transform_fn)
+
             if infinite:
                 dataset = dataset.repeat(-1)
-
+            batch_size = batch_size if batch_transform_fn is None else None
             dataset_ = DataLoader(torch_IterableDataset(dataset),
-                                  batch_size=batch_size, collate_fn=collate_fn, num_workers=num_workers)
+                                  batch_size=batch_size,
+                                  collate_fn=collate_fn, num_workers=num_workers)
 
         else:
             dataset: RandomDatasetBase
             if transform_fn:
                 dataset = dataset.apply(transform_fn)
+            if batch_transform_fn:
+                dataset = dataset.batch(batch_size).apply(batch_transform_fn)
             if shuffle:
                 dataset = dataset.shuffle(-1)
+
+            batch_size = batch_size if batch_transform_fn is None else None
             dataset_ = DataLoader(torch_Dataset(dataset),
-                                  batch_size=batch_size, collate_fn=collate_fn, num_workers=num_workers)
+                                  batch_size=batch_size,
+                                  collate_fn=collate_fn, num_workers=num_workers)
         return dataset_
 
 

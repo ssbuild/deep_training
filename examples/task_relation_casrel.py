@@ -196,7 +196,7 @@ class NN_DataHelper(DataHelper):
 
 
     @staticmethod
-    def collect_fn(batch):
+    def collate_fn(batch):
         o = {}
         for i, b in enumerate(batch):
             if i == 0:

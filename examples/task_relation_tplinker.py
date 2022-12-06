@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
 import json
-import math
 import os
 import sys
 import typing
-from dataclasses import dataclass, field
 
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)), '..'))
 
@@ -42,7 +40,7 @@ train_info_args = {
     'label_file': '/data/nlp/nlp_train_data/myrelation/labels.json',
     'learning_rate': 5e-5,
     'max_epochs': 15,
-    'train_batch_size': 10,
+    'train_batch_size': 6,
     'eval_batch_size': 4,
     'test_batch_size': 2,
     'adam_epsilon': 1e-8,
@@ -51,10 +49,12 @@ train_info_args = {
     'weight_decay': 0,
     'warmup_steps': 0,
     'output_dir': './output',
-    'max_seq_length': 160,
-    #tplinker args
-    'shaking_type': 'cln_plus',
-    'inner_enc_type': 'mix_pooling',
+    'train_max_seq_length': 200,
+    'eval_max_seq_length': 512,
+    'test_max_seq_length': 512,
+    # tplinker args
+    'shaking_type': 'cln_plus',  # one of ['cat','cat_plus','cln','cln_plus']
+    'inner_enc_type': 'mean_pooling',  # one of ['mix_pooling','mean_pooling','max_pooling','lstm']
     'dist_emb_size': -1,
     'ent_add_dist': False,
     'rel_add_dist': False,
@@ -65,7 +65,8 @@ class NN_DataHelper(DataHelper):
     index = -1
     eval_labels = []
 
-    id2label,label2id = None,None
+    id2label, label2id = None, None
+
     def on_data_ready(self):
         self.index = -1
 
@@ -84,7 +85,6 @@ class NN_DataHelper(DataHelper):
         attention_mask = [1] * seqlen
         input_ids = np.asarray(input_ids, dtype=np.int32)
         attention_mask = np.asarray(attention_mask, dtype=np.int32)
-
 
         spo_labels = []
         real_label = []
@@ -118,7 +118,7 @@ class NN_DataHelper(DataHelper):
         return d
 
     # 读取标签
-    def read_labels_from_file(self,files: typing.List):
+    def read_labels_from_file(self, files: typing.List):
         labels = []
         label_filename = files[0]
         with open(label_filename, mode='r', encoding='utf-8') as f:
@@ -132,13 +132,12 @@ class NN_DataHelper(DataHelper):
         label2id = {label: i for i, label in enumerate(labels)}
         id2label = {i: label for i, label in enumerate(labels)}
 
-
         NN_DataHelper.label2id = label2id
         NN_DataHelper.id2label = id2label
         return label2id, id2label
 
     # 读取文件
-    def read_data_from_file(self,files: typing.List, mode: str):
+    def read_data_from_file(self, files: typing.List, mode: str):
         D = []
         for filename in files:
             with open(filename, mode='r', encoding='utf-8') as f:
@@ -180,13 +179,19 @@ class NN_DataHelper(DataHelper):
                     D.append((jd['text'], entities_label, re_list_label))
         return D
 
+    # batch for torch dataloader
+    # @staticmethod
+    # def collate_fn(batch):
+    #     return batch
+
+    # batch dataset
     @staticmethod
-    def collect_fn(batch):
+    def batch_transform(batch):
         bs = len(batch)
         o = {}
         spo_labels = []
         for i, b in enumerate(batch):
-            spo_labels.append(b.pop('spo_labels',[]))
+            spo_labels.append(b.pop('spo_labels', []))
             if i == 0:
                 for k in b:
                     o[k] = [torch.tensor(b[k])]
@@ -196,24 +201,25 @@ class NN_DataHelper(DataHelper):
         for k in o:
             o[k] = torch.stack(o[k])
         max_len = torch.max(o.pop('seqlen'))
-        entity_labels = torch.zeros(size=(bs,max_len * (max_len + 1) // 2),dtype=torch.long)
-        head_labels = torch.zeros(size=(bs,len(NN_DataHelper.label2id), max_len * (max_len + 1) // 2), dtype=torch.long)
-        tail_labels = torch.zeros(size=(bs,len(NN_DataHelper.label2id), max_len * (max_len + 1) // 2), dtype=torch.long)
-        get_pos = lambda x0,x1: x0 * max_len +x1 - x0 * (x0+1) // 2
-        for spos,e,h,t in zip(spo_labels,entity_labels,head_labels,tail_labels):
+        shaking_len = int(max_len * (max_len + 1) // 2)
+        entity_labels = torch.zeros(size=(bs, shaking_len), dtype=torch.long)
+        head_labels = torch.zeros(size=(bs, len(NN_DataHelper.label2id), shaking_len), dtype=torch.long)
+        tail_labels = torch.zeros(size=(bs, len(NN_DataHelper.label2id), shaking_len), dtype=torch.long)
+        get_pos = lambda x0, x1: x0 * max_len + x1 - x0 * (x0 + 1) // 2
+        for spos, e, h, t in zip(spo_labels, entity_labels, head_labels, tail_labels):
             for spo in spos:
-                if spo[0]>=max_len or spo[1] >= max_len or spo[3] >= max_len or spo[4] >= max_len:
+                if spo[0] >= max_len or spo[1] >= max_len or spo[3] >= max_len or spo[4] >= max_len:
                     continue
-                e[get_pos(spo[0],spo[1])] = 1
-                e[get_pos(spo[3],spo[4])] = 1
+                e[get_pos(spo[0], spo[1])] = 1
+                e[get_pos(spo[3], spo[4])] = 1
                 if spo[0] <= spo[3]:
-                    h[spo[2]][get_pos(spo[0],spo[3])] = 1
+                    h[spo[2]][get_pos(spo[0], spo[3])] = 1
                 else:
-                    h[spo[2]][get_pos(spo[3],spo[0])] = 2
+                    h[spo[2]][get_pos(spo[3], spo[0])] = 2
                 if spo[1] <= spo[4]:
-                    t[spo[2]][get_pos(spo[1],spo[4])] = 1
+                    t[spo[2]][get_pos(spo[1], spo[4])] = 1
                 else:
-                    t[spo[2]][get_pos(spo[4],spo[1])] = 2
+                    t[spo[2]][get_pos(spo[4], spo[1])] = 2
         o['input_ids'] = o['input_ids'][:, :max_len]
         o['attention_mask'] = o['attention_mask'][:, :max_len]
         if 'token_type_ids' in o:
@@ -225,11 +231,10 @@ class NN_DataHelper(DataHelper):
 
 
 class MyTransformer(TransformerForTplinker, metaclass=TransformerMeta):
-    def __init__(self,eval_labels,*args, **kwargs):
+    def __init__(self, eval_labels, *args, **kwargs):
         super(MyTransformer, self).__init__(*args, **kwargs)
         self.index = 0
         self.eval_labels = eval_labels
-
 
     def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
         self.index += 1
@@ -242,11 +247,11 @@ class MyTransformer(TransformerForTplinker, metaclass=TransformerMeta):
 
         idx = 0
         for o in outputs:
-            logits1, logits2, logits3, _,_,_ = o['outputs']
-            output_labels = self.eval_labels[idx*len(logits1):(idx + 1)*len(logits1)]
+            logits1, logits2, logits3, _, _, _ = o['outputs']
+            output_labels = self.eval_labels[idx * len(logits1):(idx + 1) * len(logits1)]
             idx += 1
             p_spoes = extract_spoes([logits1, logits2, logits3])
-            t_spoes =output_labels
+            t_spoes = output_labels
             y_preds.extend(p_spoes)
             y_trues.extend(t_spoes)
 
@@ -258,10 +263,9 @@ class MyTransformer(TransformerForTplinker, metaclass=TransformerMeta):
         self.log('val_f1', f1, prog_bar=True)
 
 
-
 if __name__ == '__main__':
-    parser = HfArgumentParser((ModelArguments, TrainingArguments, DataArguments,TplinkerArguments))
-    model_args, training_args, data_args , tplinker_args = parser.parse_dict(train_info_args)
+    parser = HfArgumentParser((ModelArguments, TrainingArguments, DataArguments, TplinkerArguments))
+    model_args, training_args, data_args, tplinker_args = parser.parse_dict(train_info_args)
 
     dataHelper = NN_DataHelper(data_args.data_backend)
     tokenizer, config, label2id, id2label = load_tokenizer_and_config_with_args(dataHelper, model_args, training_args,
@@ -290,14 +294,16 @@ if __name__ == '__main__':
                                        intermediate_name=intermediate_name, shuffle=False, mode='test'))
 
     dm = load_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
-    model = MyTransformer(dataHelper.eval_labels,tplinker_args=tplinker_args, config=config, model_args=model_args, training_args=training_args)
+
+    model = MyTransformer(dataHelper.eval_labels, tplinker_args=tplinker_args, config=config, model_args=model_args,
+                          training_args=training_args)
     checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
     trainer = Trainer(
         callbacks=[checkpoint_callback],
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",
-        devices=data_args.devices,  
+        devices=data_args.devices,
         enable_progress_bar=True,
         default_root_dir=data_args.output_dir,
         gradient_clip_val=training_args.max_grad_norm,

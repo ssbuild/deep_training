@@ -3,6 +3,8 @@
 # @FileName: data_func_args.py
 import logging
 import os
+import typing
+
 from pytorch_lightning import LightningDataModule
 
 from .data_helper import DataHelper
@@ -106,7 +108,12 @@ def make_dataset_with_args(dataHelper,input_files, fn_args, data_args:DataArgume
 
 
 
-def load_dataset_with_args(dataHelper, training_args: TrainingArguments, train_file, eval_file, test_file, allow_train_shuffle=True):
+def load_dataset_with_args(dataHelper,
+                           training_args: TrainingArguments,
+                           train_file,
+                           eval_file,
+                           test_file,
+                           allow_train_shuffle=True):
     '''
        dataHelper: DataHelper
        training_args: args
@@ -115,10 +122,36 @@ def load_dataset_with_args(dataHelper, training_args: TrainingArguments, train_f
 
     dataHelper: DataHelper
     dm = LightningDataModule()
-    train_dataloader = dataHelper.load_dataset(train_file, batch_size=training_args.train_batch_size, shuffle=allow_train_shuffle,
-                                    infinite=True)
-    val_dataloader = dataHelper.load_dataset(eval_file, batch_size=training_args.eval_batch_size)
-    test_dataloader = dataHelper.load_dataset(test_file, batch_size=training_args.test_batch_size)
+
+    collate_fn,batch_transform,transform = None,None,None
+    if dataHelper.collate_fn != DataHelper.collate_fn:
+        collate_fn = dataHelper.collate_fn
+
+    if dataHelper.batch_transform != DataHelper.batch_transform:
+        batch_transform = dataHelper.batch_transform
+
+    if dataHelper.transform != DataHelper.transform:
+        transform = dataHelper.transform
+
+    train_dataloader = dataHelper.load_dataset(train_file,
+                                            batch_size=training_args.train_batch_size,
+                                            shuffle=allow_train_shuffle,
+                                            infinite=True,
+                                            transform_fn=transform,
+                                            collate_fn=collate_fn,
+                                            batch_transform_fn=batch_transform)
+
+    val_dataloader = dataHelper.load_dataset(eval_file,
+                                             batch_size=training_args.eval_batch_size,
+                                             transform_fn=transform,
+                                             collate_fn=collate_fn,
+                                             batch_transform_fn=batch_transform)
+
+    test_dataloader = dataHelper.load_dataset(test_file,
+                                              batch_size=training_args.test_batch_size,
+                                              transform_fn=transform,
+                                              collate_fn=collate_fn,
+                                              batch_transform_fn=batch_transform)
 
     if train_dataloader is not None:
         dm.train_dataloader = lambda: train_dataloader

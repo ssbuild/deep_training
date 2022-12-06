@@ -94,7 +94,7 @@ def load_configure(config_name,
 #     #         length = len(self.dataset["train"])
 #     #     except:
 #     #         length = None
-#     #     collate_fn = self.dataReaderHelper.collect_fn
+#     #     collate_fn = self.dataReaderHelper.collate_fn
 #     #     if length is None:
 #     #         return DataLoader(torch_IterableDataset(self.dataset["train"].shuffle(1024).repeat(-1)), batch_size=self.train_batch_size,collate_fn=collate_fn)
 #     #     return DataLoader(torch_Dataset(self.dataset["train"].shuffle(buffer_size=-1)), batch_size=self.train_batch_size,collate_fn=collate_fn)
@@ -103,13 +103,13 @@ def load_configure(config_name,
 #     #     if self.dataset["validation"] is None:
 #     #         return super(GLUEDataModule, self).val_dataloader()
 #     #
-#     #     collate_fn = self.data_helper.collect_fn
+#     #     collate_fn = self.data_helper.collate_fn
 #     #     return DataLoader(self.dataset["validation"], batch_size=self.eval_batch_size,collate_fn=collate_fn)
 #     #
 #     # def test_dataloader(self):
 #     #     if self.dataset["test"] is None:
 #     #         return super(GLUEDataModule, self).test_dataloader()
 #     #
-#     #     collate_fn = self.data_helper.collect_fn
+#     #     collate_fn = self.data_helper.collate_fn
 #     #     return DataLoader(self.dataset["test"], batch_size=self.test_batch_size,collate_fn=collate_fn)
 

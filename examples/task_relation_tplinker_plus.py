@@ -1,12 +1,9 @@
 # -*- coding: utf-8 -*-
 import json
 import logging
-import math
 import os
 import sys
 import typing
-from dataclasses import dataclass, field
-
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)), '..'))
 
 from deep_training.model.nlp.metrics.pointer import metric_for_spo
@@ -43,7 +40,7 @@ train_info_args = {
     'label_file': '/data/nlp/nlp_train_data/myrelation/labels.json',
     'learning_rate': 5e-5,
     'max_epochs': 15,
-    'train_batch_size': 10,
+    'train_batch_size': 8,
     'eval_batch_size': 4,
     'test_batch_size': 2,
     'adam_epsilon': 1e-8,
@@ -52,10 +49,12 @@ train_info_args = {
     'weight_decay': 0,
     'warmup_steps': 0,
     'output_dir': './output',
-    'max_seq_length': 160,
+    'train_max_seq_length': 200,
+    'eval_max_seq_length': 512,
+    'test_max_seq_length': 512,
     #tplinker_plus args
-    'shaking_type': 'cln_plus',
-    'inner_enc_type': 'mix_pooling',
+    'shaking_type': 'cln_plus', #one of ['cat','cat_plus','cln','cln_plus']
+    'inner_enc_type': 'mean_pooling', #one of ['mix_pooling','mean_pooling','max_pooling','lstm']
     'tok_pair_sample_rate': 1,
 }
 
@@ -205,14 +204,20 @@ class NN_DataHelper(DataHelper):
                     D.append((jd['text'], entities_label, re_list_label))
         return D
 
+
+
+    # @staticmethod
+    # def collate_fn(batch):
+    #     return batch
+
+    # batch dataset
     @staticmethod
-    def collect_fn(batch):
+    def batch_transform(batch):
         bs = len(batch)
         o = {}
         labels_info = []
-        spo_labels = []
         for i, b in enumerate(batch):
-            labels_info.append(b.pop('labels',[]))
+            labels_info.append(b.pop('labels', []))
             if i == 0:
                 for k in b:
                     o[k] = [torch.tensor(b[k])]
@@ -222,14 +227,16 @@ class NN_DataHelper(DataHelper):
         for k in o:
             o[k] = torch.stack(o[k])
         max_len = torch.max(o.pop('seqlen'))
-        labels = torch.zeros(size=(bs,max_len * (max_len + 1) // 2,len(NN_DataHelper.label2id)),dtype=torch.long)
-        get_pos = lambda x0,x1: x0 * max_len +x1 - x0 * (x0+1) // 2
+
+        shaking_len = int(max_len * (max_len + 1) // 2)
+        labels = torch.zeros(size=(bs,shaking_len , len(NN_DataHelper.label2id)), dtype=torch.long)
+        get_pos = lambda x0, x1: x0 * max_len + x1 - x0 * (x0 + 1) // 2
 
         for linfo, label in zip(labels_info, labels):
-            for l,s,e in linfo:
+            for l, s, e in linfo:
                 if s >= max_len or e >= max_len:
                     continue
-                label[get_pos(s,e)][l] = 1
+                label[get_pos(s, e)][l] = 1
 
         o['input_ids'] = o['input_ids'][:, :max_len]
         o['attention_mask'] = o['attention_mask'][:, :max_len]
@@ -246,8 +253,12 @@ class MyTransformer(TransformerForTplinkerPlus, metaclass=TransformerMeta):
         self.eval_labels = eval_labels
 
         labels = [i for i in self.config.label2id if not i.endswith('_EE')]
-        self.rel2id = {l:i for i,l in enumerate(labels)}
-        self.id2rel = {i:l for i,l in enumerate(labels)}
+        self.rel2id = {l.rsplit('_',2)[0]:i for i,l in enumerate(labels)}
+        self.id2rel = {i:l.rsplit('_',2)[0] for i,l in enumerate(labels)}
+
+        print('*' * 30)
+        print(self.rel2id)
+        print(self.id2rel)
 
 
     def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
@@ -261,7 +272,7 @@ class MyTransformer(TransformerForTplinkerPlus, metaclass=TransformerMeta):
         y_preds, y_trues = [], []
         idx = 0
         for o in outputs:
-            logits, _,_,_ = o['outputs']
+            logits, _ = o['outputs']
             output_labels = eval_labels[idx*len(logits):(idx + 1)*len(logits)]
             idx += 1
             p_spoes = extract_spoes(logits,self.config.id2label,self.rel2id,threshold)
@@ -271,10 +282,12 @@ class MyTransformer(TransformerForTplinkerPlus, metaclass=TransformerMeta):
 
         print(y_preds[:3])
         print(y_trues[:3])
-        f1, str_report = metric_for_spo(y_trues, y_preds, self.config.label2id)
+        f1, str_report = metric_for_spo(y_trues, y_preds, self.rel2id)
         print(f1)
         print(str_report)
         self.log('val_f1', f1, prog_bar=True)
+
+
 
 
 
@@ -308,7 +321,8 @@ if __name__ == '__main__':
                 make_dataset_with_args(dataHelper, data_args.test_file, token_fn_args_dict['test'], data_args,
                                        intermediate_name=intermediate_name, shuffle=False, mode='test'))
 
-    dm = load_dataset_with_args(dataHelper, training_args, train_files, eval_files, test_files)
+    dm = load_dataset_with_args(dataHelper, training_args,train_files,eval_files, test_files)
+
     model = MyTransformer(dataHelper.eval_labels,tplinker_args=tplinker_args, config=config, model_args=model_args, training_args=training_args)
     checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
     trainer = Trainer(

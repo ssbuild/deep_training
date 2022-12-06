@@ -92,7 +92,7 @@ class NN_DataHelper(DataHelper):
         return D[0:100] if mode == 'train' else D[:10]
 
     @staticmethod
-    def collect_fn(batch):
+    def collate_fn(batch):
         o = {}
         for i, b in enumerate(batch):
             if i == 0:

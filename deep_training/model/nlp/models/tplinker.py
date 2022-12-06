@@ -25,10 +25,10 @@ class TplinkerArguments:
         },
     )
     inner_enc_type: typing.Optional[str] = field(
-        default='mix_pooling',
+        default='lstm',
         metadata={
             "help": (
-                "one of ['mix_pooling','lstm'] "
+                "one of ['mix_pooling','mean_pooling','max_pooling','lstm'] "
             )
         },
     )
@@ -73,16 +73,23 @@ def extract_spoes(outputs):
                 for j in range(i,seqlen):
                     seq_map[get_pos(i,j)] = (i,j)
         e_map = set()
-        for e in ents.nonzero()[0]:
+        for e in zip(*ents.nonzero()):
+            if e not in seq_map:
+                continue
             e_map.add(seq_map[e])
 
         spoes = []
+        #num,s
         for p1,h in zip(*heads.nonzero()):
             tagid1 = heads[p1,h]
             for p2, t in zip(*tails.nonzero()):
                 tagid2 = tails[p2, t]
                 if p1 != p2 or tagid1 == tagid2:
                     continue
+                if h not in seq_map or t not in seq_map:
+                    continue
+                h = seq_map[h]
+                t = seq_map[t]
                 pt1 = (h[0], t[0])
                 pt2 = (h[1], t[1])
                 if pt1 not in e_map or pt2 not in e_map:

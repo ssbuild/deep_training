@@ -66,7 +66,7 @@ class NN_DataHelper(DataHelper):
         labels = np.asarray(1 - label2id[label_str] if label_str is not None else 0, dtype=np.int64)
 
         input_ids, attention_mask,seqlen = pad_to_seqlength(sentence1,tokenizer,max_seq_length)
-        input_ids_2, attention_mask_2, seqlen_2 = pad_to_seqlength(sentence1, tokenizer, max_seq_length)
+        input_ids_2, attention_mask_2, seqlen_2 = pad_to_seqlength(sentence2, tokenizer, max_seq_length)
         d = {
             'labels': labels,
             'input_ids': input_ids,
@@ -100,7 +100,7 @@ class NN_DataHelper(DataHelper):
 
 
     @staticmethod
-    def collect_fn(batch):
+    def collate_fn(batch):
         o = {}
         for i, b in enumerate(batch):
             if i == 0:

@@ -26,10 +26,10 @@ class TplinkerArguments:
         },
     )
     inner_enc_type: typing.Optional[str] = field(
-        default='mix_pooling',
+        default='lstm',
         metadata={
             "help": (
-                "one of ['mix_pooling','lstm'] "
+                "one of ['mix_pooling','mean_pooling','max_pooling','lstm'] "
             )
         },
     )
@@ -59,7 +59,7 @@ def extract_spoes(batch_outputs: typing.List,
         es = []
         es_set = set()
         sh,oh,st,ot = {},{},{},{}
-        for pos,tag_id in zip(np.where(shaking_hidden >threshold)):
+        for pos,tag_id in zip(*np.where(shaking_hidden >threshold)):
             tag: str = id2label[tag_id]
             tag,tag2 = tag.rsplit('_',2)
             if tag2 == 'EE':
