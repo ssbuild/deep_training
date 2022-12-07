@@ -22,7 +22,6 @@ class TransformerForPointer(TransformerModel):
         self.dropout = nn.Dropout(self.config.hidden_dropout_prob)
         PointerLayerObject = EfficientPointerLayer if with_efficient else PointerLayer
         self.pointer_layer = PointerLayerObject(self.config.hidden_size,self.config.num_labels,64)
-        self.post_init()
 
     def get_model_lr(self):
         return super(TransformerForPointer, self).get_model_lr() + [

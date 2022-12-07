@@ -25,7 +25,7 @@ def configure_optimizers(model_attrs: typing.Union[typing.List,typing.Tuple],
             },
         ]
 
-    if training_args.optimizer == 'adamw':
+    if training_args.optimizer.lower() == 'adamw':
         optimizer = AdamW(opt, lr=training_args.learning_rate, eps=training_args.adam_epsilon)
         scheduler = get_linear_schedule_with_warmup(
             optimizer,

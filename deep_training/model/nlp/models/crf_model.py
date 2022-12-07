@@ -15,7 +15,6 @@ class TransformerForCRF(TransformerModel):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
         self.crf = CRF(num_tags=config.num_labels)
-        self.post_init()
 
     def get_model_lr(self):
         return super(TransformerForCRF, self).get_model_lr() + [

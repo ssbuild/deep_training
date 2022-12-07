@@ -75,7 +75,7 @@ class TplinkerPlusLoss(nn.Module):
 
         tag_size = y_pred.size()[-1]
         y_pred = torch.reshape(y_pred,(-1,tag_size))
-        y_true = torch.reshape(y_pred,(-1,tag_size))
+        y_true = torch.reshape(y_true,(-1,tag_size))
 
         y_pred = (1 - 2 * y_true) * y_pred  # -1 -> pos classes, 1 -> neg classes
         y_pred_neg = y_pred - y_true * self.inf  # mask the pred oudtuts of pos classes
