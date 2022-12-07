@@ -30,7 +30,7 @@ train_info_args = {
     'learning_rate': 5e-5,
     'learning_rate_for_task': 5e-5,
     'max_epochs': 15,
-    'train_batch_size': 10,
+    'train_batch_size': 40,
     'eval_batch_size': 1,
     'test_batch_size': 1,
     'adam_epsilon': 1e-8,

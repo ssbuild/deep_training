@@ -174,7 +174,7 @@ class TransformerLightningModule(pl.LightningModule):
         self.__model = model
 
         copy_attr = [
-            'log','log_dict','current_epoch','global_step','global_rank'
+            'log','log_dict','current_epoch','global_step','global_rank','max_steps','max_epochs'
         ]
         for k in copy_attr:
             setattr(self.__model,k,getattr(self,k))
@@ -205,6 +205,22 @@ class TransformerLightningModule(pl.LightningModule):
             a = getattr(self.__model, e,None)
             if a is not None:
                 setattr(self,e,a)
+
+    @property
+    def max_epochs(self) -> typing.Optional[int]:
+        return self.trainer.max_epochs if self._trainer else 0
+
+    @property
+    def min_epochs(self) -> typing.Optional[int]:
+        return self.trainer.min_epochs if self._trainer else 0
+
+    @property
+    def max_steps(self) -> int:
+        return self.trainer.max_steps if self._trainer else 0
+
+    @property
+    def min_steps(self) -> int:
+        return self.trainer.min_steps if self._trainer else 0
 
 
     def get_model_lr(self):

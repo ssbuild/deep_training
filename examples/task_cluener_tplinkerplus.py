@@ -31,25 +31,29 @@ train_info_args = {
     'train_file': '/data/nlp/nlp_train_data/clue/cluener/train.json',
     'eval_file': '/data/nlp/nlp_train_data/clue/cluener/dev.json',
     'test_file': '/data/nlp/nlp_train_data/clue/cluener/test.json',
-    'learning_rate': 2e-5,
+    'learning_rate': 5e-5,
     # 'learning_rate_for_task':1e-4,
     'max_epochs': 15,
     'train_batch_size': 40,
     'eval_batch_size': 4,
     'test_batch_size': 2,
     'adam_epsilon': 1e-8,
+    'optimizer': 'adam',
     'gradient_accumulation_steps': 1,
     'max_grad_norm': 1.0,
     'weight_decay': 0,
     'warmup_steps': 0,
     'output_dir': './output',
     'train_max_seq_length': 100,
-    'eval_max_seq_length': 200,
-    'test_max_seq_length': 200,
+    'eval_max_seq_length': 128,
+    'test_max_seq_length': 128,
     #tplinkerplus args
     'shaking_type': 'cln_plus', #one of ['cat','cat_plus','cln','cln_plus']
     'inner_enc_type': 'lstm', #one of ['mix_pooling','mean_pooling','max_pooling','lstm']
-    'tok_pair_sample_rate': 1,
+    'tok_pair_sample_rate': 0,
+    # scheduler
+    'scheduler_type': 'CAWR',
+    'scheduler': {'T_mult': 1, 'rewarm_epoch_num': 0.5,'verbose': False} ,
 }
 
 

@@ -2,6 +2,8 @@
 # @Time    : 2022/11/15 13:33
 import random
 import typing
+
+from torch import optim
 from torch.optim import AdamW,Adam
 from transformers import get_linear_schedule_with_warmup
 from deep_training.data_helper import TrainingArguments
@@ -27,17 +29,53 @@ def configure_optimizers(model_attrs: typing.Union[typing.List,typing.Tuple],
 
     if training_args.optimizer.lower() == 'adamw':
         optimizer = AdamW(opt, lr=training_args.learning_rate, eps=training_args.adam_epsilon)
+    else:
+        optimizer = Adam(opt, training_args.learning_rate, eps=training_args.adam_epsilon)
+
+
+    scheduler = None
+    if training_args.scheduler_type.lower() == 'linear'.lower():
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
             num_warmup_steps=training_args.warmup_steps,
             num_training_steps=estimated_stepping_batches
             # num_training_steps=self.trainer.estimated_stepping_batches,
         )
+    elif training_args.scheduler_type.lower() == 'CAL'.lower():
+        T_mult = training_args.scheduler["T_mult"]
+        rewarm_epoch_num =  training_args.scheduler["rewarm_epoch_num"]
+        eta_min = training_args.scheduler.get('eta_min', 0.)
+        last_epoch = training_args.scheduler.get('last_epoch', -1)
+        verbose = training_args.scheduler.get('verbose', False)
+        T_0 = int(estimated_stepping_batches * rewarm_epoch_num/ training_args.max_epochs)
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_0, T_mult,
+                                                         eta_min=eta_min,
+                                                         last_epoch=last_epoch,
+                                                         verbose=verbose)
+    elif training_args.scheduler_type.lower() == 'CAWR'.lower():
+        T_mult = training_args.scheduler["T_mult"]
+        rewarm_epoch_num = training_args.scheduler["rewarm_epoch_num"]
+        eta_min = training_args.scheduler.get('eta_min', 0.)
+        last_epoch = training_args.scheduler.get('last_epoch', -1)
+        verbose = training_args.scheduler.get('verbose', False)
+        T_0 = int(estimated_stepping_batches * rewarm_epoch_num / training_args.max_epochs)
+
+        scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer,T_0 , T_mult,
+                                                                   eta_min=eta_min,
+                                                                   last_epoch=last_epoch,
+                                                                   verbose=verbose)
+    elif training_args.scheduler_type.lower() == 'Step'.lower():
+        decay_rate = training_args.scheduler["decay_rate"]
+        decay_steps = training_args.scheduler["decay_steps"]
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=decay_steps, gamma=decay_rate)
+    elif training_args.scheduler_type.lower() == 'ReduceLROnPlateau'.lower():
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", verbose=True, patience=6)
+
+
+    if scheduler:
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
         return [optimizer], [scheduler]
-    else:
-        optimizer = Adam(opt, training_args.learning_rate, eps=training_args.adam_epsilon)
-        return optimizer
+    return optimizer
 
 
 

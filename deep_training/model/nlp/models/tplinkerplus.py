@@ -34,10 +34,10 @@ class TplinkerArguments:
         },
     )
     tok_pair_sample_rate: typing.Optional[int] = field(
-        default=1,
+        default=0,
         metadata={
             "help": (
-                "tok_pair_sample_rate "
+                "(0, 1] How many percent of token paris you want to sample for training, this would slow down the training if set to less than 1. It is only helpful when your GPU memory is not enought for the training. "
             )
         },
     )
@@ -132,7 +132,7 @@ class TransformerForTplinkerPlus(TransformerModel):
         tplinker_args = kwargs.pop('tplinker_args',None)
         shaking_type = tplinker_args.shaking_type if tplinker_args else None
         inner_enc_type = tplinker_args.inner_enc_type if tplinker_args else None
-        tok_pair_sample_rate = tplinker_args.tok_pair_sample_rate if tplinker_args else None
+        tok_pair_sample_rate = tplinker_args.tok_pair_sample_rate if tplinker_args else 0
         super(TransformerForTplinkerPlus, self).__init__(*args, **kwargs)
         self.tok_pair_sample_rate = tok_pair_sample_rate
         self.dropout = nn.Dropout(self.config.hidden_dropout_prob)

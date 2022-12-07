@@ -116,6 +116,30 @@ class TrainingArguments:
         default='adamw',
         metadata={"help": "one of [adamw,adam]"},
     )
+    scheduler_type: str = field(
+        default='linear',
+        metadata={"help": "one of [linear,CAWR,CAL,Step,ReduceLROnPlateau]"},
+    )
+
+    scheduler: dict = field(
+        default=None,
+        # {
+        #     # StepLR
+        #     "decay_rate": 0.999,
+        #     "decay_steps": 100,
+        # }
+
+        # {
+        #     # CosineAnnealingWarmRestarts
+        #     "T_mult": 1,
+        #     "rewarm_epoch_num": 2,
+        # }
+        metadata={"help": "StepLR:  { 'decay_rate': 0.999,'decay_steps': 100,'verbose': True} ,\
+                          CAWR {'T_mult': 1, 'rewarm_epoch_num': 2,'verbose': True} ,\
+                          CAL: {'T_mult': 1, 'rewarm_epoch_num': 2,'verbose': True} \
+                          "},
+    )
+
     learning_rate : float = field(
         default=5e-5,
         metadata={"help": "模型任务层训练时的学习率"},

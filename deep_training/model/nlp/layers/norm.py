@@ -10,7 +10,7 @@ __all__ = [
 ]
 
 class LayerNorm2(nn.Module):
-    def __init__(self, input_dim, cond_dim=0, center=True, scale=True, epsilon=None, conditional=False,
+    def __init__(self, input_dim, con_dim=None, center=True, scale=True, epsilon=1e-12,
                  hidden_units=None, hidden_activation='linear', hidden_initializer='xaiver', **kwargs):
         super(LayerNorm2, self).__init__()
         """
@@ -19,20 +19,19 @@ class LayerNorm2(nn.Module):
         """
         self.center = center
         self.scale = scale
-        self.conditional = conditional
         self.hidden_units = hidden_units
         # self.hidden_activation = activations.get(hidden_activation) keras中activation为linear时，返回原tensor,unchanged
         self.hidden_initializer = hidden_initializer
         self.epsilon = epsilon or 1e-12
         self.input_dim = input_dim
-        self.cond_dim = cond_dim
+        self.cond_dim = con_dim
 
         if self.center:
             self.beta = nn.Parameter(torch.zeros(input_dim))
         if self.scale:
             self.gamma = nn.Parameter(torch.ones(input_dim))
 
-        if self.conditional:
+        if self.cond_dim:
             if self.hidden_units is not None:
                 self.hidden_dense = nn.Linear(in_features=self.cond_dim, out_features=self.hidden_units, bias=False)
             if self.center:
@@ -44,7 +43,7 @@ class LayerNorm2(nn.Module):
 
     def initialize_weights(self):
 
-        if self.conditional:
+        if self.cond_dim:
             if self.hidden_units is not None:
                 if self.hidden_initializer == 'normal':
                     torch.nn.init.normal(self.hidden_dense.weight)
@@ -57,11 +56,13 @@ class LayerNorm2(nn.Module):
             if self.scale:
                 torch.nn.init.constant_(self.gamma_dense.weight, 0)
 
-    def forward(self, inputs, cond=None):
+    def forward(self, inputs):
         """
             如果是条件Layer Norm，则cond不是None
         """
-        if self.conditional:
+
+        if self.cond_dim:
+            inputs, cond = inputs
             if self.hidden_units is not None:
                 cond = self.hidden_dense(cond)
             # for _ in range(K.ndim(inputs) - K.ndim(cond)): # K.ndim: 以整数形式返回张量中的轴数。

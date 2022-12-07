@@ -19,10 +19,10 @@ class HandshakingKernel(nn.Module):
         elif shaking_type == "cat_plus":
             self.combine_fc = nn.Linear(hidden_size * 3, hidden_size)
         elif shaking_type == "cln":
-            self.tp_cln = LayerNorm(hidden_size, hidden_size, conditional=True)
+            self.tp_cln = LayerNorm(hidden_size, hidden_size)
         elif shaking_type == "cln_plus":
-            self.tp_cln = LayerNorm(hidden_size, hidden_size, conditional=True)
-            self.inner_context_cln = LayerNorm(hidden_size, hidden_size, conditional=True)
+            self.tp_cln = LayerNorm(hidden_size, hidden_size)
+            self.inner_context_cln = LayerNorm(hidden_size, hidden_size)
 
         self.inner_enc_type = inner_enc_type
         if inner_enc_type == "mix_pooling":
@@ -53,7 +53,7 @@ class HandshakingKernel(nn.Module):
 
         return inner_context
 
-    def forward(self, seq_hiddens,mask=None):
+    def forward(self, seq_hiddens):
         '''
         seq_hiddens: (batch_size, seq_len, hidden_size)
         return:
@@ -79,11 +79,13 @@ class HandshakingKernel(nn.Module):
                 shaking_hiddens = torch.cat([repeat_hiddens, visible_hiddens, inner_context], dim=-1)
                 shaking_hiddens = torch.tanh(self.combine_fc(shaking_hiddens))
             elif self.shaking_type == "cln":
-                shaking_hiddens = self.tp_cln(visible_hiddens, repeat_hiddens)
+                shaking_hiddens = self.tp_cln([visible_hiddens, repeat_hiddens])
             elif self.shaking_type == "cln_plus":
                 inner_context = self.enc_inner_hiddens(visible_hiddens, self.inner_enc_type)
-                shaking_hiddens = self.tp_cln(visible_hiddens, repeat_hiddens)
-                shaking_hiddens = self.inner_context_cln(shaking_hiddens, inner_context)
+                shaking_hiddens = self.tp_cln([visible_hiddens, repeat_hiddens])
+                shaking_hiddens = self.inner_context_cln([shaking_hiddens, inner_context])
+            else:
+                raise ValueError('Invalid shaking_type {}'.format(self.shaking_type))
 
             shaking_hiddens_list.append(shaking_hiddens)
         #b,seqlen,seqlen-1, ... 1,h

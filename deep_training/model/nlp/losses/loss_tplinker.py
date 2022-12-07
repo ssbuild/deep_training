@@ -69,13 +69,9 @@ class TplinkerPlusLoss(nn.Module):
         y_true and y_pred have the same shape，elements in y_true are either 0 or 1，
              1 tags positive classes，0 tags negtive classes(means tok-pair does not have this type of link).
         """
-        # shaking_seq_len = y_pred.size()[1]
-        # y_pred = torch.reshape(torch.transpose(y_pred, 1, 2),(-1,shaking_seq_len))
-        # y_true = torch.reshape(torch.transpose(y_true, 1, 2),(-1,shaking_seq_len))
-
-        tag_size = y_pred.size()[-1]
-        y_pred = torch.reshape(y_pred,(-1,tag_size))
-        y_true = torch.reshape(y_true,(-1,tag_size))
+        shaking_seq_len = y_pred.size()[1]
+        y_pred = torch.reshape(torch.transpose(y_pred, 1, 2),(-1,shaking_seq_len))
+        y_true = torch.reshape(torch.transpose(y_true, 1, 2),(-1,shaking_seq_len))
 
         y_pred = (1 - 2 * y_true) * y_pred  # -1 -> pos classes, 1 -> neg classes
         y_pred_neg = y_pred - y_true * self.inf  # mask the pred oudtuts of pos classes
