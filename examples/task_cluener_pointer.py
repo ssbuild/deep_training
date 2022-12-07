@@ -105,16 +105,17 @@ class NN_DataHelper(DataHelper):
         return d
 
     # 读取标签
-    def read_labels_from_file(self,files: typing.List[str]):
+    def on_get_labels(self, files: typing.List[str]):
         labels = [
             'address', 'book', 'company', 'game', 'government', 'movie', 'name', 'organization', 'position', 'scene'
         ]
+        labels = list(set(labels))
         label2id = {label: i for i, label in enumerate(labels)}
         id2label = {i: label for i, label in enumerate(labels)}
         return label2id, id2label
 
     # 读取文件
-    def read_data_from_file(self,files: typing.List, mode: str):
+    def on_get_corpus(self, files: typing.List, mode: str):
         D = []
         for filename in files:
             with open(filename, mode='r', encoding='utf-8') as f:

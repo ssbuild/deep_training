@@ -51,7 +51,7 @@ class TransformerForHphtlinker(TransformerModel):
 
         self.sigmoid = nn.Sigmoid()
         self.cond_norm_layer = LayerNorm(hidden_size=config.hidden_size,
-                                         conditional_size=config.hidden_size*2)
+                                         cond_dim=config.hidden_size * 2)
         self.loss_fn = LossForCasRel(reduction='none')
 
     def get_model_lr(self):

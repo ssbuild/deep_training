@@ -74,7 +74,7 @@ class NN_DataHelper(DataHelper):
         return d
 
     # 读取标签
-    def read_labels_from_file(self,files: typing.List[str]):
+    def on_get_labels(self, files: typing.List[str]):
         if files is None:
             return None, None
         label_fname = files[0]
@@ -94,7 +94,7 @@ class NN_DataHelper(DataHelper):
         return label2id, id2label
 
     # 读取文件
-    def read_data_from_file(self,files: typing.List,mode:str):
+    def on_get_corpus(self, files: typing.List, mode:str):
         D = []
         for filename in files:
             with open(filename, mode='r', encoding='utf-8') as f:
@@ -132,7 +132,7 @@ class MyTransformer(TransformerForSequenceClassification, metaclass=TransformerM
     def __init__(self,*args,**kwargs):
         super(MyTransformer, self).__init__(*args,**kwargs)
 
-    def compute_loss(self,batch) -> tuple:
+    def compute_loss(self,batch,batch_idx) -> tuple:
         outputs = self(**batch)
         labels = batch.get('labels',None)
         if labels is not None:

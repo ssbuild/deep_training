@@ -96,7 +96,7 @@ class LayerNorm2(nn.Module):
         return outputs
 
 class LayerNorm(nn.Module):
-    def __init__(self, hidden_size, eps=1e-12, conditional_size=None, weight=True, bias=True, norm_mode='normal',
+    def __init__(self, hidden_size, cond_dim=None, weight=True, bias=True, norm_mode='normal', eps=1e-12,
                  **kwargs):
         """layernorm 层，这里自行实现
            条件layernorm来自于苏剑林的想法，详情：https://spaces.ac.cn/archives/7124
@@ -110,11 +110,11 @@ class LayerNorm(nn.Module):
         self.norm_mode = norm_mode
 
         self.eps = eps
-        self.conditional_size = conditional_size
-        if conditional_size:
-            self.dense1 = nn.Linear(conditional_size, hidden_size, bias=False)
+        self.cond_dim = cond_dim
+        if cond_dim:
+            self.dense1 = nn.Linear(cond_dim, hidden_size, bias=False)
             self.dense1.weight.data.uniform_(0, 0)
-            self.dense2 = nn.Linear(conditional_size, hidden_size, bias=False)
+            self.dense2 = nn.Linear(cond_dim, hidden_size, bias=False)
             self.dense2.weight.data.uniform_(0, 0)
 
     def forward(self, x):
@@ -133,7 +133,7 @@ class LayerNorm(nn.Module):
         if not hasattr(self, 'bias'):
             self.bias = 0
 
-        if self.conditional_size:
+        if self.cond_dim:
             cond = x[1]
             for _ in range(len(inputs.shape) - len(cond.shape)):
                 cond = cond.unsqueeze(dim=1)

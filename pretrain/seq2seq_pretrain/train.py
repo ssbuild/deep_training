@@ -86,7 +86,7 @@ class NN_DataHelper(DataHelper):
         return d
 
     # 读取文件
-    def read_data_from_file(self,files: typing.List, mode: str):
+    def on_get_corpus(self, files: typing.List, mode: str):
         D = []
         for filename in files:
             with open(filename, mode='r', encoding='utf-8') as f:
@@ -131,7 +131,7 @@ class MyTransformer(TransformerForSeq2SeqLM, metaclass=TransformerMeta):
         super(MyTransformer, self).__init__(*args,**kwargs)
         self.loss_fct = CrossEntropyLoss(ignore_index=self.config.pad_token_id)
 
-    def compute_loss(self,batch) -> tuple:
+    def compute_loss(self,batch,batch_idx) -> tuple:
         labels = batch.pop('labels',None)
         outputs = self(**batch)
         lm_logits = outputs[0]

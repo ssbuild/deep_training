@@ -25,16 +25,19 @@ def configure_optimizers(model_attrs: typing.Union[typing.List,typing.Tuple],
             },
         ]
 
-    # optimizer = Adam(opt, training_args.learning_rate)
-    optimizer = AdamW(opt, lr=training_args.learning_rate, eps=training_args.adam_epsilon)
-    scheduler = get_linear_schedule_with_warmup(
-        optimizer,
-        num_warmup_steps=training_args.warmup_steps,
-        num_training_steps=estimated_stepping_batches
-        # num_training_steps=self.trainer.estimated_stepping_batches,
-    )
-    scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
-    return [optimizer], [scheduler]
+    if training_args.optimizer == 'adamw':
+        optimizer = AdamW(opt, lr=training_args.learning_rate, eps=training_args.adam_epsilon)
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=training_args.warmup_steps,
+            num_training_steps=estimated_stepping_batches
+            # num_training_steps=self.trainer.estimated_stepping_batches,
+        )
+        scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
+        return [optimizer], [scheduler]
+    else:
+        optimizer = Adam(opt, training_args.learning_rate, eps=training_args.adam_epsilon)
+        return optimizer
 
 
 

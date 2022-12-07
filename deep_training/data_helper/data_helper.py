@@ -34,9 +34,9 @@ class DataPreprocessHelper(object):
         return make_gpt2_sample(data, user_data)
 
     def on_task_specific_params(self) -> typing.Dict:
-        return None
+        return {}
 
-    def read_labels_from_file(self,files: typing.List[str]):
+    def on_get_labels(self, files: typing.List[str]):
         if not files:
             return None, None
         label_fname = files[0]
@@ -56,7 +56,7 @@ class DataPreprocessHelper(object):
         return label2id, id2label
 
     # 读取文件
-    def read_data_from_file(self,files: typing.List[str], mode: str):
+    def on_get_corpus(self, files: typing.List[str], mode: str):
         D = []
         for filename in files:
             with open(filename, 'r', encoding='utf-8') as f:

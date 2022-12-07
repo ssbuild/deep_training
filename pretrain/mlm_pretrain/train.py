@@ -77,7 +77,7 @@ class NN_DataHelper(DataHelper):
 
 
     # 读取文件
-    def read_data_from_file(self,files: typing.List,mode:str):
+    def on_get_corpus(self, files: typing.List, mode:str):
         D = []
         line_no = 0
         for input_file in files:
@@ -135,7 +135,7 @@ class MyTransformer(TransformerForMaskLM,metaclass=TransformerMeta):
         loss = torch.sum(loss, dtype=torch.float) / (torch.sum(weight, dtype=torch.float) + 1e-8)
         return loss.mean()
 
-    def compute_loss(self,batch) -> tuple:
+    def compute_loss(self,batch,batch_idx) -> tuple:
         labels,weight = None,None
         if 'labels' in batch:
             weight = batch.pop('weight')

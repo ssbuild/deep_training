@@ -75,7 +75,7 @@ class NN_DataHelper(DataHelper):
         return d
 
     # 读取文件
-    def read_data_from_file(self,files: typing.List, mode: str):
+    def on_get_corpus(self, files: typing.List, mode: str):
         D = []
         for filename in files:
             with open(filename, mode='r', encoding='utf-8') as f:

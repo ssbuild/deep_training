@@ -23,7 +23,7 @@ class TransformerForCRF(TransformerModel):
             (self.crf, self.config.task_specific_params['learning_rate_for_task']),
         ]
 
-    def compute_loss(self,batch):
+    def compute_loss(self,batch,batch_idx):
         labels: torch.Tensor = batch.pop('labels',None)
         attention_mask = batch['attention_mask']
         outputs = self(**batch)

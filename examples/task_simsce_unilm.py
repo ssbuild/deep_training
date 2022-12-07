@@ -74,7 +74,7 @@ class NN_DataHelper(DataHelper):
 
 
     # 读取文件
-    def read_data_from_file(self,files:typing.List,mode:str):
+    def on_get_corpus(self, files:typing.List, mode:str):
         D = []
         for filename in files:
             with open(filename, mode='r', encoding='utf-8') as f:
@@ -118,7 +118,7 @@ class MyTransformer(TransformerModelForUnilm, metaclass=TransformerMeta):
             (self.sim_head, self.config.task_specific_params['learning_rate_for_task'])
         ]
 
-    def compute_loss(self,batch):
+    def compute_loss(self,batch,batch_idx):
         labels = batch.pop('labels',None)
         batch['attention_mask'] = unilm_mask(batch['token_type_ids'])
         outputs = self(**batch)

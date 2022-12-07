@@ -38,7 +38,7 @@ def load_tokenizer_and_config_with_args(dataHelper: DataHelper,model_args: Model
                                         training_args:TrainingArguments,
                                         data_args: DataArguments,
                                         task_specific_params=None):
-    label2id, id2label = dataHelper.read_labels_from_file(data_args.label_file)
+    label2id, id2label = dataHelper.on_get_labels(data_args.label_file)
     tokenizer = load_tokenizer(tokenizer_name=model_args.tokenizer_name,
                                 model_name_or_path=model_args.model_name_or_path,
                                 cache_dir=model_args.cache_dir,
@@ -108,7 +108,7 @@ def make_dataset_with_args(dataHelper,input_files, fn_args, data_args:DataArgume
         file_output = os.path.join(data_args.output_dir, intermediate_name +  '-' + mode + '.' +   data_args.data_backend)
         logging.info('make data {}...'.format(file_output))
     if isinstance(file_output, list) or not os.path.exists(file_output) or overwrite:
-        data = dataHelper.read_data_from_file(input_files, mode)
+        data = dataHelper.on_get_corpus(input_files, mode)
         dataHelper.make_dataset(file_output, data, fn_args, num_process_worker=num_process_worker,shuffle=shuffle)
     return file_output
 

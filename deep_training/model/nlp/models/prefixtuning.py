@@ -159,7 +159,7 @@ class PrefixTransformerForSequenceClassification(PrefixTransformerForModel):
         ]
 
 
-    def compute_loss(self,batch):
+    def compute_loss(self,batch,batch_idx):
         labels = batch.pop('labels',None)
         outputs = self(**batch)
         pooled_output = outputs[1]

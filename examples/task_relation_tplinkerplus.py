@@ -18,7 +18,7 @@ from deep_training.data_helper import make_dataset_with_args, load_dataset_with_
     load_tokenizer_and_config_with_args
 from transformers import HfArgumentParser, BertTokenizer
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
-from deep_training.model.nlp.models.tplinker_plus import TransformerForTplinkerPlus, extract_spoes, TplinkerArguments
+from deep_training.model.nlp.models.tplinkerplus import TransformerForTplinkerPlus, extract_spoes, TplinkerArguments
 
 train_info_args = {
     'devices': 1,
@@ -55,7 +55,7 @@ train_info_args = {
     #tplinker_plus args
     'shaking_type': 'cln_plus', #one of ['cat','cat_plus','cln','cln_plus']
     'inner_enc_type': 'mean_pooling', #one of ['mix_pooling','mean_pooling','max_pooling','lstm']
-    'tok_pair_sample_rate': 1,
+    'tok_pair_sample_rate': 0,
 }
 
 
@@ -77,7 +77,7 @@ class NN_DataHelper(DataHelper):
         tokens = list(sentence) if not do_lower_case else list(sentence.lower())
         if len(tokens) > max_seq_length - 2:
             tokens = tokens[0:(max_seq_length - 2)]
-        input_ids = tokenizer.convert_tokens_to_ids(['CLS'] + tokens + ['SEP'])
+        input_ids = tokenizer.convert_tokens_to_ids(['[CLS]'] + tokens + ['[SEP]'])
         seqlen = len(input_ids)
         attention_mask = [1] * seqlen
         input_ids = np.asarray(input_ids, dtype=np.int32)
@@ -87,17 +87,17 @@ class NN_DataHelper(DataHelper):
         labels = []
         real_label_e = []
         real_label_re = []
-        for l,s,e in entities:
-            real_label_e.append((l,s,e))
-            s += 1
-            e += 1
-            if s < max_seq_length - 1 and e < max_seq_length - 1:
-                k = l + '_EE'
-                if k not in label2id:
-                    #忽略无关紧要的实体
-                    # logging.warning('entity {} is valid ， it may be not in relation...'.format(l))
-                    continue
-                labels.append((label2id[k],s,e))
+        # for l,s,e in entities:
+        #     real_label_e.append((l,s,e))
+        #     s += 1
+        #     e += 1
+        #     if s < max_seq_length - 1 and e < max_seq_length - 1:
+        #         k = l + '_EE'
+        #         if k not in label2id:
+        #             #忽略无关紧要的实体
+        #             # logging.warning('entity {} is valid ， it may be not in relation...'.format(l))
+        #             continue
+        #         labels.append((label2id[k],s,e))
 
         rel2id = self.task_specific_params['rel2id']
         for s, p, o in spo_list:
@@ -105,6 +105,10 @@ class NN_DataHelper(DataHelper):
             s = (s[0] + 1, s[1] + 1)
             o = (o[0] + 1, o[1] + 1)
             if s[1] < max_seq_length - 1 and o[1] < max_seq_length - 1:
+
+                labels.append((label2id[p.split('+')[0] + '_EE'], s[0], s[1]))
+                labels.append((label2id[p.split('+')[-1] + '_EE'], o[0], o[1]))
+
                 if s[0] <= o[0]:
                     labels.append((label2id[p + '_SH'], s[0], o[0]))
                 else:
@@ -125,7 +129,7 @@ class NN_DataHelper(DataHelper):
             'input_ids': input_ids,
             'attention_mask': attention_mask,
             'labels': labels,
-            'seqlen': seqlen,
+            'seqlen': np.asarray(max_seq_length,dtype=np.int32),
         }
 
         if self.index < 5:
@@ -138,7 +142,7 @@ class NN_DataHelper(DataHelper):
         return d
 
     # 读取标签
-    def read_labels_from_file(self,files: typing.List):
+    def on_get_labels(self, files: typing.List):
         labels = []
         label_filename = files[0]
 
@@ -153,6 +157,8 @@ class NN_DataHelper(DataHelper):
                 labels.append('+'.join(larr))
                 entities.add(jd['subject'])
                 entities.add(jd['object'])
+
+        labels = list(set(labels))
         labels = [i + '_' + j for i in labels for j in ['SH','OH','ST','OT']]
         labels += [i + '_EE' for i in entities]
         label2id = {label: i for i, label in enumerate(labels)}
@@ -163,8 +169,8 @@ class NN_DataHelper(DataHelper):
         return label2id, id2label
 
     def on_task_specific_params(self):
-        labels = list(set([i.rsplit('_', 2)[0] for i in NN_DataHelper.label2id if not i.endswith('_EE')]))
-        labels_e = list(set([i.rsplit('_', 2)[0] for i in NN_DataHelper.label2id if i.endswith('_EE')]))
+        labels = list(set([i.rsplit('_', 1)[0] for i in NN_DataHelper.label2id if not i.endswith('_EE')]))
+        labels_e = list(set([i.rsplit('_', 1)[0] for i in NN_DataHelper.label2id if i.endswith('_EE')]))
         task_specific_params = {
             'rel2id': {l: i for i, l in enumerate(labels)},
             'id2rel': {i: l for i, l in enumerate(labels)},
@@ -177,7 +183,7 @@ class NN_DataHelper(DataHelper):
         return task_specific_params
 
     # 读取文件
-    def read_data_from_file(self,files: typing.List, mode: str):
+    def on_get_corpus(self, files: typing.List, mode: str):
         D = []
         for filename in files:
             with open(filename, mode='r', encoding='utf-8') as f:
@@ -217,7 +223,7 @@ class NN_DataHelper(DataHelper):
                         re_list_label = None
 
                     D.append((jd['text'], entities_label, re_list_label))
-        return D
+        return D[0:100]
 
 
 
@@ -244,7 +250,7 @@ class NN_DataHelper(DataHelper):
         max_len = torch.max(o.pop('seqlen'))
 
         shaking_len = int(max_len * (max_len + 1) / 2)
-        labels = torch.zeros(size=(bs,shaking_len , len(NN_DataHelper.label2id)), dtype=torch.long)
+        labels = torch.zeros(size=(bs ,len(NN_DataHelper.label2id),shaking_len), dtype=torch.long)
         get_pos = lambda x0, x1: x0 * max_len + int(x1 - x0 * (x0 + 1) / 2)
 
         for linfo, label in zip(labels_info, labels):
@@ -252,7 +258,8 @@ class NN_DataHelper(DataHelper):
                 assert s <= e
                 if s >= max_len - 1 or e >= max_len - 1:
                     continue
-                label[get_pos(s, e)][l] = 1
+                label[l][get_pos(s, e)] = 1
+
 
         o['input_ids'] = o['input_ids'][:, :max_len]
         o['attention_mask'] = o['attention_mask'][:, :max_len]
@@ -287,7 +294,7 @@ class MyTransformer(TransformerForTplinkerPlus, metaclass=TransformerMeta):
             output_labels = eval_labels[idx*len(logits):(idx + 1)*len(logits)]
             idx += 1
             p_spoes = extract_spoes(logits,self.config.id2label,self.rel2id,threshold)
-            t_spoes =output_labels
+            t_spoes = output_labels
             y_preds.extend(p_spoes)
             y_trues.extend(t_spoes)
 

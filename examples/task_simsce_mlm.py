@@ -68,7 +68,7 @@ class NN_DataHelper(DataHelper):
                 document_nodes.append(node)
         return document_nodes
 
-    def read_data_from_file(self,files: typing.List, mode: str):
+    def on_get_corpus(self, files: typing.List, mode: str):
         D = []
         line_no = 0
         for input_file in files:

@@ -69,7 +69,7 @@ class NN_DataHelper(DataHelper):
         tokens = list(sentence) if not do_lower_case else list(sentence.lower())
         if len(tokens) > max_seq_length - 2:
             tokens = tokens[0:(max_seq_length - 2)]
-        input_ids = tokenizer.convert_tokens_to_ids(['CLS'] +tokens + ['SEP'] )
+        input_ids = tokenizer.convert_tokens_to_ids(['[CLS]'] +tokens + ['[SEP]'] )
         seqlen = len(input_ids)
         input_ids = np.asarray(input_ids, dtype = np.int64)
         attention_mask = np.asarray([1] * seqlen, dtype=np.int64)
@@ -135,7 +135,7 @@ class NN_DataHelper(DataHelper):
         return d
 
     #读取标签
-    def read_labels_from_file(self,files: typing.List):
+    def on_get_labels(self, files: typing.List):
         labels = []
         label_filename = files[0]
         with open(label_filename,mode='r',encoding='utf-8') as f:
@@ -151,7 +151,7 @@ class NN_DataHelper(DataHelper):
         return label2id, id2label
 
     # 读取文件
-    def read_data_from_file(self,files: typing.List,mode:str):
+    def on_get_corpus(self, files: typing.List, mode:str):
         D = []
         for filename in files:
             with open(filename, mode='r', encoding='utf-8') as f:

@@ -17,7 +17,7 @@ __all__ = [
 @dataclass
 class TplinkerArguments:
     shaking_type: typing.Optional[str] = field(
-        default='cln_plus',
+        default='cat',
         metadata={
             "help": (
                 "one of ['cat','cat_plus','cln','cln_plus']"
@@ -59,37 +59,55 @@ class TplinkerArguments:
 
 
 def extract_spoes(outputs):
+
+    def get_position(pos_val,seqlen, start, end):
+        i = math.floor((end + start) / 2)
+        j = int((pos_val + i * (i + 1) / 2) - i * seqlen)
+        if j >= 0 and j < seqlen:
+            return (i, j)
+        if j >= seqlen:
+            return get_position(pos_val,seqlen, i, end)
+        return get_position(pos_val, seqlen,start, i)
+
     ents: np.ndarray
     heads: np.ndarray
     tails: np.ndarray
     batch_result = []
-    seq_map = None
-    for ents, heads, tails in zip(outputs[0].argmax(-1),outputs[1].argmax(-1),outputs[2].argmax(-1)):
-        seqlen = ents.shape[0]
-        if seq_map is None:
-            seq_map = {}
-            get_pos = lambda x0, x1: x0 * seqlen + x1 - x0 * (x0 + 1) // 2
-            for i in range(seqlen):
-                for j in range(i,seqlen):
-                    seq_map[get_pos(i,j)] = (i,j)
-        e_map = set()
-        for e in zip(*ents.nonzero()):
-            if e not in seq_map:
-                continue
-            e_map.add(seq_map[e])
+    seqlen = None
+    for ents, heads, tails in zip(outputs[0].argmax(-1),
+                                  outputs[1].argmax(-1),
+                                  outputs[2].argmax(-1)):
+        #b seq 2
+        #b,tag,seq
+        if seqlen is None:
+            seqlen = math.floor(math.sqrt(ents.shape[0] * 2))
 
+        print('seqlen',seqlen)
+        e_map = set()
+        ids_map = set()
+
+        print(ents.nonzero())
+        for e in zip(*ents.nonzero()):
+            pos = get_position(e,seqlen,0,seqlen)
+            e_map.add(pos[0])
+            ids_map.add(pos[0])
+            ids_map.add(pos[1])
+
+        print(e_map)
         spoes = []
-        #num,s
+        #tags,s
         for p1,h in zip(*heads.nonzero()):
             tagid1 = heads[p1,h]
+            h = get_position(h, seqlen, 0, seqlen)
+            if h[0] not in ids_map or h[1] not in ids_map:
+                continue
             for p2, t in zip(*tails.nonzero()):
                 tagid2 = tails[p2, t]
                 if p1 != p2 or tagid1 == tagid2:
                     continue
-                if h not in seq_map or t not in seq_map:
+                t = get_position(t,seqlen,0,seqlen)
+                if t[0] not in ids_map or t[1] not in ids_map:
                     continue
-                h = seq_map[h]
-                t = seq_map[t]
                 pt1 = (h[0], t[0])
                 pt2 = (h[1], t[1])
                 if pt1 not in e_map or pt2 not in e_map:
@@ -121,12 +139,12 @@ class TransformerForTplinker(TransformerModel):
         self.head_rel_fc_list = [nn.Linear(self.config.hidden_size, 3) for _ in range(self.config.num_labels)]
         self.tail_rel_fc_list = [nn.Linear(self.config.hidden_size, 3) for _ in range(self.config.num_labels)]
 
-        for ind, fc in enumerate(self.head_rel_fc_list):
-            self.register_parameter("weight_4_head_rel{}".format(ind), fc.weight)
-            self.register_parameter("bias_4_head_rel{}".format(ind), fc.bias)
-        for ind, fc in enumerate(self.tail_rel_fc_list):
-            self.register_parameter("weight_4_tail_rel{}".format(ind), fc.weight)
-            self.register_parameter("bias_4_tail_rel{}".format(ind), fc.bias)
+        # for ind, fc in enumerate(self.head_rel_fc_list):
+        #     self.register_parameter("weight_4_head_rel{}".format(ind), fc.weight)
+        #     self.register_parameter("bias_4_head_rel{}".format(ind), fc.bias)
+        # for ind, fc in enumerate(self.tail_rel_fc_list):
+        #     self.register_parameter("weight_4_tail_rel{}".format(ind), fc.weight)
+        #     self.register_parameter("bias_4_tail_rel{}".format(ind), fc.bias)
         self.loss_fn = TplinkerLoss()
 
     def get_model_lr(self):

@@ -55,42 +55,77 @@ def extract_spoes(batch_outputs: typing.List,
             return (i, j)
         if j >= seqlen:
             return get_position(pos_val,seqlen, i, end)
-        return get_position(pos_val, seqlen,0, i)
+        return get_position(pos_val, seqlen,start, i)
 
-
+    seqlen = None
     for shaking_hidden in batch_outputs:
-        seqlen = shaking_hidden.shape[0]
+        if seqlen is None:
+            seqlen = math.floor(math.sqrt(shaking_hidden.shape[1] * 2))
+        print('seqlen',seqlen,shaking_hidden.shape,np.where(shaking_hidden > 0))
+        print(shaking_hidden)
         es = []
         es_set = set()
         sh,oh,st,ot = {},{},{},{}
-        for pos,tag_id in zip(*np.where(shaking_hidden >threshold)):
+        for tag_id,pos in zip(*np.where(shaking_hidden > 0)):
             tag: str = id2label[tag_id]
-            tag,tag2 = tag.rsplit('_',2)
+            print(tag)
+            tag,tag2 = tag.rsplit('_',1)
             if tag2 == 'EE':
                 es.append((*get_position(pos,seqlen,0,seqlen),tag_id))
-                es_set.add(get_position(pos,seqlen,0,seqlen))
+                es_set.add((es[-1][0],es[-1][1]))
             else:
                 obj = eval(tag2.lower())
                 if tag not in obj:
                     obj[tag] = []
                 obj[tag].append(get_position(pos,seqlen,0,seqlen))
+
+        print('es_set',es_set)
         subs,objs = {},{}
-        for k,list1 in sh.items():
-            list2 = st.get(k,[])
-            subs[k] = [(i,j) for i in list1 for j in list2 if (i,j) in es_set]
-        for k, list1 in oh.items():
-            list2 = ot.get(k, [])
-            objs[k] = [(i, j) for i in list1 for j in list2 if (i, j) in es_set]
+        for k in sh.keys() & st.keys():
+            list1 = sh[k]
+            list2 = st[k]
+            if list1 and list2:
+                subs[k] = [(i,j) for i in list1 for j in list2 if (i,j) in es_set]
+        for k in oh.keys() & ot.keys():
+            list1 = oh[k]
+            list2 = ot[k]
+            if list1 and list2:
+                objs[k] = [(i, j) for i in list1 for j in list2 if (i, j) in es_set]
         spoes = []
         for k in subs.keys() & objs.keys():
             p = rel2id[k]
             for s in subs[k]:
                 for o in objs[k]:
                     spoes.append((s[0] -1,s[1] -1,p,o[0] -1,o[1] -1))
-
         batch_result.append(spoes)
     return batch_result
 
+
+def extract_entity(batch_outputs: typing.List,threshold=1e-8):
+    batch_result = []
+    def get_position(pos_val,seqlen, start, end):
+        i = math.floor((end + start) / 2)
+        j = int((pos_val + i * (i + 1) / 2) - i * seqlen)
+        if j >= 0 and j < seqlen:
+            return (i, j)
+        if j >= seqlen:
+            return get_position(pos_val,seqlen, i, end)
+        return get_position(pos_val, seqlen,start, i)
+
+    seqlen = None
+    for shaking_hidden in batch_outputs:
+        if seqlen is None:
+            seqlen = math.floor(math.sqrt(shaking_hidden.shape[0] * 2))
+        es = []
+        for pos,tag_id in zip(*np.where(shaking_hidden > threshold)):
+            start,end = get_position(pos, seqlen, 0, seqlen)
+            start -= 1
+            end -= 1
+            if start < 0 or end < 0:
+                continue
+            es.append((tag_id,start,end))
+        batch_result.append(es)
+    return batch_result
 
 class TransformerForTplinkerPlus(TransformerModel):
     def __init__(self,  *args, **kwargs):
@@ -107,22 +142,22 @@ class TransformerForTplinkerPlus(TransformerModel):
 
     def get_model_lr(self):
         return super(TransformerForTplinkerPlus, self).get_model_lr() + [
+            (self.dropout, self.config.task_specific_params['learning_rate_for_task']),
             (self.handshakingkernel, self.config.task_specific_params['learning_rate_for_task']),
             (self.fc, self.config.task_specific_params['learning_rate_for_task']),
+            (self.loss_fn, self.config.task_specific_params['learning_rate_for_task']),
         ]
 
     def compute_loss(self, batch,batch_idx):
         labels: torch.Tensor = batch.pop('labels', None)
-
-        attention_mask = batch['attention_mask']
         outputs = self(**batch)
         logits = outputs[0]
-        if self.model.training:
+        if self.training:
             logits = self.dropout(logits)
         shaking_hiddens = self.handshakingkernel(logits)
 
         sampled_tok_pair_indices = None
-        if self.training:
+        if self.tok_pair_sample_rate > 0 and self.training:
             # randomly sample segments of token pairs
             shaking_seq_len = shaking_hiddens.size()[1]
             segment_len = int(shaking_seq_len * self.tok_pair_sample_rate)
@@ -137,17 +172,20 @@ class TransformerForTplinkerPlus(TransformerModel):
 
             # sampled_tok_pair_indices will tell model what token pairs should be fed into fcs
             # shaking_hiddens: (batch_size, ~segment_len, hidden_size)
-            shaking_hiddens = shaking_hiddens.gather(1, sampled_tok_pair_indices[:, :, None].repeat(1, 1,
-                                                                                                    shaking_hiddens.size()[
-                                                                                                        -1]))
-
+            shaking_hiddens = shaking_hiddens.gather(1, sampled_tok_pair_indices[:, :, None].repeat(1, 1,shaking_hiddens.size()[-1]))
 
         shaking_hiddens = self.fc(shaking_hiddens)
         if labels is not None:
             # sampled_tok_pair_indices: (batch_size, ~segment_len)
             # batch_small_shaking_tag: (batch_size, ~segment_len, tag_size)
             if self.training:
-                batch_small_shaking_tag = labels.gather(1, sampled_tok_pair_indices[:, :, None].repeat(1, 1, self.config.num_labels))
+                if sampled_tok_pair_indices is not None:
+                    # batch_small_shaking_tag = labels.gather(2, sampled_tok_pair_indices[:, None,:].repeat(1, self.config.num_labels,1))
+                    batch_small_shaking_tag = labels.gather(1, sampled_tok_pair_indices[:, :, None].repeat(1,
+                                                                                                           1,
+                                                                                                           self.config.num_labels))
+                else:
+                    batch_small_shaking_tag = labels
                 loss = self.loss_fn(shaking_hiddens, batch_small_shaking_tag)
             else:
                 loss = None

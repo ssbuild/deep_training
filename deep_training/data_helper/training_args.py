@@ -112,6 +112,10 @@ class PrefixModelArguments:
 
 @dataclass
 class TrainingArguments:
+    optimizer: str = field(
+        default='adamw',
+        metadata={"help": "one of [adamw,adam]"},
+    )
     learning_rate : float = field(
         default=5e-5,
         metadata={"help": "模型任务层训练时的学习率"},

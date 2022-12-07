@@ -194,7 +194,12 @@ class TransformerLightningModule(pl.LightningModule):
             'test_step',
             'test_step_end',
             'test_epoch_end',
-            'predict_step'
+            'predict_step',
+            'configure_optimizers',
+            'configure_gradient_clipping',
+            'lr_scheduler_step',
+            'optimizer_step',
+            'optimizer_zero_grad',
         ]
         for e in event_:
             a = getattr(self.__model, e,None)
@@ -283,7 +288,7 @@ class TransformerModelForUnilm(TransformerModel):
         return super(TransformerModelForUnilm, self).get_model_lr() + \
                [(self.lm_head,self.config.task_specific_params['learning_rate_for_task']),]
 
-    def compute_loss(self,batch):
+    def compute_loss(self,batch,batch_idx):
         batch['attention_mask'] = unilm_mask(batch['token_type_ids'])
         if getattr(self.config, 'type_vocab_size', 0) != 2:
             batch.pop('token_type_ids')

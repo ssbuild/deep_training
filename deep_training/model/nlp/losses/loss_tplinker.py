@@ -5,7 +5,7 @@ from torch import nn
 
 
 class TplinkerLoss(nn.Module):
-    def __init__(self,reduction='sum'):
+    def __init__(self,reduction='mean'):
         super(TplinkerLoss, self).__init__()
         self.reduction = reduction
         self.criterion = nn.CrossEntropyLoss(reduction=self.reduction)
@@ -15,8 +15,9 @@ class TplinkerLoss(nn.Module):
         return loss
 
 class TplinkerPlusLoss(nn.Module):
-    def __init__(self):
+    def __init__(self,inf=1e12):
         super(TplinkerPlusLoss, self).__init__()
+        self.inf = inf
 
     def GHM(self, gradient, bins=10, beta=0.9):
         '''
@@ -61,16 +62,24 @@ class TplinkerPlusLoss(nn.Module):
 
 
 
-    def forward(self, y_pred, y_true, ghm=False,inf=1e12):
+    def forward(self, y_pred, y_true, ghm=False):
         """
         y_pred: (batch_size, shaking_seq_len, type_size)
         y_true: (batch_size, shaking_seq_len, type_size)
         y_true and y_pred have the same shape，elements in y_true are either 0 or 1，
              1 tags positive classes，0 tags negtive classes(means tok-pair does not have this type of link).
         """
+        # shaking_seq_len = y_pred.size()[1]
+        # y_pred = torch.reshape(torch.transpose(y_pred, 1, 2),(-1,shaking_seq_len))
+        # y_true = torch.reshape(torch.transpose(y_true, 1, 2),(-1,shaking_seq_len))
+
+        tag_size = y_pred.size()[-1]
+        y_pred = torch.reshape(y_pred,(-1,tag_size))
+        y_true = torch.reshape(y_pred,(-1,tag_size))
+
         y_pred = (1 - 2 * y_true) * y_pred  # -1 -> pos classes, 1 -> neg classes
-        y_pred_neg = y_pred - y_true * inf  # mask the pred oudtuts of pos classes
-        y_pred_pos = y_pred - (1 - y_true) * inf  # mask the pred oudtuts of neg classes
+        y_pred_neg = y_pred - y_true * self.inf  # mask the pred oudtuts of pos classes
+        y_pred_pos = y_pred - (1 - y_true) * self.inf  # mask the pred oudtuts of neg classes
         zeros = torch.zeros_like(y_pred[..., :1])  # st - st
         y_pred_neg = torch.cat([y_pred_neg, zeros], dim=-1)
         y_pred_pos = torch.cat([y_pred_pos, zeros], dim=-1)
