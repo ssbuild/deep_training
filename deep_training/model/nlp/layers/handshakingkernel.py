@@ -61,9 +61,9 @@ class HandshakingKernel(nn.Module):
         '''
         bs, seqlen, hidden_size = seq_hiddens.size()
 
-        mask = (1- mask) * -1000.
-        mask = mask.unsqueeze(2).expand(-1,-1,hidden_size)
-        seq_hiddens += mask
+        # mask = (1- mask) * -1000.
+        # mask = mask.unsqueeze(2).expand(-1,-1,hidden_size)
+        # seq_hiddens += mask
         shaking_hiddens_list = []
         for ind in range(seqlen):
             repeat_hiddens = seq_hiddens[:, [ind], :].repeat(1, seqlen - ind, 1)

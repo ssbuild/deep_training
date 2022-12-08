@@ -30,14 +30,14 @@ def seq_masking(logits:torch.Tensor,mask,axis,value=-1e12):
     return x
 
 class PointerLayer(nn.Module):
-    def __init__(self, in_hidden_size, heads, head_size, RoPE=True, tril_mask=True,infinity=1e12):
+    def __init__(self, in_hidden_size, heads, head_size, RoPE=True, tril_mask=True, inf=1e12):
         super().__init__()
         self.heads = heads
         self.head_size = head_size
         self.hidden_size = in_hidden_size
         self.dense = nn.Linear(self.hidden_size, self.heads * self.head_size * 2)
 
-        self.infinity = infinity
+        self.inf = inf
         self.RoPE = RoPE
         self.tril_mask = tril_mask
 
@@ -95,20 +95,20 @@ class PointerLayer(nn.Module):
         logits = torch.einsum('bmhd,bnhd->bhmn', qw, kw)
 
 
-        logits = seq_masking(logits, mask, 2, -self.infinity)
-        logits = seq_masking(logits, mask, 3, -self.infinity)
+        logits = seq_masking(logits, mask, 2, -self.inf)
+        logits = seq_masking(logits, mask, 3, -self.inf)
 
         if self.tril_mask:
             #排除下三角
             mask = torch.tril(torch.ones_like(logits), -1)
-            logits = logits - mask * self.infinity
+            logits = logits - mask * self.inf
 
         return logits / self.head_size ** 0.5
 
 
 
 class EfficientPointerLayer(nn.Module):
-    def __init__(self, in_hidden_size, heads, head_size, RoPE=True,tril_mask=True,infinity=1e12):
+    def __init__(self, in_hidden_size, heads, head_size, RoPE=True, tril_mask=True, inf=1e12):
         super().__init__()
         self.heads = heads
         self.head_size = head_size
@@ -116,7 +116,7 @@ class EfficientPointerLayer(nn.Module):
         self.dense1 = nn.Linear(self.hidden_size, self.head_size * 2)
         self.dense2 = nn.Linear(self.hidden_size, self.heads * 2)
 
-        self.infinity = infinity
+        self.inf = inf
         self.RoPE = RoPE
         self.tril_mask = tril_mask
 
@@ -172,11 +172,11 @@ class EfficientPointerLayer(nn.Module):
         bias = torch.einsum('bnh->bhn',outputs_dense ) / 2
         logits = logits[:, None] + bias[:, ::2, None] + bias[:, 1::2, :, None]
 
-        logits = seq_masking(logits, mask, 2, -self.infinity)
-        logits = seq_masking(logits, mask, 3, -self.infinity)
+        logits = seq_masking(logits, mask, 2, -self.inf)
+        logits = seq_masking(logits, mask, 3, -self.inf)
 
         if self.tril_mask:
             #排除下三角
             mask = torch.tril(torch.ones_like(logits), -1)
-            logits = logits - mask * self.infinity
+            logits = logits - mask * self.inf
         return logits

@@ -4,7 +4,16 @@ import math
 
 import torch
 from torch import nn
-
+def seq_masking(logits:torch.Tensor,mask,axis,value=-1e12):
+    x = logits
+    if mask is None:
+        return x
+    for _ in range(axis - 1):
+        mask = torch.unsqueeze(mask,1)
+    for _ in range(len(x.size()) -len(mask.size())):
+        mask = torch.unsqueeze(mask, -1)
+    x = x * mask + (1 - mask) * value
+    return x
 
 class TplinkerLoss(nn.Module):
     def __init__(self,reduction='mean'):
@@ -63,40 +72,32 @@ class TplinkerPlusLoss(nn.Module):
         return weights4examples * gradient  # return weighted gradients
 
 
-    # def get_mask(self,attr_mask: torch.Tensor):
-    #     batch,maxlen = attr_mask.size()
-    #     mask = torch.ones_like(attr_mask)
-    #     for i in range(batch):
-    #         seqlen = torch.sum(attr_mask[i])
-    #         mask[i,seqlen:] = 0
-    #     return mask
-    #
-    #
-    # def get_matrix(self,inputs,masks):
-    #     _,maxlen = masks.size()
-    #     batch,tags,s = inputs.size()
-    #     torch.zeros(size=(batch,tags,maxlen,maxlen))
 
-    def get_matrix(self,inputs: torch.Tensor):
-        bs,n = inputs.size()[:2]
-        seqlen = math.floor(inputs.size()[-1] * 2 ** 0.5)
-        b,tag,_ = inputs.size()
-        mask = torch.triu(torch.ones((seqlen,seqlen)),diagonal=0)
-        index = torch.nonzero(torch.reshape(mask,(-1,)))
-        inputs_ = torch.zeros((bs,n,seqlen ** 2)).to(inputs.device)
-        torch.index_put_()
-        inputs_[:, :][index] = inputs
-        inputs_ = torch.reshape(inputs_,(bs,n,seqlen,seqlen))
+    def get_matrix(self,inputs: torch.Tensor,mask: torch.Tensor,with_mask=False):
+        bs,n,seqlen = inputs.size()[:3]
+        seqlen = math.floor(math.sqrt(seqlen * 2))
+        index = torch.nonzero(torch.flatten(torch.triu(torch.ones((seqlen,seqlen)),diagonal=0)))
+        inputs_ = torch.zeros((bs,n,seqlen * seqlen),dtype=inputs.dtype).to(inputs.device)
+        inputs_[:,:, index.squeeze(-1)] = inputs
+        if with_mask:
+            inputs_ = torch.reshape(inputs_, (bs,n, seqlen, seqlen))
+            inputs_ = seq_masking(inputs_, mask, 2, -self.inf)
+            inputs_ = seq_masking(inputs_, mask, 3, -self.inf)
+            mask = torch.tril(torch.ones_like(inputs_), -1)
+            inputs_ = inputs_ - mask * self.inf
+        inputs_ = torch.reshape(inputs_, (bs * n, -1))
         return inputs_
 
 
-    def forward(self, y_pred, y_true, ghm=False):
-        y_pred = self.get_matrix(y_pred)
-        y_true = self.get_matrix(y_true)
+    def forward(self, y_pred, y_true,mask, ghm=False):
 
-        bs = torch.prod(torch.tensor(y_true.size()[:2],dtype=torch.long))
-        y_pred = torch.reshape(y_pred, (bs,-1))
-        y_true = torch.reshape(y_true, (bs,-1))
+
+        y_pred = self.get_matrix(y_pred,mask,with_mask=True)
+        y_true = self.get_matrix(y_true,mask)
+
+        # bs = torch.prod(torch.tensor(y_true.size()[:2], dtype=torch.long))
+        # y_pred = torch.reshape(y_pred, (bs, -1))
+        # y_true = torch.reshape(y_true, (bs, -1))
 
         y_pred = (1 - 2 * y_true) * y_pred  # -1 -> pos classes, 1 -> neg classes
         y_pred_neg = y_pred - y_true * self.inf  # mask the pred oudtuts of pos classes
@@ -109,4 +110,6 @@ class TplinkerPlusLoss(nn.Module):
 
         if ghm:
             return (self.GHM(neg_loss + pos_loss, bins=1000)).sum()
-        return (neg_loss + pos_loss).mean()
+        loss = (neg_loss + pos_loss).mean()
+
+        return loss

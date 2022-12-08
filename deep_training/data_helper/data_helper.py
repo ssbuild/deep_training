@@ -202,7 +202,8 @@ class DataHelper(DataPreprocessHelper,DataTransformHelper):
             batch_size = batch_size if batch_transform_fn is None else None
             dataset_ = DataLoader(torch_Dataset(dataset),
                                   batch_size=batch_size,
-                                  collate_fn=collate_fn, num_workers=num_workers)
+                                  collate_fn=collate_fn,
+                                  num_workers=num_workers,shuffle=shuffle)
         return dataset_
 
 

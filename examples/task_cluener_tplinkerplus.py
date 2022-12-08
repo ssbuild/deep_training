@@ -31,10 +31,10 @@ train_info_args = {
     'train_file': '/data/nlp/nlp_train_data/clue/cluener/train.json',
     'eval_file': '/data/nlp/nlp_train_data/clue/cluener/dev.json',
     'test_file': '/data/nlp/nlp_train_data/clue/cluener/test.json',
-    'learning_rate': 5e-5,
-    'learning_rate_for_task': 5e-5,
+    'learning_rate': 1e-5,
+    'learning_rate_for_task': 1e-5,
     'max_epochs': 10,
-    'train_batch_size': 25,
+    'train_batch_size': 30,
     'eval_batch_size': 4,
     'test_batch_size': 2,
     'adam_epsilon': 1e-8,
@@ -44,15 +44,16 @@ train_info_args = {
     'weight_decay': 0,
     'warmup_steps': 0,
     'output_dir': './output',
-    'train_max_seq_length': 96,
-    'eval_max_seq_length': 120,
-    'test_max_seq_length': 120,
+    'train_max_seq_length': 84,
+    'eval_max_seq_length': 84,
+    'test_max_seq_length': 84,
     #tplinkerplus args
     'shaking_type': 'cln_plus', #one of ['cat','cat_plus','cln','cln_plus']
-    'inner_enc_type': 'mean_pooling', #one of ['mix_pooling','mean_pooling','max_pooling','lstm']
+    'inner_enc_type': 'lstm', #one of ['mix_pooling','mean_pooling','max_pooling','lstm']
+    'tok_pair_sample_rate': 0,
     # scheduler
     'scheduler_type': 'CAWR',
-    'scheduler': {'T_mult': 1, 'rewarm_epoch_num': 1.,'verbose': False} ,
+    'scheduler': {'T_mult': 1, 'rewarm_epoch_num': 1,'verbose': False} ,
 }
 
 
@@ -100,7 +101,7 @@ class NN_DataHelper(DataHelper):
             'input_ids': input_ids,
             'attention_mask': attention_mask,
             'labels': labels,
-            'seqlen': np.asarray(seqlen,dtype=np.int32),
+            'seqlen': np.asarray(max_seq_length,dtype=np.int32),
         }
 
         if self.index < 5:

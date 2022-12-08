@@ -6,7 +6,10 @@ from dataclasses import field, dataclass
 
 import numpy as np
 import torch
-from torch import nn
+from torch import nn, optim
+from torch.optim import Adam
+
+from deep_training.data_helper import TrainingArguments
 from .transformer import TransformerModel
 from ..layers.handshakingkernel import HandshakingKernel
 from ..losses.loss_tplinker import TplinkerPlusLoss
@@ -101,6 +104,8 @@ def extract_spoes(batch_outputs: typing.List,
     return batch_result
 
 
+
+
 def extract_entity(batch_outputs: typing.List,threshold=1e-8):
     batch_result = []
     def get_position(pos_val,seqlen, start, end):
@@ -124,6 +129,7 @@ def extract_entity(batch_outputs: typing.List,threshold=1e-8):
             if start < 0 or end < 0:
                 continue
             es.append((tag_id,start,end))
+        print(es)
         batch_result.append(es)
     return batch_result
 
@@ -154,13 +160,7 @@ class TransformerForTplinkerPlus(TransformerModel):
         self.fc = nn.Linear(self.config.hidden_size,self.config.num_labels)
         self.loss_fn = TplinkerPlusLoss()
 
-    def get_model_lr(self):
-        return super(TransformerForTplinkerPlus, self).get_model_lr() + [
-            (self.dropout, self.config.task_specific_params['learning_rate_for_task']),
-            (self.handshakingkernel, self.config.task_specific_params['learning_rate_for_task']),
-            (self.fc, self.config.task_specific_params['learning_rate_for_task']),
-            (self.loss_fn, self.config.task_specific_params['learning_rate_for_task']),
-        ]
+
 
     def compute_loss(self, batch,batch_idx):
         labels: torch.Tensor = batch.pop('labels', None)
@@ -170,15 +170,73 @@ class TransformerForTplinkerPlus(TransformerModel):
         if self.training:
             logits = self.dropout(logits)
         shaking_hiddens = self.handshakingkernel(logits,attention_mask)
-        if self.training:
-            shaking_hiddens = self.dropout(shaking_hiddens)
         shaking_hiddens = self.fc(shaking_hiddens)
-        shaking_hiddens = torch.transpose(shaking_hiddens,1,2)
-        # mask = torch.tril(torch.ones_like(shaking_hiddens,dtype=torch.float32),1)
-        # shaking_hiddens = shaking_hiddens * mask
+
+
+
+        sampled_tok_pair_indices = None
+        if self.tok_pair_sample_rate > 0 and self.training:
+            # randomly sample segments of token pairs
+            shaking_seq_len = shaking_hiddens.size()[1]
+            segment_len = int(shaking_seq_len * self.tok_pair_sample_rate)
+            seg_num = math.ceil(shaking_seq_len // segment_len)
+            start_ind = torch.randint(seg_num, []) * segment_len
+            end_ind = min(start_ind + segment_len, shaking_seq_len)
+            # sampled_tok_pair_indices: (batch_size, ~segment_len) ~end_ind - start_ind <= segment_len
+            sampled_tok_pair_indices = torch.arange(start_ind, end_ind)[None, :].repeat(shaking_hiddens.size()[0], 1)
+            #             sampled_tok_pair_indices = torch.randint(shaking_hiddens, (shaking_hiddens.size()[0], segment_len))
+            sampled_tok_pair_indices = sampled_tok_pair_indices.to(shaking_hiddens.device)
+
+            # sampled_tok_pair_indices will tell model what token pairs should be fed into fcs
+            # shaking_hiddens: (batch_size, ~segment_len, hidden_size)
+            shaking_hiddens = shaking_hiddens.gather(1, sampled_tok_pair_indices[:, :, None].repeat(1, 1,
+                                                                                                    shaking_hiddens.size()[
+                                                                                                        -1]))
+
+        shaking_hiddens = torch.transpose(shaking_hiddens, 1, 2)
         if labels is not None:
-            loss = self.loss_fn(shaking_hiddens, labels)
+            if self.training and sampled_tok_pair_indices is not None:
+                labels = torch.transpose(labels, 1, 2)
+                labels = labels.gather(1, sampled_tok_pair_indices[:, :, None].repeat(1, 1,self.config.num_labels))
+                labels = torch.transpose(labels, 1, 2)
+            loss = self.loss_fn(shaking_hiddens, labels,mask=attention_mask)
             outputs = (loss, shaking_hiddens,labels)
         else:
+            shaking_hiddens = torch.transpose(shaking_hiddens, 1, 2)
             outputs = (shaking_hiddens, )
         return outputs
+
+    def configure_optimizers(self,model_attrs: typing.Union[typing.List, typing.Tuple],
+                             training_args: TrainingArguments,
+                             estimated_stepping_batches: int):
+
+        optimizer = Adam(self.parameters(), training_args.learning_rate)
+
+        T_mult = training_args.scheduler["T_mult"]
+        rewarm_epoch_num = training_args.scheduler["rewarm_epoch_num"]
+        eta_min = training_args.scheduler.get('eta_min', 0.)
+        last_epoch = training_args.scheduler.get('last_epoch', -1)
+        verbose = training_args.scheduler.get('verbose', False)
+        T_0 = int(estimated_stepping_batches * rewarm_epoch_num / training_args.max_epochs)
+        T_0 = max(T_0, 1)
+        print('**' * 30, T_0)
+        scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0, T_mult,
+                                                                   eta_min=eta_min,
+                                                                   last_epoch=last_epoch,
+                                                                   verbose=verbose)
+
+
+        scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
+        return [optimizer], [scheduler]
+
+
+    def get_model_lr(self):
+        return [
+            (self, self.config.task_specific_params['learning_rate'])
+        ]
+        # return super(TransformerForTplinkerPlus, self).get_model_lr() + [
+        #     (self.dropout, self.config.task_specific_params['learning_rate_for_task']),
+        #     (self.handshakingkernel, self.config.task_specific_params['learning_rate_for_task']),
+        #     (self.fc, self.config.task_specific_params['learning_rate_for_task']),
+        #     (self.loss_fn, self.config.task_specific_params['learning_rate_for_task']),
+        # ]

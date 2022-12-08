@@ -47,6 +47,7 @@ def configure_optimizers(model_attrs: typing.Union[typing.List,typing.Tuple],
         last_epoch = training_args.scheduler.get('last_epoch', -1)
         verbose = training_args.scheduler.get('verbose', False)
         T_0 = int(estimated_stepping_batches * rewarm_epoch_num/ training_args.max_epochs)
+        T_0 = max(T_0,1)
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_0,
                                                          eta_min=eta_min,
                                                          last_epoch=last_epoch,
@@ -58,8 +59,7 @@ def configure_optimizers(model_attrs: typing.Union[typing.List,typing.Tuple],
         last_epoch = training_args.scheduler.get('last_epoch', -1)
         verbose = training_args.scheduler.get('verbose', False)
         T_0 = int(estimated_stepping_batches * rewarm_epoch_num / training_args.max_epochs)
-
-        print('**' * 30,T_0)
+        T_0 = max(T_0, 1)
         scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer,T_0 , T_mult,
                                                                    eta_min=eta_min,
                                                                    last_epoch=last_epoch,
