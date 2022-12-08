@@ -40,7 +40,7 @@ train_info_args = {
     # 'label_file': '/data/nlp/nlp_train_data/myrelation/labels.json',
     'learning_rate': 5e-5,
     'max_epochs': 15,
-    'train_batch_size': 38,
+    'train_batch_size': 20,
     'eval_batch_size': 4,
     'test_batch_size': 2,
     'adam_epsilon': 1e-8,
