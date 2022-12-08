@@ -61,6 +61,17 @@ class TplinkerPlusLoss(nn.Module):
         return weights4examples * gradient  # return weighted gradients
 
 
+    def get_mask(self,attr_mask: torch.Tensor):
+        batch,maxlen = attr_mask.size()
+        mask = torch.ones_like(attr_mask)
+        for i in range(batch):
+            seqlen = torch.sum(attr_mask[i])
+            mask[i,seqlen:] = 0
+        return mask
+
+
+    def get_matrix(self,input,mask):
+        torch.nonzero(mask)
 
     def forward(self, y_pred, y_true, ghm=False):
         """

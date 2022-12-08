@@ -136,7 +136,7 @@ class TrainingArguments:
         # }
         metadata={"help": "StepLR:  { 'decay_rate': 0.999,'decay_steps': 100,'verbose': True} ,\
                           CAWR {'T_mult': 1, 'rewarm_epoch_num': 2,'verbose': True} ,\
-                          CAL: {'T_mult': 1, 'rewarm_epoch_num': 2,'verbose': True} \
+                          CAL: {'rewarm_epoch_num': 2,'verbose': True} \
                           "},
     )
 

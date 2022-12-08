@@ -31,9 +31,9 @@ train_info_args = {
     'train_file': '/data/nlp/nlp_train_data/clue/cluener/train.json',
     'eval_file': '/data/nlp/nlp_train_data/clue/cluener/dev.json',
     'test_file': '/data/nlp/nlp_train_data/clue/cluener/test.json',
-    'learning_rate': 5e-5,
-    # 'learning_rate_for_task':1e-4,
-    'max_epochs': 15,
+    'learning_rate': 1e-5,
+    'learning_rate_for_task': 1e-5,
+    'max_epochs': 10,
     'train_batch_size': 40,
     'eval_batch_size': 4,
     'test_batch_size': 2,
@@ -44,9 +44,9 @@ train_info_args = {
     'weight_decay': 0,
     'warmup_steps': 0,
     'output_dir': './output',
-    'train_max_seq_length': 100,
-    'eval_max_seq_length': 128,
-    'test_max_seq_length': 128,
+    'train_max_seq_length': 64,
+    'eval_max_seq_length': 64,
+    'test_max_seq_length': 64,
     #tplinkerplus args
     'shaking_type': 'cln_plus', #one of ['cat','cat_plus','cln','cln_plus']
     'inner_enc_type': 'lstm', #one of ['mix_pooling','mean_pooling','max_pooling','lstm']
@@ -101,7 +101,7 @@ class NN_DataHelper(DataHelper):
             'input_ids': input_ids,
             'attention_mask': attention_mask,
             'labels': labels,
-            'seqlen': np.asarray(seqlen,dtype=np.int32),
+            'seqlen': np.asarray(max_seq_length,dtype=np.int32),
         }
 
         if self.index < 5:

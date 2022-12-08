@@ -42,13 +42,12 @@ def configure_optimizers(model_attrs: typing.Union[typing.List,typing.Tuple],
             # num_training_steps=self.trainer.estimated_stepping_batches,
         )
     elif training_args.scheduler_type.lower() == 'CAL'.lower():
-        T_mult = training_args.scheduler["T_mult"]
         rewarm_epoch_num =  training_args.scheduler["rewarm_epoch_num"]
         eta_min = training_args.scheduler.get('eta_min', 0.)
         last_epoch = training_args.scheduler.get('last_epoch', -1)
         verbose = training_args.scheduler.get('verbose', False)
         T_0 = int(estimated_stepping_batches * rewarm_epoch_num/ training_args.max_epochs)
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_0, T_mult,
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_0,
                                                          eta_min=eta_min,
                                                          last_epoch=last_epoch,
                                                          verbose=verbose)
@@ -60,6 +59,7 @@ def configure_optimizers(model_attrs: typing.Union[typing.List,typing.Tuple],
         verbose = training_args.scheduler.get('verbose', False)
         T_0 = int(estimated_stepping_batches * rewarm_epoch_num / training_args.max_epochs)
 
+        print('**' * 30,T_0)
         scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer,T_0 , T_mult,
                                                                    eta_min=eta_min,
                                                                    last_epoch=last_epoch,

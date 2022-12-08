@@ -2,9 +2,7 @@
 # @Time    : 2022/11/24 8:57
 import torch
 
-
 def multilabel_categorical_crossentropy(y_true, y_pred):
-
     y_pred = (1 - 2 * y_true) * y_pred
     y_pred_neg = y_pred - y_true * 1e12
     y_pred_pos = y_pred - (1 - y_true) * 1e12
