@@ -115,9 +115,9 @@ def extract_entity(batch_outputs: typing.List,threshold=1e-8):
     seqlen = None
     for shaking_hidden in batch_outputs:
         if seqlen is None:
-            seqlen = math.floor(math.sqrt(shaking_hidden.shape[0] * 2))
+            seqlen = math.floor(math.sqrt(shaking_hidden.shape[-1] * 2))
         es = []
-        for pos,tag_id in zip(*np.where(shaking_hidden > threshold)):
+        for tag_id,pos in zip(*np.where(shaking_hidden > threshold)):
             start,end = get_position(pos, seqlen, 0, seqlen)
             start -= 1
             end -= 1
@@ -126,6 +126,20 @@ def extract_entity(batch_outputs: typing.List,threshold=1e-8):
             es.append((tag_id,start,end))
         batch_result.append(es)
     return batch_result
+
+# def extract_entity(batch_outputs: typing.List,threshold=1e-8):
+#     batch_result = []
+#
+#     for shaking_hidden in batch_outputs:
+#         shaking_hidden[0,-1] *= 0
+#         shaking_hidden[:,0,-1] *= 0
+#         es = []
+#         for tag_id,start,end in zip(*np.where(shaking_hidden > threshold)):
+#             start -= 1
+#             end -= 1
+#             es.append((tag_id,start,end))
+#         batch_result.append(es)
+#     return batch_result
 
 class TransformerForTplinkerPlus(TransformerModel):
     def __init__(self,  *args, **kwargs):
@@ -150,45 +164,20 @@ class TransformerForTplinkerPlus(TransformerModel):
 
     def compute_loss(self, batch,batch_idx):
         labels: torch.Tensor = batch.pop('labels', None)
+        attention_mask = batch.get('attention_mask',None)
         outputs = self(**batch)
         logits = outputs[0]
         if self.training:
             logits = self.dropout(logits)
-        shaking_hiddens = self.handshakingkernel(logits)
-
-        sampled_tok_pair_indices = None
-        if self.tok_pair_sample_rate > 0 and self.training:
-            # randomly sample segments of token pairs
-            shaking_seq_len = shaking_hiddens.size()[1]
-            segment_len = int(shaking_seq_len * self.tok_pair_sample_rate)
-            seg_num = math.ceil(shaking_seq_len // segment_len)
-            start_ind = torch.randint(seg_num, []) * segment_len
-            end_ind = min(start_ind + segment_len, shaking_seq_len)
-            # sampled_tok_pair_indices: (batch_size, ~segment_len) ~end_ind - start_ind <= segment_len
-            sampled_tok_pair_indices = torch.arange(start_ind, end_ind)[None, :].repeat(shaking_hiddens.size()[0],
-                                                                                        1)
-            #             sampled_tok_pair_indices = torch.randint(shaking_seq_len, (shaking_hiddens.size()[0], segment_len))
-            sampled_tok_pair_indices = sampled_tok_pair_indices.to(shaking_hiddens.device)
-
-            # sampled_tok_pair_indices will tell model what token pairs should be fed into fcs
-            # shaking_hiddens: (batch_size, ~segment_len, hidden_size)
-            shaking_hiddens = shaking_hiddens.gather(1, sampled_tok_pair_indices[:, :, None].repeat(1, 1,shaking_hiddens.size()[-1]))
-
+        shaking_hiddens = self.handshakingkernel(logits,attention_mask)
+        if self.training:
+            shaking_hiddens = self.dropout(shaking_hiddens)
         shaking_hiddens = self.fc(shaking_hiddens)
+        shaking_hiddens = torch.transpose(shaking_hiddens,1,2)
+        # mask = torch.tril(torch.ones_like(shaking_hiddens,dtype=torch.float32),1)
+        # shaking_hiddens = shaking_hiddens * mask
         if labels is not None:
-            # sampled_tok_pair_indices: (batch_size, ~segment_len)
-            # batch_small_shaking_tag: (batch_size, ~segment_len, tag_size)
-            if self.training:
-                if sampled_tok_pair_indices is not None:
-                    # batch_small_shaking_tag = labels.gather(2, sampled_tok_pair_indices[:, None,:].repeat(1, self.config.num_labels,1))
-                    batch_small_shaking_tag = labels.gather(1, sampled_tok_pair_indices[:, :, None].repeat(1,
-                                                                                                           1,
-                                                                                                           self.config.num_labels))
-                else:
-                    batch_small_shaking_tag = labels
-                loss = self.loss_fn(shaking_hiddens, batch_small_shaking_tag)
-            else:
-                loss = None
+            loss = self.loss_fn(shaking_hiddens, labels)
             outputs = (loss, shaking_hiddens,labels)
         else:
             outputs = (shaking_hiddens, )

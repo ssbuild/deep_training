@@ -31,10 +31,10 @@ train_info_args = {
     'train_file': '/data/nlp/nlp_train_data/clue/cluener/train.json',
     'eval_file': '/data/nlp/nlp_train_data/clue/cluener/dev.json',
     'test_file': '/data/nlp/nlp_train_data/clue/cluener/test.json',
-    'learning_rate': 1e-5,
-    'learning_rate_for_task': 1e-5,
+    'learning_rate': 5e-5,
+    'learning_rate_for_task': 5e-5,
     'max_epochs': 10,
-    'train_batch_size': 40,
+    'train_batch_size': 25,
     'eval_batch_size': 4,
     'test_batch_size': 2,
     'adam_epsilon': 1e-8,
@@ -44,16 +44,15 @@ train_info_args = {
     'weight_decay': 0,
     'warmup_steps': 0,
     'output_dir': './output',
-    'train_max_seq_length': 64,
-    'eval_max_seq_length': 64,
-    'test_max_seq_length': 64,
+    'train_max_seq_length': 96,
+    'eval_max_seq_length': 120,
+    'test_max_seq_length': 120,
     #tplinkerplus args
     'shaking_type': 'cln_plus', #one of ['cat','cat_plus','cln','cln_plus']
-    'inner_enc_type': 'lstm', #one of ['mix_pooling','mean_pooling','max_pooling','lstm']
-    'tok_pair_sample_rate': 0,
+    'inner_enc_type': 'mean_pooling', #one of ['mix_pooling','mean_pooling','max_pooling','lstm']
     # scheduler
     'scheduler_type': 'CAWR',
-    'scheduler': {'T_mult': 1, 'rewarm_epoch_num': 0.5,'verbose': False} ,
+    'scheduler': {'T_mult': 1, 'rewarm_epoch_num': 1.,'verbose': False} ,
 }
 
 
@@ -101,7 +100,7 @@ class NN_DataHelper(DataHelper):
             'input_ids': input_ids,
             'attention_mask': attention_mask,
             'labels': labels,
-            'seqlen': np.asarray(max_seq_length,dtype=np.int32),
+            'seqlen': np.asarray(seqlen,dtype=np.int32),
         }
 
         if self.index < 5:
@@ -159,7 +158,8 @@ class NN_DataHelper(DataHelper):
 
     # batch dataset
     @staticmethod
-    def batch_transform(batch):
+    def collate_fn(batch):
+    # def batch_transform(batch):
         bs = len(batch)
         o = {}
         labels_info = []
@@ -176,14 +176,15 @@ class NN_DataHelper(DataHelper):
         max_len = torch.max(o.pop('seqlen'))
 
         shaking_len = int(max_len * (max_len + 1) / 2)
-        labels = torch.zeros(size=(bs,shaking_len,len(NN_DataHelper.label2id)), dtype=torch.long)
+        labels = torch.zeros(size=(bs,len(NN_DataHelper.label2id),shaking_len), dtype=torch.long)
         get_pos = lambda x0, x1: x0 * max_len + x1 - int(x0 * (x0 + 1) / 2)
         for linfo,label in zip(labels_info,labels):
             for l, s, e in linfo:
                 assert s <= e
                 if s >= max_len - 1 or e >= max_len - 1:
                     continue
-                label[get_pos(s, e)][l] = 1
+                label[l][get_pos(s, e)] = 1
+
 
         o['input_ids'] = o['input_ids'][:, :max_len]
         o['attention_mask'] = o['attention_mask'][:, :max_len]

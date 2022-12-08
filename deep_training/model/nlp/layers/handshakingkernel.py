@@ -53,26 +53,24 @@ class HandshakingKernel(nn.Module):
 
         return inner_context
 
-    def forward(self, seq_hiddens):
+    def forward(self, seq_hiddens,mask):
         '''
         seq_hiddens: (batch_size, seq_len, hidden_size)
         return:
             shaking_hiddenss: (batch_size, (1 + seq_len) * seq_len / 2, hidden_size) (32, 5+4+3+2+1, 5)
         '''
-        seq_len = seq_hiddens.size()[-2]
+        bs, seqlen, hidden_size = seq_hiddens.size()
+
+        mask = (1- mask) * -1000.
+        mask = mask.unsqueeze(2).expand(-1,-1,hidden_size)
+        seq_hiddens += mask
         shaking_hiddens_list = []
-        for ind in range(seq_len):
-            #b,h
-            hidden_each_step = seq_hiddens[:, ind, :]
-            # b,seqlen-idx,h
+        for ind in range(seqlen):
+            repeat_hiddens = seq_hiddens[:, [ind], :].repeat(1, seqlen - ind, 1)
             visible_hiddens = seq_hiddens[:, ind:, :]  # ind: only look back
-            #b seqlen-idx,h
-            repeat_hiddens = hidden_each_step[:, None, :].repeat(1, seq_len - ind, 1)
 
             if self.shaking_type == "cat":
-                #b,seqle-idx,h * 2
                 shaking_hiddens = torch.cat([repeat_hiddens, visible_hiddens], dim=-1)
-                #b,seqlen-idx,h
                 shaking_hiddens = torch.tanh(self.combine_fc(shaking_hiddens))
             elif self.shaking_type == "cat_plus":
                 inner_context = self.enc_inner_hiddens(visible_hiddens, self.inner_enc_type)
@@ -87,7 +85,8 @@ class HandshakingKernel(nn.Module):
             else:
                 raise ValueError('Invalid shaking_type {}'.format(self.shaking_type))
 
+
             shaking_hiddens_list.append(shaking_hiddens)
-        #b,seqlen,seqlen-1, ... 1,h
+        # #b,seqlen,seqlen-1, ... 1,h
         long_shaking_hiddens = torch.cat(shaking_hiddens_list, dim=1)
         return long_shaking_hiddens

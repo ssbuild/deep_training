@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/12/5 12:19
+import math
+
 import torch
 from torch import nn
 
@@ -61,28 +63,40 @@ class TplinkerPlusLoss(nn.Module):
         return weights4examples * gradient  # return weighted gradients
 
 
-    def get_mask(self,attr_mask: torch.Tensor):
-        batch,maxlen = attr_mask.size()
-        mask = torch.ones_like(attr_mask)
-        for i in range(batch):
-            seqlen = torch.sum(attr_mask[i])
-            mask[i,seqlen:] = 0
-        return mask
+    # def get_mask(self,attr_mask: torch.Tensor):
+    #     batch,maxlen = attr_mask.size()
+    #     mask = torch.ones_like(attr_mask)
+    #     for i in range(batch):
+    #         seqlen = torch.sum(attr_mask[i])
+    #         mask[i,seqlen:] = 0
+    #     return mask
+    #
+    #
+    # def get_matrix(self,inputs,masks):
+    #     _,maxlen = masks.size()
+    #     batch,tags,s = inputs.size()
+    #     torch.zeros(size=(batch,tags,maxlen,maxlen))
 
+    def get_matrix(self,inputs: torch.Tensor):
+        bs,n = inputs.size()[:2]
+        seqlen = math.floor(inputs.size()[-1] * 2 ** 0.5)
+        b,tag,_ = inputs.size()
+        mask = torch.triu(torch.ones((seqlen,seqlen)),diagonal=0)
+        index = torch.nonzero(torch.reshape(mask,(-1,)))
+        inputs_ = torch.zeros((bs,n,seqlen ** 2)).to(inputs.device)
+        torch.index_put_()
+        inputs_[:, :][index] = inputs
+        inputs_ = torch.reshape(inputs_,(bs,n,seqlen,seqlen))
+        return inputs_
 
-    def get_matrix(self,input,mask):
-        torch.nonzero(mask)
 
     def forward(self, y_pred, y_true, ghm=False):
-        """
-        y_pred: (batch_size, shaking_seq_len, type_size)
-        y_true: (batch_size, shaking_seq_len, type_size)
-        y_true and y_pred have the same shape，elements in y_true are either 0 or 1，
-             1 tags positive classes，0 tags negtive classes(means tok-pair does not have this type of link).
-        """
-        shaking_seq_len = y_pred.size()[1]
-        y_pred = torch.reshape(torch.transpose(y_pred, 1, 2),(-1,shaking_seq_len))
-        y_true = torch.reshape(torch.transpose(y_true, 1, 2),(-1,shaking_seq_len))
+        y_pred = self.get_matrix(y_pred)
+        y_true = self.get_matrix(y_true)
+
+        bs = torch.prod(torch.tensor(y_true.size()[:2],dtype=torch.long))
+        y_pred = torch.reshape(y_pred, (bs,-1))
+        y_true = torch.reshape(y_true, (bs,-1))
 
         y_pred = (1 - 2 * y_true) * y_pred  # -1 -> pos classes, 1 -> neg classes
         y_pred_neg = y_pred - y_true * self.inf  # mask the pred oudtuts of pos classes

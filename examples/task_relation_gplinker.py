@@ -94,7 +94,7 @@ class NN_DataHelper(DataHelper):
             real_label.append((s[0], s[1], p, o[0], o[1]))
             s = (s[0] + 1, s[1] + 1)
             o = (o[0] + 1, o[1] + 1)
-            if s[1] < max_seq_length - 2 and o[1] < max_seq_length - 2:
+            if s[1] < max_seq_length - 1 and o[1] < max_seq_length - 1:
                 entity_labels_tmp[0].add((s[0], s[1]))
                 entity_labels_tmp[1].add((o[0], o[1]))
                 head_labels_tmp[p].add((s[0], o[0]))
