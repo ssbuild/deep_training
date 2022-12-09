@@ -3,6 +3,9 @@
 - 基于pytorch-lightning 和 transformers实现的上下游训练框架
 - 当前正在重构中...，接口是不稳定的...
 
+## 例子
+  -  [deep_training-examples](https://github.com/ssbuild/deep_training-example)
+
 ## 更新
 - <strong>2022年11月17</strong>: 
   - simcse-unilm 系列
