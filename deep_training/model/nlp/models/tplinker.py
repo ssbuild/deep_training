@@ -59,7 +59,6 @@ class TplinkerArguments:
 
 
 def extract_spoes(outputs):
-
     def get_position(pos_val,seqlen, start, end):
         i = math.floor((end + start) / 2)
         j = int((pos_val + i * (i + 1) / 2) - i * seqlen)

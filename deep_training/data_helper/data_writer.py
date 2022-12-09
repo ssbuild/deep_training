@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/11/9 11:02
+
 import typing
 from fastdatasets.utils.numpyadapter import NumpyWriterAdapter,ParallelNumpyWriter
 

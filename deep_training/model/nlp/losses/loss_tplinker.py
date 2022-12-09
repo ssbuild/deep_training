@@ -4,6 +4,10 @@ import math
 
 import torch
 from torch import nn
+
+from deep_training.model.nlp.layers.seq_pointer import f1_metric_for_pointer
+
+
 def seq_masking(logits:torch.Tensor,mask,axis,value=-1e12):
     x = logits
     if mask is None:
@@ -90,14 +94,14 @@ class TplinkerPlusLoss(nn.Module):
 
 
     def forward(self, y_pred, y_true,mask, ghm=False):
+        # y_pred = self.get_matrix(y_pred,mask,with_mask=True)
+        # y_true = self.get_matrix(y_true,mask)
 
+        bs = torch.prod(torch.tensor(y_true.size()[:2], dtype=torch.long))
+        y_pred = torch.reshape(y_pred, (bs, -1))
+        y_true = torch.reshape(y_true, (bs, -1))
 
-        y_pred = self.get_matrix(y_pred,mask,with_mask=True)
-        y_true = self.get_matrix(y_true,mask)
-
-        # bs = torch.prod(torch.tensor(y_true.size()[:2], dtype=torch.long))
-        # y_pred = torch.reshape(y_pred, (bs, -1))
-        # y_true = torch.reshape(y_true, (bs, -1))
+        f1 = f1_metric_for_pointer(y_true, y_pred)
 
         y_pred = (1 - 2 * y_true) * y_pred  # -1 -> pos classes, 1 -> neg classes
         y_pred_neg = y_pred - y_true * self.inf  # mask the pred oudtuts of pos classes
@@ -112,4 +116,5 @@ class TplinkerPlusLoss(nn.Module):
             return (self.GHM(neg_loss + pos_loss, bins=1000)).sum()
         loss = (neg_loss + pos_loss).mean()
 
-        return loss
+
+        return loss,f1

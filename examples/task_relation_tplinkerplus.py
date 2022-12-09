@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
+import copy
 import json
 import logging
 import os
 import sys
 import typing
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)), '..'))
-
 from deep_training.model.nlp.metrics.pointer import metric_for_spo
 from deep_training.model.nlp.models.transformer import TransformerMeta
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
@@ -41,21 +41,24 @@ train_info_args = {
     'learning_rate': 5e-5,
     'max_epochs': 15,
     'train_batch_size': 8,
-    'eval_batch_size': 4,
-    'test_batch_size': 2,
+    'eval_batch_size': 1,
+    'test_batch_size': 1,
     'adam_epsilon': 1e-8,
     'gradient_accumulation_steps': 1,
     'max_grad_norm': 1.0,
     'weight_decay': 0,
     'warmup_steps': 0,
     'output_dir': './output',
-    'train_max_seq_length': 200,
+    'train_max_seq_length': 160,
     'eval_max_seq_length': 200,
     'test_max_seq_length': 200,
-    #tplinker_plus args
+#tplinker_plus args
     'shaking_type': 'cln_plus', #one of ['cat','cat_plus','cln','cln_plus']
-    'inner_enc_type': 'mean_pooling', #one of ['mix_pooling','mean_pooling','max_pooling','lstm']
+    'inner_enc_type': 'lstm', #one of ['mix_pooling','mean_pooling','max_pooling','lstm']
     'tok_pair_sample_rate': 0,
+# scheduler
+    'scheduler_type': 'CAWR',
+    'scheduler': {'T_mult': 1, 'rewarm_epoch_num': 2,'verbose': False} ,
 }
 
 
@@ -223,7 +226,7 @@ class NN_DataHelper(DataHelper):
                         re_list_label = None
 
                     D.append((jd['text'], entities_label, re_list_label))
-        return D[0:100]
+        return D
 
 
 
@@ -233,11 +236,13 @@ class NN_DataHelper(DataHelper):
 
     # batch dataset
     @staticmethod
-    def batch_transform(batch):
+    # def batch_transform(batch):
+    def collate_fn(batch):
         bs = len(batch)
         o = {}
         labels_info = []
         for i, b in enumerate(batch):
+            b = copy.copy(b)
             labels_info.append(b.pop('labels', []))
             if i == 0:
                 for k in b:
@@ -248,18 +253,15 @@ class NN_DataHelper(DataHelper):
         for k in o:
             o[k] = torch.stack(o[k])
         max_len = torch.max(o.pop('seqlen'))
-
         shaking_len = int(max_len * (max_len + 1) / 2)
         labels = torch.zeros(size=(bs ,len(NN_DataHelper.label2id),shaking_len), dtype=torch.long)
         get_pos = lambda x0, x1: x0 * max_len + int(x1 - x0 * (x0 + 1) / 2)
-
         for linfo, label in zip(labels_info, labels):
             for l, s, e in linfo:
                 assert s <= e
                 if s >= max_len - 1 or e >= max_len - 1:
                     continue
                 label[l][get_pos(s, e)] = 1
-
 
         o['input_ids'] = o['input_ids'][:, :max_len]
         o['attention_mask'] = o['attention_mask'][:, :max_len]

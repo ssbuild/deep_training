@@ -64,14 +64,11 @@ def extract_spoes(batch_outputs: typing.List,
     for shaking_hidden in batch_outputs:
         if seqlen is None:
             seqlen = math.floor(math.sqrt(shaking_hidden.shape[1] * 2))
-        print('seqlen',seqlen,shaking_hidden.shape,np.where(shaking_hidden > 0))
-        print(shaking_hidden)
         es = []
         es_set = set()
         sh,oh,st,ot = {},{},{},{}
-        for tag_id,pos in zip(*np.where(shaking_hidden > 0)):
+        for tag_id,pos in zip(*np.where(shaking_hidden > threshold)):
             tag: str = id2label[tag_id]
-            print(tag)
             tag,tag2 = tag.rsplit('_',1)
             if tag2 == 'EE':
                 es.append((*get_position(pos,seqlen,0,seqlen),tag_id))
@@ -82,7 +79,6 @@ def extract_spoes(batch_outputs: typing.List,
                     obj[tag] = []
                 obj[tag].append(get_position(pos,seqlen,0,seqlen))
 
-        print('es_set',es_set)
         subs,objs = {},{}
         for k in sh.keys() & st.keys():
             list1 = sh[k]
@@ -116,7 +112,6 @@ def extract_entity(batch_outputs: typing.List,threshold=1e-8):
         if j >= seqlen:
             return get_position(pos_val,seqlen, i, end)
         return get_position(pos_val, seqlen,start, i)
-
     seqlen = None
     for shaking_hidden in batch_outputs:
         if seqlen is None:
@@ -129,23 +124,10 @@ def extract_entity(batch_outputs: typing.List,threshold=1e-8):
             if start < 0 or end < 0:
                 continue
             es.append((tag_id,start,end))
-        print(es)
         batch_result.append(es)
     return batch_result
 
-# def extract_entity(batch_outputs: typing.List,threshold=1e-8):
-#     batch_result = []
-#
-#     for shaking_hidden in batch_outputs:
-#         shaking_hidden[0,-1] *= 0
-#         shaking_hidden[:,0,-1] *= 0
-#         es = []
-#         for tag_id,start,end in zip(*np.where(shaking_hidden > threshold)):
-#             start -= 1
-#             end -= 1
-#             es.append((tag_id,start,end))
-#         batch_result.append(es)
-#     return batch_result
+
 
 class TransformerForTplinkerPlus(TransformerModel):
     def __init__(self,  *args, **kwargs):
@@ -160,7 +142,13 @@ class TransformerForTplinkerPlus(TransformerModel):
         self.fc = nn.Linear(self.config.hidden_size,self.config.num_labels)
         self.loss_fn = TplinkerPlusLoss()
 
-
+    def get_model_lr(self):
+        return super(TransformerForTplinkerPlus, self).get_model_lr() + [
+            (self.dropout, self.config.task_specific_params['learning_rate_for_task']),
+            (self.handshakingkernel, self.config.task_specific_params['learning_rate_for_task']),
+            (self.fc, self.config.task_specific_params['learning_rate_for_task']),
+            (self.loss_fn, self.config.task_specific_params['learning_rate_for_task']),
+        ]
 
     def compute_loss(self, batch,batch_idx):
         labels: torch.Tensor = batch.pop('labels', None)
@@ -171,9 +159,6 @@ class TransformerForTplinkerPlus(TransformerModel):
             logits = self.dropout(logits)
         shaking_hiddens = self.handshakingkernel(logits,attention_mask)
         shaking_hiddens = self.fc(shaking_hiddens)
-
-
-
         sampled_tok_pair_indices = None
         if self.tok_pair_sample_rate > 0 and self.training:
             # randomly sample segments of token pairs
@@ -199,44 +184,14 @@ class TransformerForTplinkerPlus(TransformerModel):
                 labels = torch.transpose(labels, 1, 2)
                 labels = labels.gather(1, sampled_tok_pair_indices[:, :, None].repeat(1, 1,self.config.num_labels))
                 labels = torch.transpose(labels, 1, 2)
-            loss = self.loss_fn(shaking_hiddens, labels,mask=attention_mask)
+            loss,f1 = self.loss_fn(shaking_hiddens, labels,mask=attention_mask)
+            loss = {
+                'loss': loss,
+                'f1': f1
+            }
             outputs = (loss, shaking_hiddens,labels)
         else:
             shaking_hiddens = torch.transpose(shaking_hiddens, 1, 2)
             outputs = (shaking_hiddens, )
         return outputs
 
-    def configure_optimizers(self,model_attrs: typing.Union[typing.List, typing.Tuple],
-                             training_args: TrainingArguments,
-                             estimated_stepping_batches: int):
-
-        optimizer = Adam(self.parameters(), training_args.learning_rate)
-
-        T_mult = training_args.scheduler["T_mult"]
-        rewarm_epoch_num = training_args.scheduler["rewarm_epoch_num"]
-        eta_min = training_args.scheduler.get('eta_min', 0.)
-        last_epoch = training_args.scheduler.get('last_epoch', -1)
-        verbose = training_args.scheduler.get('verbose', False)
-        T_0 = int(estimated_stepping_batches * rewarm_epoch_num / training_args.max_epochs)
-        T_0 = max(T_0, 1)
-        print('**' * 30, T_0)
-        scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0, T_mult,
-                                                                   eta_min=eta_min,
-                                                                   last_epoch=last_epoch,
-                                                                   verbose=verbose)
-
-
-        scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
-        return [optimizer], [scheduler]
-
-
-    def get_model_lr(self):
-        return [
-            (self, self.config.task_specific_params['learning_rate'])
-        ]
-        # return super(TransformerForTplinkerPlus, self).get_model_lr() + [
-        #     (self.dropout, self.config.task_specific_params['learning_rate_for_task']),
-        #     (self.handshakingkernel, self.config.task_specific_params['learning_rate_for_task']),
-        #     (self.fc, self.config.task_specific_params['learning_rate_for_task']),
-        #     (self.loss_fn, self.config.task_specific_params['learning_rate_for_task']),
-        # ]

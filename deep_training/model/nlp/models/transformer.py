@@ -68,7 +68,6 @@ class TransformerBase(nn.Module):
 
 
     def from_pretrained(self,CLS, *args, **kwargs):
-
         config = get_value_from_args('config', PretrainedConfig, *args, **kwargs)
         model_args = get_value_from_args('model_args', ModelArguments, *args, **kwargs)
 
@@ -174,7 +173,7 @@ class TransformerLightningModule(pl.LightningModule):
         self.__model = model
 
         copy_attr = [
-            'log','log_dict','current_epoch','global_step','global_rank','max_steps','max_epochs'
+            'log','log_dict','current_epoch','global_step','global_rank','max_steps','max_epochs','training_args'
         ]
         for k in copy_attr:
             setattr(self.__model,k,getattr(self,k))
@@ -234,8 +233,11 @@ class TransformerLightningModule(pl.LightningModule):
     def forward(self, **inputs):
         return self.model(**inputs)
 
-    def configure_optimizers(self):
+
+    def setup(self, stage: str) -> None:
         setattr(self.__model, 'estimated_stepping_batches', self.trainer.estimated_stepping_batches)
+
+    def configure_optimizers(self):
         return configure_optimizers(self.get_model_lr(), self.training_args,self.trainer.estimated_stepping_batches)
 
     def training_step(self, batch, batch_idx):

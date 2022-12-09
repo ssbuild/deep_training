@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import copy
 import json
 import os
 import sys
@@ -186,11 +187,12 @@ class NN_DataHelper(DataHelper):
 
     # batch dataset
     @staticmethod
-    def batch_transform(batch):
+    def collate_fn(batch):
         bs = len(batch)
         o = {}
         spo_labels = []
         for i, b in enumerate(batch):
+            b = copy.copy(b)
             spo_labels.append(b.pop('spo_labels', []))
             if i == 0:
                 for k in b:
@@ -300,6 +302,7 @@ if __name__ == '__main__':
                           training_args=training_args)
     checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
     trainer = Trainer(
+        log_every_n_steps=10,
         callbacks=[checkpoint_callback],
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,

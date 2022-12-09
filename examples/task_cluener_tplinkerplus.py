@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import copy
 import json
 import os
 import sys
@@ -33,7 +34,7 @@ train_info_args = {
     'test_file': '/data/nlp/nlp_train_data/clue/cluener/test.json',
     'learning_rate': 1e-5,
     'learning_rate_for_task': 1e-5,
-    'max_epochs': 10,
+    'max_epochs': 15,
     'train_batch_size': 30,
     'eval_batch_size': 4,
     'test_batch_size': 2,
@@ -44,20 +45,25 @@ train_info_args = {
     'weight_decay': 0,
     'warmup_steps': 0,
     'output_dir': './output',
-    'train_max_seq_length': 84,
-    'eval_max_seq_length': 84,
-    'test_max_seq_length': 84,
+    'train_max_seq_length': 96,
+    'eval_max_seq_length': 128,
+    'test_max_seq_length': 128,
     #tplinkerplus args
     'shaking_type': 'cln_plus', #one of ['cat','cat_plus','cln','cln_plus']
     'inner_enc_type': 'lstm', #one of ['mix_pooling','mean_pooling','max_pooling','lstm']
     'tok_pair_sample_rate': 0,
     # scheduler
     'scheduler_type': 'CAWR',
-    'scheduler': {'T_mult': 1, 'rewarm_epoch_num': 1,'verbose': False} ,
+    'scheduler': {'T_mult': 1, 'rewarm_epoch_num': 2,'verbose': False} ,
 }
 
 
+
+
 class NN_DataHelper(DataHelper):
+    #是否固定输入最大长度 ， 如果固定训练会慢 ，指标收敛快 ，如不固定训练快，指标收敛慢些
+    is_fix_input_length = False
+
     index = -1
     eval_labels = []
 
@@ -165,7 +171,8 @@ class NN_DataHelper(DataHelper):
         o = {}
         labels_info = []
         for i, b in enumerate(batch):
-            labels_info.append(b.pop('labels', []))
+            b = copy.copy(b)
+            labels_info.append(b.pop('labels',[]))
             if i == 0:
                 for k in b:
                     o[k] = [torch.tensor(b[k])]
@@ -230,9 +237,6 @@ class MyTransformer(TransformerForTplinkerPlus, metaclass=TransformerMeta):
         self.log('val_f1', f1, prog_bar=True)
 
 
-
-
-
 if __name__ == '__main__':
     parser = HfArgumentParser((ModelArguments, TrainingArguments, DataArguments,TplinkerArguments))
     model_args, training_args, data_args , tplinker_args = parser.parse_dict(train_info_args)
@@ -263,16 +267,20 @@ if __name__ == '__main__':
                 make_dataset_with_args(dataHelper, data_args.test_file, token_fn_args_dict['test'], data_args,
                                        intermediate_name=intermediate_name, shuffle=False, mode='test'))
 
+
     dm = load_dataset_with_args(dataHelper, training_args,train_files,eval_files, test_files)
 
     model = MyTransformer(dataHelper.eval_labels,tplinker_args=tplinker_args, config=config, model_args=model_args, training_args=training_args)
     checkpoint_callback = ModelCheckpoint(monitor="val_f1", save_last=True, every_n_epochs=1)
+
+
     trainer = Trainer(
+        log_every_n_steps=10,
         callbacks=[checkpoint_callback],
         max_epochs=training_args.max_epochs,
         max_steps=training_args.max_steps,
         accelerator="gpu",
-        devices=data_args.devices,  
+        devices=data_args.devices,
         enable_progress_bar=True,
         default_root_dir=data_args.output_dir,
         gradient_clip_val=training_args.max_grad_norm,
