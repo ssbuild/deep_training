@@ -52,6 +52,7 @@ class TransformerBase(nn.Module):
         super(TransformerBase, self).__init__()
         self.config = config
         self.base_model_prefix = None
+        self._trainer:  typing.Optional["pl.Trainer"]  = None
 
     def forward(self,  *args, **kwargs):
         return self.model(*args, **kwargs)
@@ -65,6 +66,38 @@ class TransformerBase(nn.Module):
 
     def init_weights(self):
         return self.model.init_weights()
+
+    @property
+    def trainer(self):
+        return self._trainer
+
+    @trainer.setter
+    def trainer(self,trainer: typing.Optional["pl.Trainer"]):
+         self._trainer = trainer
+
+    @property
+    def current_epoch(self):
+        return self.trainer.current_epoch if self._trainer else 0
+
+    @property
+    def global_step(self):
+        return self.trainer.global_step if self._trainer else 0
+
+    @property
+    def max_epochs(self) -> typing.Optional[int]:
+        return self.trainer.max_epochs if self._trainer else 0
+
+    @property
+    def min_epochs(self) -> typing.Optional[int]:
+        return self.trainer.min_epochs if self._trainer else 0
+
+    @property
+    def max_steps(self) -> int:
+        return self.trainer.max_steps if self._trainer else 0
+
+    @property
+    def min_steps(self) -> int:
+        return self.trainer.min_steps if self._trainer else 0
 
 
     def from_pretrained(self,CLS, *args, **kwargs):
@@ -173,7 +206,7 @@ class TransformerLightningModule(pl.LightningModule):
         self.__model = model
 
         copy_attr = [
-            'log','log_dict','current_epoch','global_step','global_rank','max_steps','max_epochs','training_args'
+            'log','log_dict'
         ]
         for k in copy_attr:
             setattr(self.__model,k,getattr(self,k))
@@ -205,21 +238,7 @@ class TransformerLightningModule(pl.LightningModule):
             if a is not None:
                 setattr(self,e,a)
 
-    @property
-    def max_epochs(self) -> typing.Optional[int]:
-        return self.trainer.max_epochs if self._trainer else 0
 
-    @property
-    def min_epochs(self) -> typing.Optional[int]:
-        return self.trainer.min_epochs if self._trainer else 0
-
-    @property
-    def max_steps(self) -> int:
-        return self.trainer.max_steps if self._trainer else 0
-
-    @property
-    def min_steps(self) -> int:
-        return self.trainer.min_steps if self._trainer else 0
 
 
     def get_model_lr(self):
@@ -235,7 +254,9 @@ class TransformerLightningModule(pl.LightningModule):
 
 
     def setup(self, stage: str) -> None:
+        setattr(self.__model, 'trainer', self.trainer)
         setattr(self.__model, 'estimated_stepping_batches', self.trainer.estimated_stepping_batches)
+
 
     def configure_optimizers(self):
         return configure_optimizers(self.get_model_lr(), self.training_args,self.trainer.estimated_stepping_batches)

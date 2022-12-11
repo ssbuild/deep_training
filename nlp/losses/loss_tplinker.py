@@ -17,6 +17,7 @@ def seq_masking(logits:torch.Tensor,mask,axis,value=-1e12):
     x = x * mask + (1 - mask) * value
     return x
 
+
 class TplinkerLoss(nn.Module):
     def __init__(self,reduction='mean'):
         super(TplinkerLoss, self).__init__()
@@ -24,7 +25,19 @@ class TplinkerLoss(nn.Module):
         self.criterion = nn.CrossEntropyLoss(reduction=self.reduction)
 
     def forward(self,inputs: torch.Tensor,targets: torch.Tensor):
-        loss = self.criterion(inputs.view(-1, inputs.size()[-1]),targets.view(-1))
+        '''
+            inputs b,t,s,3
+        '''
+        if len(inputs.size()) == 4:
+
+            inputs = torch.transpose(inputs, 3, 1).transpose(2, 3)
+            loss = self.criterion(inputs, targets)
+            loss = loss.mean(-1).sum(-1)
+        else:
+            inputs = torch.transpose(inputs, 2, 1)
+            # b,s
+            loss = self.criterion(inputs,targets)
+            loss = loss.mean(-1)
         return loss
 
 class TplinkerPlusLoss(nn.Module):

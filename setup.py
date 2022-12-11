@@ -12,7 +12,9 @@ setup(
     url='https://github.com/ssbuild/deep_training',
     author='ssbuild',
     author_email='9727464@qq.com',
-    install_requires=['pytorch-lightning>=1.7,1.10','fastdatasets>=0.9.3,<= 1','numpy',
+    install_requires=['pytorch-lightning>=1.7,<1.10',
+                      'fastdatasets>=0.9.3 , <= 1',
+                      'numpy',
                       'transformers','seqmetric','sklearn','scipy','scikit-learn'],
     packages=[p for p in find_packages() if  p not in ignore]
 )

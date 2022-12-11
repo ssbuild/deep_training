@@ -7,6 +7,14 @@
   -  [deep_training-examples](https://github.com/ssbuild/deep_training-example)
 
 ## 更新
+- <strong>2022年12月16</strong>
+  - crf_cascad crf级联抽取实体
+  - mhs_ner 多头选择抽取实体
+  - span ner 可重叠多标签，非重叠多标签两种实现方式抽取实体
+  - tplinkerplus 实体抽取
+  - tpliner 关系抽取模型
+  - tplinkerplus 关系抽取模型
+  - mhslinker 多头选择抽取模型
 - <strong>2022年11月17</strong>: 
   - simcse-unilm 系列
   - simcse-bert-wwm 系列 
@@ -37,12 +45,23 @@
 - <strong>中文分类</strong>:
   - 例子 <strong>tnews 中文分类</strong>
 - <strong>命名实体提取</strong>: 
-  - 例子 <strong>cluener 全局指针提取</strong>
-  - 例子 <strong>cluener crf提取</strong>
+  -  <strong>参考数据</strong>  cluner
+  -  <strong>cluener 全局指针提取</strong>
+  -  <strong>cluener crf提取</strong>
+  -  <strong>cluener crf prompt提取</strong>
+  -  <strong>cluener mhs ner多头选择提取</strong>
+  -  <strong>cluener span指针提取</strong>
+  -  <strong>cluener crf 级联提取</strong>
+  -  <strong>cluener tplinkerplus 提取</strong>
+  -  <strong>cluener w2ner 提取</strong>
 - <strong>关系提取</strong>
-  - 例子 <strong>gplinker 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[duie和法研杯第一阶段数据](https://github.com/ssbuild/cail2022-info-extract)
-  - 例子 <strong>casrel 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[duie和法研杯第一阶段数据](https://github.com/ssbuild/cail2022-info-extract)
-  - 例子 <strong>spliner 关系提取</strong>: &nbsp;&nbsp;参考数据&nbsp;&nbsp;[duie和法研杯第一阶段数据](https://github.com/ssbuild/cail2022-info-extract)
+  -  <strong>参考数据</strong>  [duie和法研杯第一阶段数据](https://github.com/ssbuild/cail2022-info-extract)
+  -  <strong>gplinker 关系提取</strong>
+  -  <strong>casrel 关系提取</strong>
+  -  <strong>spliner 关系提取</strong>
+  -  <strong>mhslinker 关系提取</strong>
+  -  <strong>tplinker 关系提取</strong>
+  -  <strong>tplinkerplus 关系提取</strong>
 - <strong> prompt 系列</strong>: 
   - 例子 <strong>prefixprompt tnews中文分类</strong>
   - 例子 <strong>prefixtuning tnews 中文分类</strong>

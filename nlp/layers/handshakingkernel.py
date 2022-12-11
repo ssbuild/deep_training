@@ -36,7 +36,7 @@ class HandshakingKernel(nn.Module):
         elif inner_enc_type == "linear":
             self.inner_context_layer = nn.Sequential(
                 nn.Linear(hidden_size, hidden_size),
-                LayerNorm(hidden_size, hidden_size)
+                # LayerNorm(hidden_size)
             )
 
 
@@ -68,11 +68,9 @@ class HandshakingKernel(nn.Module):
             shaking_hiddenss: (batch_size, (1 + seq_len) * seq_len / 2, hidden_size) (32, 5+4+3+2+1, 5)
         '''
         bs, seqlen, hidden_size = seq_hiddens.size()
-
-        # mask = (1- mask) * -1000.
-        # mask = mask.unsqueeze(2).expand(-1,-1,hidden_size)
-        # seq_hiddens += mask
-
+        mask = (1- mask) * -1000.
+        mask = mask.unsqueeze(2).expand(-1,-1,hidden_size)
+        seq_hiddens += mask
         shaking_hiddens_list = []
         for ind in range(seqlen):
             repeat_hiddens = seq_hiddens[:, [ind], :].repeat(1, seqlen - ind, 1)

@@ -28,7 +28,7 @@ class TplinkerArguments:
         default='lstm',
         metadata={
             "help": (
-                "one of ['mix_pooling','mean_pooling','max_pooling','lstm'] "
+                "one of ['mix_pooling','mean_pooling','max_pooling','lstm','linear'] "
             )
         },
     )
