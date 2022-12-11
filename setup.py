@@ -15,6 +15,6 @@ setup(
     install_requires=['pytorch-lightning>=1.7,<1.10',
                       'fastdatasets>=0.9.3 , <= 1',
                       'numpy',
-                      'transformers','seqmetric','sklearn','scipy','scikit-learn'],
+                      'transformers','seqmetric','sklearn','scipy','scikit-learn','tqdm'],
     packages=[p for p in find_packages() if  p not in ignore]
 )
