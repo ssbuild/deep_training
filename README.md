@@ -9,12 +9,14 @@
 ## 更新
 - <strong>2022年12月16</strong>
   - crf_cascad crf级联抽取实体
-  - mhs_ner 多头选择抽取实体
   - span ner 可重叠多标签，非重叠多标签两种实现方式抽取实体
+  - mhs_ner 多头选择实体抽取模型
+  - w2ner 实体抽取模型
   - tplinkerplus 实体抽取
   - tpliner 关系抽取模型
   - tplinkerplus 关系抽取模型
-  - mhslinker 多头选择抽取模型
+  - mhslinker 多头选择关系抽取模型
+
 - <strong>2022年11月17</strong>: 
   - simcse-unilm 系列
   - simcse-bert-wwm 系列 
@@ -38,10 +40,11 @@
 
 ## 支持任务
 - <strong>预训练</strong>:
-  - <strong>mlm预训练</strong>例子 bert roberta等一些列中文预训练 &nbsp;&nbsp;参考数据&nbsp;&nbsp;[THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
-  - <strong>lm预训练</strong>例子 gpt2等一些列中文预训练 &nbsp;&nbsp;参考数据&nbsp;&nbsp;[THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
-  - <strong>seq2seq 预训练</strong>例子 t5 small等一些列中文预训练 &nbsp;&nbsp;参考数据&nbsp;&nbsp;[THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
-  - <strong>unilm 预训练</strong>例子 unilm bert roberta 等一些列中文预训练 &nbsp;&nbsp;参考数据&nbsp;&nbsp;[THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
+  - <strong> 数据参考 </strong> [THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
+  - <strong>mlm预训练</strong>例子 bert roberta等一些列中文预训练 
+  - <strong>lm预训练</strong>例子 gpt2等一些列中文预训练 
+  - <strong>seq2seq 预训练</strong>例子 t5 small等一些列中文预训练 &nbsp;&nbsp;
+  - <strong>unilm 预训练</strong>例子 unilm bert roberta 等一些列中文预训练 &nbsp;&nbsp
 - <strong>中文分类</strong>:
   - 例子 <strong>tnews 中文分类</strong>
 - <strong>命名实体提取</strong>: 
