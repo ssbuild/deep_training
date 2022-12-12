@@ -82,7 +82,7 @@ def load_tokenizer_and_config_with_args(dataHelper: DataHelper,model_args: Model
                             **kwargs_args
                             )
 
-    if hasattr(config,'num_labels'):
+    if label2id is not None and hasattr(config,'num_labels'):
         print('*' * 30,'num_labels=', config.num_labels)
         print(label2id)
         print(id2label)

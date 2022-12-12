@@ -57,9 +57,9 @@ class TransformerBase(nn.Module):
     def forward(self,  *args, **kwargs):
         return self.model(*args, **kwargs)
 
-    def compute_loss(self, *args,**kwargs) -> tuple:
-        kwargs.pop('batch_idx',None)
-        return self.model(*args, **kwargs)
+    def compute_loss(self, batch,batch_idx) -> tuple:
+        # kwargs.pop('batch_idx',None)
+        return self.model(**batch)
 
     def post_init(self):
         return self.model.post_init()
@@ -189,7 +189,7 @@ class TransformerLightningModule(pl.LightningModule):
         self.config = config
         self.model_args = model_args
         self.training_args = training_args
-        self.__model : TransformerBase = None
+        self.__model : typing.Optional[TransformerBase] = None
         if hasattr(self,'__ALTER_CLASS__') and len(self.__ALTER_CLASS__) > 0:
             self.set_model(self.__ALTER_CLASS__[0](*args, **kwargs))
 
@@ -249,8 +249,8 @@ class TransformerLightningModule(pl.LightningModule):
         return self.model.compute_loss(*args, **kwargs)
 
 
-    def forward(self, **inputs):
-        return self.model(**inputs)
+    def forward(self,*args, **kwargs):
+        return self.model(*args,**kwargs)
 
 
     def setup(self, stage: str) -> None:
