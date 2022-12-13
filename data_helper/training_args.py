@@ -214,6 +214,9 @@ class DataArguments:
     data_backend: Optional[str] = field(
         default=None, metadata={"help": "record,leveldb,lmdb,memory,memory_raw"}
     )
+    convert_file: Optional[bool] = field(
+        default=True, metadata={"help": "是否需要转换语料到record记录"}
+    )
     train_file: Optional[str] = field(
         default=None, metadata={"help": "训练语料，多个文件“,”分割"}
     )

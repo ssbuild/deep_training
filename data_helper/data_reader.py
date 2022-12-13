@@ -111,29 +111,48 @@ def make_dataset_with_args(dataHelper,input_files, fn_args, data_args:DataArgume
         num_process_worker: int , num of process data
     '''
     dataHelper: DataHelper
-    intermediate_output = get_intermediate_file(data_args,intermediate_name,mode)
-    if isinstance(intermediate_output, list) or not os.path.exists(intermediate_output) or overwrite:
-        data = dataHelper.on_get_corpus(input_files, mode)
-        dataHelper.make_dataset(intermediate_output, data, fn_args, num_process_worker=num_process_worker,shuffle=shuffle)
+
+    if data_args.convert_file:
+        intermediate_output = get_intermediate_file(data_args,intermediate_name,mode)
+        if isinstance(intermediate_output, list) or not os.path.exists(intermediate_output) or overwrite:
+            data = dataHelper.on_get_corpus(input_files, mode)
+            dataHelper.make_dataset(intermediate_output, data, fn_args, num_process_worker=num_process_worker,shuffle=shuffle)
+    else:
+        intermediate_output = input_files[0]
     return intermediate_output
 
 
+class object_for_dataset:
+    def __init__(self,train_dataloader,val_dataloader,test_dataloader):
+        self._train_dataloader = train_dataloader
+        self._val_dataloader = val_dataloader
+        self._test_dataloader = test_dataloader
 
+
+    def train_dataloader(self):
+        return self._train_dataloader
+
+
+    def val_dataloader(self):
+        return self._val_dataloader
+
+    def test_dataloader(self):
+        return self._test_dataloader
+
+'''
+   dataHelper: DataHelper
+   training_args: args
+   allow_train_shuffle: shuffle data for load dataset
+'''
 def load_dataset_with_args(dataHelper,
                            training_args: TrainingArguments,
                            train_file,
                            eval_file,
                            test_file,
                            allow_train_shuffle=True):
-    '''
-       dataHelper: DataHelper
-       training_args: args
-       allow_train_shuffle: shuffle data for load dataset
-   '''
 
     dataHelper: DataHelper
     dm = LightningDataModule()
-
     collate_fn,batch_transform,transform = None,None,None
     if dataHelper.collate_fn != DataHelper.collate_fn:
         collate_fn = dataHelper.collate_fn
@@ -164,10 +183,13 @@ def load_dataset_with_args(dataHelper,
                                               collate_fn=collate_fn,
                                               batch_transform_fn=batch_transform)
 
+    obj = object_for_dataset(train_dataloader,val_dataloader,test_dataloader)
+
+
     if train_dataloader is not None:
-        dm.train_dataloader = lambda: train_dataloader
+        dm.train_dataloader = obj.train_dataloader
     if val_dataloader is not None:
-        dm.val_dataloader = lambda: val_dataloader
+        dm.val_dataloader = obj.val_dataloader
     if test_dataloader is not None:
-        dm.test_dataloader = lambda: test_dataloader
+        dm.test_dataloader = obj.test_dataloader
     return dm

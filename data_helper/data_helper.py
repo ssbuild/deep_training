@@ -15,6 +15,7 @@ from fastdatasets.common.iterable_dataset import IterableDatasetBase
 from fastdatasets.common.random_dataset import RandomDatasetBase
 from .data_writer import DataWriteHelper
 from ..utils.maskedlm import make_gpt2_sample
+from fastdatasets.leveldb import LEVELDB
 
 __all__ = [
     'DataHelper',
@@ -175,8 +176,8 @@ class DataHelper(DataPreprocessHelper,DataTransformHelper):
             dataset: IterableDatasetBase
             if transform_fn:
                 dataset = dataset.apply(transform_fn)
-            if shuffle:
-                dataset = dataset.shuffle(1024)
+            # if shuffle:
+            #     dataset = dataset.shuffle(1024)
 
             if batch_transform_fn:
                 dataset = dataset.batch(batch_size).apply(batch_transform_fn)
@@ -186,7 +187,9 @@ class DataHelper(DataPreprocessHelper,DataTransformHelper):
             batch_size = batch_size if batch_transform_fn is None else None
             dataset_ = DataLoader(torch_IterableDataset(dataset),
                                   batch_size=batch_size,
-                                  collate_fn=collate_fn, num_workers=num_workers)
+                                  collate_fn=collate_fn,
+                                  num_workers=num_workers,
+                                  shuffle=shuffle)
 
         else:
             dataset: RandomDatasetBase
@@ -194,14 +197,15 @@ class DataHelper(DataPreprocessHelper,DataTransformHelper):
                 dataset = dataset.apply(transform_fn)
             if batch_transform_fn:
                 dataset = dataset.batch(batch_size).apply(batch_transform_fn)
-            if shuffle:
-                dataset = dataset.shuffle(-1)
+            # if shuffle:
+            #     dataset = dataset.shuffle(-1)
 
             batch_size = batch_size if batch_transform_fn is None else None
             dataset_ = DataLoader(torch_Dataset(dataset),
                                   batch_size=batch_size,
                                   collate_fn=collate_fn,
-                                  num_workers=num_workers,shuffle=shuffle)
+                                  num_workers=num_workers,
+                                  shuffle=shuffle)
         return dataset_
 
     def make_dataset(self,outfile: typing.Union[str,list],

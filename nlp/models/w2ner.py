@@ -147,7 +147,7 @@ class TransformerForW2ner(TransformerModel):
                                      w2nerArguments.ffnn_hid_size,
                                      w2nerArguments.out_dropout)
 
-        self.cln = LayerNorm(config.lstm_hid_size, config.lstm_hid_size, conditional=True)
+        self.cln = LayerNorm(config.lstm_hid_size, config.lstm_hid_size)
 
 
     def get_model_lr(self):
@@ -158,7 +158,7 @@ class TransformerForW2ner(TransformerModel):
             (self.crf, self.config.task_specific_params['learning_rate_for_task']),
         ]
 
-    def mlp(self, bert_embs, grid_mask2d, dist_inputs, pieces2word, sent_length):
+    def mlp(self, bert_embs, grid_mask2d, dist_inputs, pieces2word,attr_mask):
         '''
         # :param bert_inputs: [B, L']
         :param grid_mask2d: [B, L, L]
@@ -173,6 +173,7 @@ class TransformerForW2ner(TransformerModel):
         # else:
         #     bert_embs = bert_embs[0]
 
+        sent_length = attr_mask.sum(-1)
         length = pieces2word.size(1)
 
         min_value = torch.min(bert_embs).item()
@@ -214,7 +215,7 @@ class TransformerForW2ner(TransformerModel):
         logits = outputs[0]
         if self.model.training:
             logits = self.dropout(logits)
-
+        logits = self.mlp(logits)
         if labels is not None:
             seqs_labels = torch.where(seqs_labels >= 0, seqs_labels, torch.zeros_like(seqs_labels))
             loss1 = self.crf(emissions=seqs_logits, tags=seqs_labels, mask=attention_mask)
