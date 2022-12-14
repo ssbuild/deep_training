@@ -21,7 +21,7 @@ from ..layers.w2ner import CoPredictor,ConvolutionLayer
 
 @dataclass
 class W2nerArguments:
-    use_bert_last_4_layers: typing.Optional[bool] = field(
+    use_last_4_layers: typing.Optional[bool] = field(
         default=False,
         metadata={
             "help": (
@@ -135,7 +135,8 @@ def extract_lse(outputs):
 class TransformerForW2ner(TransformerModel):
     def __init__(self,w2nerArguments: W2nerArguments, *args,**kwargs):
         super(TransformerForW2ner, self).__init__(*args,**kwargs)
-       
+
+        self.w2nerArguments = w2nerArguments
         config = self.config
 
         self.lstm_hid_size = w2nerArguments.lstm_hid_size
@@ -189,11 +190,6 @@ class TransformerForW2ner(TransformerModel):
         :param sent_length: [B]
         :return: blln
         '''
-        # bert_embs = self.bert(input_ids=bert_inputs, attention_mask=bert_inputs.ne(0).float())
-        # if self.use_bert_last_4_layers:
-        #     bert_embs = torch.stack(bert_embs[2][-4:], dim=-1).mean(-1)
-        # else:
-        #     bert_embs = bert_embs[0]
 
         sent_length = attr_mask.sum(-1)
         length = pieces2word.size(1)
@@ -223,8 +219,8 @@ class TransformerForW2ner(TransformerModel):
         conv_outputs = torch.masked_fill(conv_outputs, grid_mask2d.eq(0).unsqueeze(-1), 0.0)
         outputs = self.predictor(word_reps, word_reps, conv_outputs)
 
-        # outputs = seq_masking(outputs,attr_mask,1,value=1e-12)
-        # outputs = seq_masking(outputs,attr_mask,2,value=1e-12)
+        outputs = seq_masking(outputs,attr_mask,1,value=1e-12)
+        outputs = seq_masking(outputs,attr_mask,2,value=1e-12)
         return outputs,sent_length
 
     def compute_loss(self,batch,batch_idx):
@@ -233,8 +229,14 @@ class TransformerForW2ner(TransformerModel):
         dist_inputs= batch.pop('dist_inputs',None)
         pieces2word= batch.pop('pieces2word',None)
         attention_mask = batch['attention_mask']
-        outputs = self(**batch)
-        logits = outputs[0]
+
+        if self.w2nerArguments.use_last_4_layers:
+            outputs = self(**batch,output_hidden_states=True)
+            logits = torch.stack(outputs[2][-4:], dim=-1).mean(-1)
+        else:
+            outputs = self(**batch)
+            logits = outputs[0]
+
         grid_mask2d = grid_mask2d.clone()
         logits,seqlens = self.mlp(logits, grid_mask2d, dist_inputs, pieces2word,attention_mask)
 
