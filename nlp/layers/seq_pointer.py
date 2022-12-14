@@ -18,8 +18,7 @@ def f1_metric_for_pointer(y_true, y_pred):
     return 2 * torch.sum(y_true * y_pred) / torch.sum(y_true + y_pred)
 
 
-def seq_masking(logits:torch.Tensor,mask,axis,value=-1e12):
-    x = logits
+def seq_masking(x:torch.Tensor,mask,axis,value=-1e12):
     if mask is None:
         return x
     for _ in range(axis - 1):
