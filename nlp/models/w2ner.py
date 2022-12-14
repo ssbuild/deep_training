@@ -118,17 +118,16 @@ class W2nerArguments:
 def extract_lse(outputs):
     batch_result = []
     for logits,seqlen in zip(outputs[0],outputs[1]):
-        logits[[0, -1]] = -np.inf
-        logits[:, [0, -1]] = -np.inf
         # l,l,n
         logits = logits.argmax(-1)
-        logits = logits[:seqlen,:seqlen]
+        logits = logits[:seqlen, :seqlen]
+        logits[[0, -1]] = 0
+        logits[:, [0, -1]] = 0
         logits_pred = np.tril(logits)
         lse = []
         for e,s in zip(*np.where(logits_pred > 1)):
             l = logits_pred[e,s]
             lse.append((l-2,s-1,e-1))
-        print(lse)
         batch_result.append(lse)
     return batch_result
 
@@ -167,7 +166,7 @@ class TransformerForW2ner(TransformerModel):
                                      w2nerArguments.out_dropout)
 
         self.cln = LayerNorm(w2nerArguments.lstm_hid_size, w2nerArguments.lstm_hid_size)
-        self.criterion = nn.CrossEntropyLoss(reduction='none')
+        self.criterion = nn.CrossEntropyLoss(reduction='mean')
 
 
     def get_model_lr(self):
@@ -234,24 +233,15 @@ class TransformerForW2ner(TransformerModel):
         dist_inputs= batch.pop('dist_inputs',None)
         pieces2word= batch.pop('pieces2word',None)
         attention_mask = batch['attention_mask']
-
         outputs = self(**batch)
-
         logits = outputs[0]
         grid_mask2d = grid_mask2d.clone()
-        # if self.model.training:
-        #     logits = self.dropout(logits)
         logits,seqlens = self.mlp(logits, grid_mask2d, dist_inputs, pieces2word,attention_mask)
 
 
         if labels is not None:
-
-
-            # labels = labels[grid_mask2d].long()
-            # loss = self.criterion(logits[grid_mask2d],labels)
-            loss = self.criterion(torch.transpose(logits,1,3), labels.long())
-            mask = torch.unsqueeze(attention_mask,1).expand(-1,-1,attention_mask.size(-1))
-            loss =  (mask * loss).sum() / mask.sum()
+            labels = labels[grid_mask2d].long()
+            loss = self.criterion(logits[grid_mask2d],labels)
             outputs = (loss,logits,seqlens,labels)
         else:
             outputs = (logits,seqlens,)
