@@ -118,7 +118,7 @@ class TrainingArguments:
     )
     scheduler_type: str = field(
         default='linear',
-        metadata={"help": "one of [linear,CAWR,CAL,Step,ReduceLROnPlateau]"},
+        metadata={"help": "one of [linear,WarmupCosine,CAWR,CAL,Step,ReduceLROnPlateau]"},
     )
 
     scheduler: dict = field(

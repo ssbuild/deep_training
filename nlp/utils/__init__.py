@@ -6,6 +6,8 @@ import typing
 from torch import optim
 from torch.optim import AdamW,Adam
 from transformers import get_linear_schedule_with_warmup
+
+from ..scheduler import WarmupCosineSchedule
 from ...data_helper import TrainingArguments
 
 
@@ -69,6 +71,8 @@ def configure_optimizers(model_attrs: typing.Union[typing.List,typing.Tuple],
         scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=decay_steps, gamma=decay_rate)
     elif training_args.scheduler_type.lower() == 'ReduceLROnPlateau'.lower():
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", verbose=True, patience=6)
+    elif training_args.scheduler_type.lower() == 'WarmupCosine'.lower():
+        scheduler = WarmupCosineSchedule(optimizer, warmup_steps=training_args.warmup_steps, t_total=estimated_stepping_batches)
 
 
     if scheduler:

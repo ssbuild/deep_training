@@ -218,7 +218,6 @@ class TransformerForW2ner(TransformerModel):
         conv_outputs = self.convLayer(conv_inputs)
         conv_outputs = torch.masked_fill(conv_outputs, grid_mask2d.eq(0).unsqueeze(-1), 0.0)
         outputs = self.predictor(word_reps, word_reps, conv_outputs)
-
         outputs = seq_masking(outputs,attr_mask,1,value=1e-12)
         outputs = seq_masking(outputs,attr_mask,2,value=1e-12)
         return outputs,sent_length
