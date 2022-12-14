@@ -75,7 +75,8 @@ class MLP(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        x = self.dropout(x)
+        if self.training:
+            x = self.dropout(x)
         x = self.linear(x)
         x = self.activation(x)
         return x
@@ -92,10 +93,18 @@ class CoPredictor(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, y, z):
-        h = self.dropout(self.mlp1(x))
-        t = self.dropout(self.mlp2(y))
-        o1 = self.biaffine(h, t)
+        if self.training:
+            h = self.dropout(self.mlp1(x))
+            t = self.dropout(self.mlp2(y))
+            o1 = self.biaffine(h, t)
 
-        z = self.dropout(self.mlp_rel(z))
-        o2 = self.linear(z)
+            z = self.dropout(self.mlp_rel(z))
+            o2 = self.linear(z)
+        else:
+            h = self.mlp1(x)
+            t = self.mlp2(y)
+            o1 = self.biaffine(h, t)
+
+            z = self.mlp_rel(z)
+            o2 = self.linear(z)
         return o1 + o2

@@ -201,7 +201,8 @@ class TransformerForW2ner(TransformerModel):
         _bert_embs = torch.masked_fill(_bert_embs, pieces2word.eq(0).unsqueeze(-1), min_value)
         word_reps, _ = torch.max(_bert_embs, dim=2)
 
-        word_reps = self.dropout(word_reps)
+        if self.training:
+            word_reps = self.dropout(word_reps)
         packed_embs = pack_padded_sequence(word_reps, sent_length.cpu(), batch_first=True, enforce_sorted=False)
         packed_outs, (hidden, _) = self.encoder(packed_embs)
         word_reps, _ = pad_packed_sequence(packed_outs, batch_first=True, total_length=sent_length.max())
