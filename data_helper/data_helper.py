@@ -153,7 +153,7 @@ class DataHelper(DataPreprocessHelper,DataTransformHelper):
                  batch_transform_fn: typing.Callable = None,
                  shuffle=False,
                  infinite=False,
-                 cycle_length=4, block_length=4):
+                 cycle_length=4, block_length=10):
         if not files:
             return None
 
@@ -176,8 +176,9 @@ class DataHelper(DataPreprocessHelper,DataTransformHelper):
             dataset: IterableDatasetBase
             if transform_fn:
                 dataset = dataset.apply(transform_fn)
-            # if shuffle:
-            #     dataset = dataset.shuffle(1024)
+
+            if shuffle:
+                dataset = dataset.shuffle(4096)
 
             if batch_transform_fn:
                 dataset = dataset.batch(batch_size).apply(batch_transform_fn)
@@ -188,8 +189,7 @@ class DataHelper(DataPreprocessHelper,DataTransformHelper):
             dataset_ = DataLoader(torch_IterableDataset(dataset),
                                   batch_size=batch_size,
                                   collate_fn=collate_fn,
-                                  num_workers=num_workers,
-                                  shuffle=shuffle)
+                                  num_workers=num_workers)
 
         else:
             dataset: RandomDatasetBase
