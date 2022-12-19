@@ -1,21 +1,21 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/11/9 11:02
 import json
+import logging
 import os
 import typing
-import torch
-import numpy as np
-from fastdatasets.record import RECORD
-from fastdatasets.leveldb import LEVELDB
-from fastdatasets.lmdb import LMDB
-from fastdatasets.utils.numpyadapter import NumpyReaderAdapter,E_file_backend
-from torch.utils.data import DataLoader
-from fastdatasets.torch_dataset import IterableDataset as torch_IterableDataset,Dataset as torch_Dataset
+
 from fastdatasets.common.iterable_dataset import IterableDatasetBase
 from fastdatasets.common.random_dataset import RandomDatasetBase
+from fastdatasets.leveldb import LEVELDB
+from fastdatasets.lmdb import LMDB
+from fastdatasets.record import RECORD
+from fastdatasets.torch_dataset import IterableDataset as torch_IterableDataset, Dataset as torch_Dataset
+from fastdatasets.utils.numpyadapter import NumpyReaderAdapter, E_file_backend
+
+from .training_args import DataArguments
 from .data_writer import DataWriteHelper
 from ..utils.maskedlm import make_gpt2_sample
-from fastdatasets.leveldb import LEVELDB
 
 __all__ = [
     'DataHelper',
@@ -66,61 +66,13 @@ class DataPreprocessHelper(object):
                     D.append(line)
         return D
 
-class DataTransformHelper(object):
-    @staticmethod
-    def collate_fn(batch):
-        return batch
-        # o = {}
-        # for i, b in enumerate(batch):
-        #     if i == 0:
-        #         for k in b:
-        #             o[k] = [torch.tensor(b[k])]
-        #     else:
-        #         for k in b:
-        #             o[k].append(torch.tensor(b[k]))
-        # for k in o:
-        #     o[k] = torch.stack(o[k])
-        #
-        # max_len = torch.max(o.pop('seqlen'))
-        #
-        # o['input_ids'] = o['input_ids'][:, :max_len]
-        # o['attention_mask'] = o['attention_mask'][:, :max_len]
-        # if 'token_type_ids' in o:
-        #     o['token_type_ids'] = o['token_type_ids'][:, :max_len]
-        # o['labels'] = o['labels'][:, :max_len]
-        # return o
-
-    @staticmethod
-    def transform(x):
-        return x
-    @staticmethod
-    def batch_transform(batch):
-        return batch
-        # o = {}
-        # for i, b in enumerate(batch):
-        #     if i == 0:
-        #         for k in b:
-        #             o[k] = [torch.tensor(b[k])]
-        #     else:
-        #         for k in b:
-        #             o[k].append(torch.tensor(b[k]))
-        # for k in o:
-        #     o[k] = torch.stack(o[k])
-        #
-        # max_len = torch.max(o.pop('seqlen'))
-        #
-        # o['input_ids'] = o['input_ids'][:, :max_len]
-        # o['attention_mask'] = o['attention_mask'][:, :max_len]
-        # if 'token_type_ids' in o:
-        #     o['token_type_ids'] = o['token_type_ids'][:, :max_len]
-        # o['labels'] = o['labels'][:, :max_len]
-        # return o
 
 
-class DataHelper(DataPreprocessHelper,DataTransformHelper):
+
+
+class DataHelper(DataPreprocessHelper):
     def __init__(self,backend: typing.Union[E_file_backend, str],data_process_fn=None,*args,**kwargs):
         DataPreprocessHelper.__init__(self)
-        DataTransformHelper.__init__(self)
 
         self.backend = backend
         self.data_process_fn = self.on_data_process if data_process_fn is None else data_process_fn
@@ -144,16 +96,7 @@ class DataHelper(DataPreprocessHelper,DataTransformHelper):
         返回: 
             torch DataLoader
     """
-    def load_dataset(self,
-                 files: typing.Union[typing.List, str],
-                 batch_size: int,
-                 num_workers: int = 0,
-                 collate_fn:typing.Callable = None,
-                 transform_fn: typing.Callable = None,
-                 batch_transform_fn: typing.Callable = None,
-                 shuffle=False,
-                 infinite=False,
-                 cycle_length=4, block_length=10):
+    def load_dataset(self,files: typing.Union[typing.List, str],shuffle=False,infinite=False,cycle_length=4, block_length=10):
         if not files:
             return None
 
@@ -171,48 +114,64 @@ class DataHelper(DataPreprocessHelper,DataTransformHelper):
 
         dataHelper = self
         dataset = dataHelper.load_numpy_dataset(files, cycle_length=cycle_length, block_length=block_length)
-
         if isinstance(dataset, typing.Iterator):
             dataset: IterableDatasetBase
-            if transform_fn:
-                dataset = dataset.apply(transform_fn)
 
             if shuffle:
                 dataset = dataset.shuffle(4096)
 
-            if batch_transform_fn:
-                dataset = dataset.batch(batch_size).apply(batch_transform_fn)
-
             if infinite:
                 dataset = dataset.repeat(-1)
-            batch_size = batch_size if batch_transform_fn is None else None
-            dataset_ = DataLoader(torch_IterableDataset(dataset),
-                                  batch_size=batch_size,
-                                  collate_fn=collate_fn,
-                                  num_workers=num_workers)
+
+            dataset_ = torch_IterableDataset(dataset)
 
         else:
             dataset: RandomDatasetBase
-            if transform_fn:
-                dataset = dataset.apply(transform_fn)
-            if batch_transform_fn:
-                dataset = dataset.batch(batch_size).apply(batch_transform_fn)
-            # if shuffle:
-            #     dataset = dataset.shuffle(-1)
-
-            batch_size = batch_size if batch_transform_fn is None else None
-            dataset_ = DataLoader(torch_Dataset(dataset),
-                                  batch_size=batch_size,
-                                  collate_fn=collate_fn,
-                                  num_workers=num_workers,
-                                  shuffle=shuffle)
+            if shuffle:
+                dataset = dataset.shuffle(-1)
+            dataset_ = torch_Dataset(dataset)
         return dataset_
 
-    def make_dataset(self,outfile: typing.Union[str,list],
-                     data,
-                     input_fn_args: typing.Tuple,
-                     num_process_worker: int = 8,
-                     shuffle=True):
+    # 返回制作特征数据的中间文件
+    def get_intermediate_file(self,data_args: DataArguments, intermediate_name, mode):
+        if data_args.data_backend.startswith('memory'):
+            # 内存数据: list
+            intermediate_output = []
+            logging.info('make data {} {}...'.format(data_args.output_dir,
+                                                     intermediate_name + '-' + mode + '.' + self.backend))
+        else:
+            # 本地文件数据: 文件名
+            intermediate_output = os.path.join(data_args.output_dir,
+                                               intermediate_name + '-' + mode + '.' + self.backend)
+            logging.info('make data {}...'.format(intermediate_output))
+        return intermediate_output
+
+    def make_dataset_with_args(self, input_files, fn_args, data_args: DataArguments, intermediate_name, shuffle,
+                               mode, num_process_worker=0, overwrite=False):
+        '''
+            dataHelper: DataHelper
+            save_fn_args: tuple param for DataHelper.on_data_process
+            training_args: args
+            intermediate_name: str
+            allow_train_shuffle: bool， read data is allow shuffle ， but write are in order
+            num_process_worker: int , num of process data
+        '''
+        dataHelper: DataHelper
+
+        if data_args.convert_file:
+            intermediate_output = self.get_intermediate_file(data_args, intermediate_name, mode)
+            if isinstance(intermediate_output, list) or not os.path.exists(intermediate_output) or overwrite:
+                data = self.on_get_corpus(input_files, mode)
+                self.make_dataset(intermediate_output,
+                                  data,
+                                  fn_args,
+                                  num_process_worker=num_process_worker,
+                                  shuffle=shuffle)
+        else:
+            intermediate_output = input_files[0]
+        return intermediate_output
+
+    def make_dataset(self,outfile: typing.Union[str,list],data,input_fn_args: typing.Tuple,num_process_worker: int = 0,shuffle=True):
 
         self.on_data_ready()
         fw = DataWriteHelper(self.data_process_fn, input_fn_args,

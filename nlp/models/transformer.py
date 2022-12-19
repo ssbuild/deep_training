@@ -298,14 +298,30 @@ class TransformerLightningModule(pl.LightningModule):
                 else:
                     raise ValueError('not support')
         else:
-            o['outputs'] = [out.cpu().numpy()]
+            o['outputs'] = out.cpu().numpy()
         return o
 
     def test_step(self, batch, batch_idx):
-        x, y = batch
-        outputs = self.compute_loss(x,batch_idx=batch_idx)
-        return [t.cpu().numpy() for t in outputs]
-
+        outputs = self.compute_loss(batch, batch_idx=batch_idx)
+        o = {}
+        out = outputs
+        if isinstance(out, (tuple, list)):
+            o['outputs'] = []
+            obj = o['outputs']
+            for t in out:
+                if t is None:
+                    obj.append(t)
+                elif isinstance(t, torch.Tensor):
+                    obj.append(t.cpu().numpy())
+                elif isinstance(t, list):
+                    obj.append([tt.cpu().numpy() for tt in t])
+                elif isinstance(t, dict):
+                    obj.append({k: v.cpu().numpy() for k, v in t.items()})
+                else:
+                    raise ValueError('not support')
+        else:
+            o['outputs'] = out.cpu().numpy()
+        return o
 
 
 
