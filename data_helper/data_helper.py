@@ -5,11 +5,13 @@ import logging
 import os
 import typing
 
+import fastdatasets
 from fastdatasets.common.iterable_dataset import IterableDatasetBase
 from fastdatasets.common.random_dataset import RandomDatasetBase
 from fastdatasets.leveldb import LEVELDB
 from fastdatasets.lmdb import LMDB
 from fastdatasets.record import RECORD
+from fastdatasets import memory as MEMORY
 from fastdatasets.torch_dataset import IterableDataset as torch_IterableDataset, Dataset as torch_Dataset
 from fastdatasets.utils.numpyadapter import NumpyReaderAdapter, E_file_backend
 
@@ -96,7 +98,16 @@ class DataHelper(DataPreprocessHelper):
         返回: 
             torch DataLoader
     """
-    def load_dataset(self,files: typing.Union[typing.List, str],shuffle=False,infinite=False,cycle_length=4, block_length=10):
+    def load_dataset(self,files: typing.Union[typing.List, str],
+                     shuffle: bool=False,
+                     infinite: bool=False,
+                     cycle_length: int=4,
+                     block_length: int=10,
+                     num_processes: int = 1,
+                     process_index: int = 0,
+                     convert_randomdataset=False,
+                     ):
+        assert process_index <= num_processes and num_processes >= 1
         if not files:
             return None
 
@@ -114,8 +125,18 @@ class DataHelper(DataPreprocessHelper):
 
         dataHelper = self
         dataset = dataHelper.load_numpy_dataset(files, cycle_length=cycle_length, block_length=block_length)
+
+        if convert_randomdataset and isinstance(dataset, typing.Iterator):
+            logging.info('load dataset to memory...')
+            raw_data = [i for i in dataset]
+            dataset = MEMORY.load_dataset.SingleRandomDataset(raw_data)
+
+
         if isinstance(dataset, typing.Iterator):
             dataset: IterableDatasetBase
+
+            if num_processes > 1:
+                dataset = dataset.mutiprocess(num_processes, process_index)
 
             if shuffle:
                 dataset = dataset.shuffle(4096)
@@ -123,10 +144,14 @@ class DataHelper(DataPreprocessHelper):
             if infinite:
                 dataset = dataset.repeat(-1)
 
+
             dataset_ = torch_IterableDataset(dataset)
 
         else:
             dataset: RandomDatasetBase
+            if num_processes > 1:
+                dataset = dataset.mutiprocess(num_processes, process_index)
+
             if shuffle:
                 dataset = dataset.shuffle(-1)
             dataset_ = torch_Dataset(dataset)
