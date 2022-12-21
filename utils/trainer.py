@@ -37,6 +37,7 @@ class CheckpointCallback(Checkpoint):
         pl_module.eval()
         with torch.no_grad():
             self.on_save_model(trainer,pl_module)
+        pl_module.train()
 
     def on_train_batch_end(
             self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", outputs: STEP_OUTPUT, batch: Any,
