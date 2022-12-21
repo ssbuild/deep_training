@@ -251,15 +251,15 @@ class TransformerForW2ner(TransformerModel):
 
     # def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
     #     label2id = self.config.label2id
-    #     preds, trues = [], []
+    #     y_preds, y_trues = [], []
     #     eval_labels = self.eval_labels
     #     for i, o in enumerate(outputs):
     #         logits,seqlens, _ = o['outputs']
-    #         preds.extend(extract_lse([logits,seqlens]))
+    #         y_preds.extend(extract_lse([logits,seqlens]))
     #         bs = len(logits)
-    #         trues.extend(eval_labels[i * bs: (i + 1) * bs])
+    #         y_trues.extend(eval_labels[i * bs: (i + 1) * bs])
     #
-    #     f1, str_report = metric_for_pointer(trues, preds, label2id)
+    #     f1, str_report = metric_for_pointer(y_trues, y_preds, label2id)
     #     print(f1)
     #     print(str_report)
     #     self.log('val_f1', f1, prog_bar=True)

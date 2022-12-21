@@ -8,20 +8,22 @@ from pytorch_lightning.utilities.types import STEP_OUTPUT
 from pytorch_lightning import Trainer
 
 __all__ = [
-    'AutoCheckpointCallback'
+    'CheckpointCallback'
 ]
 
 
-class AutoCheckpointCallback(Checkpoint):
+class CheckpointCallback(Checkpoint):
     def __init__(self,
                  every_n_train_steps: Optional[int] = None,
-                 every_n_epochs: Optional[int] = 1):
+                 every_n_epochs: Optional[int] = 1,
+                 monitor='val_f1'):
         self.__steps = 0
         self.__epochs = 0
         self.__every_n_train_steps = every_n_train_steps
         self.__every_n_epochs = every_n_epochs
         assert not (self.__every_n_epochs is None and self.__every_n_train_steps is None)
         self.best = {}
+        self.monitor = monitor
 
 
     def on_save_model(

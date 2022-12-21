@@ -272,7 +272,7 @@ class PrefixTransformerPointer(PrefixTransformerForModel):
     def validation_epoch_end(self, outputs: typing.Union[EPOCH_OUTPUT, typing.List[EPOCH_OUTPUT]]) -> None:
         id2label = self.config.id2label
         threshold = 1e-8
-        preds, trues = [], []
+        y_preds, y_trues = [], []
         for o in outputs:
             logits, label = o['outputs']
             logits[:, :, [0, -1]] -= np.inf
@@ -282,12 +282,12 @@ class PrefixTransformerPointer(PrefixTransformerForModel):
                 a_result = []
                 for (l, s, e) in zip(*np.where(p > threshold)):
                     a_result.append((l, s, e))
-                preds.append(a_result)
+                y_preds.append(a_result)
                 b_result = []
                 for (l, s, e) in zip(*np.where(t > threshold)):
                     b_result.append((l, s, e))
-                trues.append(b_result)
-        f1, str_report = metric_for_pointer(trues, preds, id2label)
+                y_trues.append(b_result)
+        f1, str_report = metric_for_pointer(y_trues, y_preds, id2label)
         print(f1)
         print(str_report)
         self.log('val_f1', f1, prog_bar=True)

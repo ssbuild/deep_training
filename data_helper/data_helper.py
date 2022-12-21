@@ -131,11 +131,11 @@ class DataHelper(DataPreprocessHelper):
             else:
                 files = files_
 
-        dataHelper = self
-        dataset = dataHelper.load_numpy_dataset(files,
-                                                cycle_length=cycle_length,
-                                                block_length=block_length,
-                                                with_record_iterable_dataset=with_record_iterable_dataset)
+
+        dataset = self.load_numpy_dataset(files,
+                                          cycle_length=cycle_length,
+                                          block_length=block_length,
+                                          with_record_iterable_dataset=with_record_iterable_dataset)
 
         #加载至内存
         if with_load_memory:
@@ -159,8 +159,7 @@ class DataHelper(DataPreprocessHelper):
             if infinite:
                 dataset = dataset.repeat(-1)
 
-
-            dataset_ = torch_IterableDataset(dataset)
+            dataset = torch_IterableDataset(dataset)
 
         else:
             dataset: RandomDatasetBase
@@ -169,8 +168,9 @@ class DataHelper(DataPreprocessHelper):
 
             if shuffle:
                 dataset = dataset.shuffle(-1)
-            dataset_ = torch_Dataset(dataset)
-        return dataset_
+
+            dataset = torch_Dataset(dataset)
+        return dataset
 
     # 返回制作特征数据的中间文件
     def get_intermediate_file(self,data_args: DataArguments, intermediate_name, mode):
@@ -186,8 +186,14 @@ class DataHelper(DataPreprocessHelper):
             logging.info('make data {}...'.format(intermediate_output))
         return intermediate_output
 
-    def make_dataset_with_args(self, input_files, fn_args, data_args: DataArguments, intermediate_name, shuffle,
-                               mode, num_process_worker=0, overwrite=False):
+    def make_dataset_with_args(self, input_files,
+                               fn_args: callable,
+                               data_args: DataArguments,
+                               intermediate_name,
+                               shuffle,
+                               mode,
+                               num_process_worker: int=0,
+                               overwrite: bool=False):
         '''
             dataHelper: DataHelper
             save_fn_args: tuple param for DataHelper.on_data_process
@@ -197,7 +203,6 @@ class DataHelper(DataPreprocessHelper):
             num_process_worker: int , num of process data
         '''
         dataHelper: DataHelper
-
         if data_args.convert_file:
             intermediate_output = self.get_intermediate_file(data_args, intermediate_name, mode)
             if isinstance(intermediate_output, list) or not os.path.exists(intermediate_output) or overwrite:
@@ -211,7 +216,11 @@ class DataHelper(DataPreprocessHelper):
             intermediate_output = input_files[0]
         return intermediate_output
 
-    def make_dataset(self,outfile: typing.Union[str,list],data,input_fn_args: typing.Tuple,num_process_worker: int = 0,shuffle=True):
+    def make_dataset(self,outfile: typing.Union[str,list],
+                     data,
+                     input_fn_args: typing.Tuple,
+                     num_process_worker: int = 0,
+                     shuffle: bool=True):
 
         self.on_data_ready()
         fw = DataWriteHelper(self.data_process_fn, input_fn_args,
