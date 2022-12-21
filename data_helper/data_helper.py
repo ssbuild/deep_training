@@ -85,12 +85,15 @@ class DataHelper(DataPreprocessHelper):
            data_key_prefix_list=('input',),
            num_key='total_num',
            cycle_length=1,
-           block_length=1):
+           block_length=1,
+           with_record_iterable_dataset: bool=False):
+
         return NumpyReaderAdapter.load(files, self.backend , options,
                                        data_key_prefix_list=data_key_prefix_list,
                                        num_key=num_key,
                                        cycle_length=cycle_length,
-                                       block_length=block_length)
+                                       block_length=block_length,
+                                       with_record_iterable_dataset=with_record_iterable_dataset)
 
     """
         cycle_length for IterableDataset
@@ -105,7 +108,8 @@ class DataHelper(DataPreprocessHelper):
                      block_length: int=10,
                      num_processes: int = 1,
                      process_index: int = 0,
-                     convert_randomdataset=False,
+                     with_record_iterable_dataset: bool = False,
+                     with_load_memory: bool =False,
                      ):
         assert process_index <= num_processes and num_processes >= 1
         if not files:
@@ -124,13 +128,20 @@ class DataHelper(DataPreprocessHelper):
                 files = files_
 
         dataHelper = self
-        dataset = dataHelper.load_numpy_dataset(files, cycle_length=cycle_length, block_length=block_length)
+        dataset = dataHelper.load_numpy_dataset(files,
+                                                cycle_length=cycle_length,
+                                                block_length=block_length,
+                                                with_record_iterable_dataset=with_record_iterable_dataset)
 
-        if convert_randomdataset and isinstance(dataset, typing.Iterator):
+        #加载至内存
+        if with_load_memory:
             logging.info('load dataset to memory...')
-            raw_data = [i for i in dataset]
-            dataset = MEMORY.load_dataset.SingleRandomDataset(raw_data)
+            if isinstance(dataset, typing.Iterator):
+                raw_data = [i for i in dataset]
+            else:
+                raw_data = [dataset[i] for i in range(len(dataset))]
 
+            dataset = MEMORY.load_dataset.SingleRandomDataset(raw_data)
 
         if isinstance(dataset, typing.Iterator):
             dataset: IterableDatasetBase

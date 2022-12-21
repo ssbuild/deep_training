@@ -80,7 +80,7 @@ def load_tokenizer_and_config_with_args(dataHelper: DataHelper,model_args: Model
         print(label2id)
         print(id2label)
 
-    return  tokenizer,config,label2id, id2label
+    return tokenizer,config,label2id, id2label
 
 
 
