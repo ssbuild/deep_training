@@ -79,6 +79,10 @@ class DataHelper(DataPreprocessHelper):
         self.backend = backend
         self.data_process_fn = self.on_data_process if data_process_fn is None else data_process_fn
 
+        self.train_files = None
+        self.eval_files = None
+        self.test_files = None
+
     def load_numpy_dataset(self,files: typing.Union[typing.List[str], str],
            options: typing.Union[
                RECORD.TFRecordOptions, LEVELDB.LeveldbOptions, LMDB.LmdbOptions] = None,
