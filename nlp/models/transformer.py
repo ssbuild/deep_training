@@ -71,7 +71,7 @@ class TransformerBase(pl.LightningModule,metaclass=TransformerFakeMeta):
         self._trainer:  typing.Optional["pl.Trainer"]  = None
 
     def forward(self, *args, **batch):
-        return self.compute_loss(*args,**batch)
+        return self.model(*args,**batch)
 
     def compute_loss(self, *args,**batch) -> tuple:
         return self.model(*args,**batch)

@@ -74,9 +74,8 @@ class TransformerForHphtlinker(TransformerModel):
         subject = torch.cat([start, end], 2)
         return subject[:, 0]
 
-    def forward_for_net(self,  **batch):
-        inputs = {k:v for k,v in batch.items()}
-        outputs = self.model(**inputs)
+    def forward_for_net(self, *args,**batch):
+        outputs = self.model(*args,**batch)
         hidden_output = outputs[0]
         if self.training:
             hidden_output = self.dropout(hidden_output)
@@ -121,14 +120,14 @@ class TransformerForHphtlinker(TransformerModel):
                 object_preds_list.append(torch.zeros(size=(*hidden_output.shape[:2],self.config.num_labels,2)))
         return object_preds_list
 
-    def compute_loss(self,batch: dict) -> tuple:
+    def compute_loss(self,*args,**batch) -> tuple:
         subject_labels,subject_ids,object_labels = None,None,None
         if 'subject_labels' in batch:
             subject_labels: torch.Tensor = batch.pop('subject_labels')
             subject_ids: torch.Tensor = batch.pop('subject_ids')
             object_labels: torch.Tensor = batch.pop('object_labels')
 
-        hidden_output = self.forward_for_net(**batch)
+        hidden_output = self.forward_for_net(*args,**batch)
         inputs = {k:v for k,v in batch.items()}
         inputs['hidden_output'] = hidden_output
         subject_preds = self.forward_for_subject(**inputs)
