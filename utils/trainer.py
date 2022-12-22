@@ -17,6 +17,8 @@ class CheckpointCallback(Checkpoint):
                  rank=0,# 执行节点
                  every_n_train_steps: Optional[int] = None,
                  every_n_epochs: Optional[int] = 1,
+                 skip_n_train_steps :  Optional[int] = None,
+                 skip_n_epochs: Optional[int] = None,
                  monitor='val_f1'):
 
         self.__every_n_train_steps = every_n_train_steps
@@ -28,6 +30,8 @@ class CheckpointCallback(Checkpoint):
 
         self.last_eval_step = -1
 
+        self.skip_n_train_steps = skip_n_train_steps
+        self.skip_n_epochs = skip_n_epochs
 
     def on_save_model(
         self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
@@ -63,7 +67,10 @@ class CheckpointCallback(Checkpoint):
             if trainer.global_step !=0 and trainer.global_step  % self.__every_n_train_steps == 0:
                 # 由于梯度积累，已经执行过，跳过
                 if self.last_eval_step != trainer.global_step:
-                    flag = True
+                    if self.skip_n_train_steps is not None and trainer.global_step < self.skip_n_train_steps:
+                        flag = False
+                    else:
+                        flag = True
         if flag:
             self.last_eval_step = trainer.global_step
             self.__on_save_model(trainer, pl_module)
@@ -80,6 +87,9 @@ class CheckpointCallback(Checkpoint):
         """
 
         if self.__every_n_epochs is not None and self.__every_n_epochs > 0:
-            if trainer.current_epoch !=0 and trainer.current_epoch % self.__every_n_epochs == 0:
-                self.__on_save_model(trainer, pl_module)
+            if trainer.current_epoch % self.__every_n_epochs == 0:
+                if self.skip_n_epochs is not None and trainer.current_epoch < self.skip_n_epochs:
+                    pass
+                else:
+                    self.__on_save_model(trainer, pl_module)
 

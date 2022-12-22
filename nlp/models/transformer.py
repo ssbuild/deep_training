@@ -52,9 +52,13 @@ class TransformerFakeMeta(type):
         if name == 'TransformerBase':
             base_new =  base_new + (nn.Module,)
         with_pl = kwargs.get('with_pl',False)
+        alter = None
         if with_pl:
-            base_new = base_new + (TransformerLightningModule,)
+            alter = tuple(b for b in base if issubclass(b, TransformerBase))
+            base_new = (TransformerLightningModule,) + tuple(b for b in base_new if not issubclass(b, TransformerBase))
         cls_ = super(TransformerFakeMeta, cls).__new__(cls, name, base_new, attr)
+        if alter is not None:
+            cls_.__ALTER_CLASS__ = alter
         return cls_
 
 
@@ -67,7 +71,7 @@ class TransformerBase(pl.LightningModule,metaclass=TransformerFakeMeta):
         self._trainer:  typing.Optional["pl.Trainer"]  = None
 
     def forward(self, *args, **batch):
-        self.compute_loss(*args,**batch)
+        return self.compute_loss(*args,**batch)
 
     def compute_loss(self, *args,**batch) -> tuple:
         return self.model(*args,**batch)
@@ -261,7 +265,7 @@ class TransformerLightningModule(pl.LightningModule):
 
 
     def forward(self,*args, **kwargs):
-        return self.model(*args,**kwargs)
+        return self.model.compute_loss(*args,**kwargs)
 
 
     def setup(self, stage: str) -> None:
