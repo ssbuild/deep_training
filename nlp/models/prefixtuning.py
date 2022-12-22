@@ -159,9 +159,9 @@ class PrefixTransformerForSequenceClassification(PrefixTransformerForModel):
         ]
 
 
-    def compute_loss(self,batch,batch_idx):
+    def compute_loss(self, *args,**batch) -> tuple:
         labels = batch.pop('labels',None)
-        outputs = self(**batch)
+        outputs = self.model(*args,**batch)
         pooled_output = outputs[1]
         if self.model.training:
             pooled_output = self.dropout(pooled_output)
@@ -210,10 +210,10 @@ class PrefixTransformerForTokenClassification(PrefixTransformerForModel):
         ]
 
 
-    def compute_loss(self, batch,batch_idx):
+    def compute_loss(self, *args,**batch) -> tuple:
         labels = batch.pop('labels',None)
         attention_mask = batch['attention_mask']
-        outputs = self(batch)
+        outputs = self.model(*args,**batch)
         pooled_output = outputs[1]
         if self.model.training:
             pooled_output = self.dropout(pooled_output)
@@ -253,9 +253,9 @@ class PrefixTransformerPointer(PrefixTransformerForModel):
         ]
 
 
-    def compute_loss(self, batch,batch_idx) -> tuple:
+    def compute_loss(self, *args,**batch) -> tuple:
         labels: torch.Tensor = batch.pop('labels', None)
-        outputs = self(**batch)
+        outputs = self.model(*args,**batch)
         logits = outputs[0]
         if self.model.training:
             logits = self.dropout(logits)
@@ -307,10 +307,10 @@ class PrefixTransformerForCRF(PrefixTransformerForModel):
             (self.crf, self.config.task_specific_params['learning_rate_for_task']),
         ]
 
-    def compute_loss(self, batch,batch_idx):
+    def compute_loss(self, *args,**batch) -> tuple:
         labels: torch.Tensor = batch.pop('labels', None)
         attention_mask = batch['attention_mask']
-        outputs = self(**batch)
+        outputs = self.model(*args,**batch)
         logits = outputs[0]
         if self.model.training:
             logits = self.dropout(logits)

@@ -39,14 +39,26 @@ from transformers import (
     get_linear_schedule_with_warmup, AutoModelForPreTraining, AutoModel, PreTrainedModel
 )
 
-class TransformerMeta(type):
+# class TransformerMeta(type):
+#     def __new__(cls, name, base, attr,*args,**kwargs):
+#         alter = tuple(b for b in base if issubclass(b,TransformerBase))
+#         cls_ = super(TransformerMeta, cls).__new__(cls, name, (TransformerLightningModule,) + tuple(b for b in base if not issubclass(b, TransformerBase)), attr)
+#         cls_.__ALTER_CLASS__ = alter
+#         return cls_
+
+class TransformerFakeMeta(type):
     def __new__(cls, name, base, attr,*args,**kwargs):
-        alter = tuple(b for b in base if issubclass(b,TransformerBase))
-        cls_ = super(TransformerMeta, cls).__new__(cls, name, (TransformerLightningModule,) + tuple(b for b in base if not issubclass(b, TransformerBase)), attr)
-        cls_.__ALTER_CLASS__ = alter
+        base_new =  tuple(b for b in base if b != pl.LightningModule)
+        if name == 'TransformerBase':
+            base_new =  base_new + (nn.Module,)
+        with_pl = kwargs.get('with_pl',False)
+        if with_pl:
+            base_new = base_new + (TransformerLightningModule,)
+        cls_ = super(TransformerFakeMeta, cls).__new__(cls, name, base_new, attr)
         return cls_
 
-class TransformerBase(nn.Module):
+
+class TransformerBase(pl.LightningModule,metaclass=TransformerFakeMeta):
     def __init__(self,*args,**kwargs):
         config = get_value_from_args('config',PretrainedConfig,*args,**kwargs)
         super(TransformerBase, self).__init__()
@@ -54,12 +66,11 @@ class TransformerBase(nn.Module):
         self.base_model_prefix = None
         self._trainer:  typing.Optional["pl.Trainer"]  = None
 
-    def forward(self,  *args, **kwargs):
-        return self.model(*args, **kwargs)
+    def forward(self, *args, **batch):
+        self.compute_loss(*args,**batch)
 
-    def compute_loss(self, batch,batch_idx) -> tuple:
-        # kwargs.pop('batch_idx',None)
-        return self.model(**batch)
+    def compute_loss(self, *args,**batch) -> tuple:
+        return self.model(*args,**batch)
 
     def post_init(self):
         return self.model.post_init()
@@ -261,8 +272,12 @@ class TransformerLightningModule(pl.LightningModule):
     def configure_optimizers(self):
         return configure_optimizers(self.get_model_lr(), self.training_args,self.trainer.estimated_stepping_batches)
 
-    def training_step(self, batch, batch_idx):
-        outputs = self.compute_loss(batch,batch_idx=batch_idx)
+    def training_step(self, batch):
+        if isinstance(batch, dict):
+            outputs = self.compute_loss(**batch)
+        else:
+            outputs = self.compute_loss(*batch)
+
         loss = outputs[0]
         if isinstance(loss,dict):
             self.log_dict(loss,prog_bar=True)
@@ -271,7 +286,11 @@ class TransformerLightningModule(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        outputs = self.compute_loss(batch,batch_idx=batch_idx)
+        if isinstance(batch, dict):
+            outputs = self.compute_loss(**batch)
+        else:
+            outputs = self.compute_loss(*batch)
+
         loss = outputs[0]
         o = {}
         if loss is not None:
@@ -302,7 +321,11 @@ class TransformerLightningModule(pl.LightningModule):
         return o
 
     def test_step(self, batch, batch_idx):
-        outputs = self.compute_loss(batch, batch_idx=batch_idx)
+        if isinstance(batch, dict):
+            outputs = self.compute_loss(**batch)
+        else:
+            outputs = self.compute_loss(*batch)
+
         o = {}
         out = outputs
         if isinstance(out, (tuple, list)):
@@ -343,13 +366,13 @@ class TransformerModelForUnilm(TransformerModel):
         return super(TransformerModelForUnilm, self).get_model_lr() + \
                [(self.lm_head,self.config.task_specific_params['learning_rate_for_task']),]
 
-    def compute_loss(self,batch,batch_idx):
+    def compute_loss(self, *args,**batch) -> tuple:
         batch['attention_mask'] = unilm_mask(batch['token_type_ids'])
         if getattr(self.config, 'type_vocab_size', 0) != 2:
             batch.pop('token_type_ids')
 
         labels = batch.pop('labels',None)
-        outputs = self(**batch)
+        outputs = self.model(*args,**batch)
         hidden_states = outputs[0]
         lm_logits = self.lm_head(hidden_states)
 

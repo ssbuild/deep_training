@@ -223,7 +223,7 @@ class TransformerForW2ner(TransformerModel):
         outputs = seq_masking(outputs,attr_mask,2,value=1e-12)
         return outputs,sent_length
 
-    def compute_loss(self,batch,batch_idx):
+    def compute_loss(self, *args,**batch) -> tuple:
         labels: torch.Tensor = batch.pop('labels',None)
         grid_mask2d= batch.pop('grid_mask2d',None)
         dist_inputs= batch.pop('dist_inputs',None)
@@ -234,7 +234,7 @@ class TransformerForW2ner(TransformerModel):
             outputs = self(**batch,output_hidden_states=True)
             logits = torch.stack(outputs[2][-4:], dim=-1).mean(-1)
         else:
-            outputs = self(**batch)
+            outputs = self.model(*args,**batch)
             logits = outputs[0]
 
         grid_mask2d = grid_mask2d.clone()

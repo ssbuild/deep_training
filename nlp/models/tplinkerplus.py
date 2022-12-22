@@ -144,10 +144,10 @@ class TransformerForTplinkerPlus(TransformerModel):
             (self.loss_fn, self.config.task_specific_params['learning_rate_for_task']),
         ]
 
-    def compute_loss(self, batch,batch_idx):
+    def compute_loss(self, *args,**batch) -> tuple:
         labels: torch.Tensor = batch.pop('labels', None)
         attention_mask = batch.get('attention_mask',None)
-        outputs = self(**batch)
+        outputs = self.model(*args,**batch)
         logits = outputs[0]
         if self.training:
             logits = self.dropout(logits)

@@ -26,6 +26,8 @@ class CheckpointCallback(Checkpoint):
         self.monitor = monitor
         self.rank = rank
 
+        self.last_eval_step = -1
+
 
     def on_save_model(
         self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
@@ -56,9 +58,15 @@ class CheckpointCallback(Checkpoint):
             loss returned from ``training_step``.
         """
 
+        flag = False
         if self.__every_n_train_steps is not None and self.__every_n_train_steps > 0:
-            if trainer.global_step % self.__every_n_train_steps == 0:
-                self.__on_save_model(trainer,pl_module)
+            if trainer.global_step !=0 and trainer.global_step  % self.__every_n_train_steps == 0:
+                # 由于梯度积累，已经执行过，跳过
+                if self.last_eval_step != trainer.global_step:
+                    flag = True
+        if flag:
+            self.last_eval_step = trainer.global_step
+            self.__on_save_model(trainer, pl_module)
 
 
 
@@ -71,8 +79,7 @@ class CheckpointCallback(Checkpoint):
         2. Cache data across train batch hooks inside the callback implementation to post-process in this hook.
         """
 
-
         if self.__every_n_epochs is not None and self.__every_n_epochs > 0:
-            if trainer.current_epoch % self.__every_n_epochs == 0:
+            if trainer.current_epoch !=0 and trainer.current_epoch % self.__every_n_epochs == 0:
                 self.__on_save_model(trainer, pl_module)
 

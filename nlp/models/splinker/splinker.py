@@ -57,12 +57,13 @@ class TransformerForSplinker(TransformerModel):
         return super(TransformerForSplinker, self).get_model_lr() + [
             (self.classifier, self.config.task_specific_params['learning_rate_for_task']),
         ]
+    
 
-    def compute_loss(self,batch,batch_idx) -> tuple:
+    def compute_loss(self,*args,**batch) -> tuple:
         labels: torch.Tensor = batch.pop('labels',None)
         mask = batch.pop('mask')
         attention_mask = batch['attention_mask']
-        outputs = self(**batch)
+        outputs = self.model(*args,**batch)
         logits = outputs[0]
         logits = self.dropout(logits)
         logits = self.sigmoid(self.classifier(logits))

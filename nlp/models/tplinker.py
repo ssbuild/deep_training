@@ -171,12 +171,12 @@ class TransformerForTplinker(TransformerModel):
         return logits
 
 
-    def compute_loss(self, batch,batch_idx):
+    def compute_loss(self, *args,**batch) -> tuple:
         entity_labels: torch.Tensor = batch.pop('entity_labels', None)
         head_labels: torch.Tensor = batch.pop('head_labels', None)
         tail_labels: torch.Tensor = batch.pop('tail_labels', None)
         attention_mask = batch['attention_mask']
-        outputs = self(**batch)
+        outputs = self.model(*args,**batch)
         logits = outputs[0]
         if self.model.training:
             logits = self.dropout(logits)

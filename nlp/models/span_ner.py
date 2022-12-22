@@ -93,10 +93,10 @@ class TransformerForSpanNer(TransformerModel):
         ]
 
 
-    def compute_loss_for_mutilabel(self,batch,batch_idx):
+    def compute_loss_for_mutilabel(self,*args,**batch):
         labels: torch.Tensor = batch.pop('labels', None)
         attention_mask = batch['attention_mask']
-        outputs = self(**batch)
+        outputs = self.model(*args,**batch)
         logits = outputs[0]
         if self.model.training:
             logits = self.dropout(logits)
@@ -110,10 +110,10 @@ class TransformerForSpanNer(TransformerModel):
             outputs = (logits,)
         return outputs
 
-    def compute_loss_for_singlelabel(self, batch, batch_idx):
+    def compute_loss_for_singlelabel(self, *args,**batch):
         labels: torch.Tensor = batch.pop('labels', None)
         attention_mask = batch['attention_mask']
-        outputs = self(**batch)
+        outputs = self.model(*args,**batch)
         logits = outputs[0]
         if self.model.training:
             logits = self.dropout(logits)
@@ -144,7 +144,7 @@ class TransformerForSpanNer(TransformerModel):
                        tails_logits.softmax(-1) * mask,)
         return outputs
 
-    # def compute_loss(self,batch,batch_idx):
+    # def compute_loss(self, *args,**batch) -> tuple:
     #     ...
 
     # def validation_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
