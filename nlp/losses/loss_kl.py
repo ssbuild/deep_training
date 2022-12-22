@@ -1,19 +1,29 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/12/14 16:09
+
+from torch import nn
 import torch.nn.functional as F
 
-def compute_kl_loss(p, q, pad_mask=None):
-    p_loss = F.kl_div(F.log_softmax(p, dim=-1), F.softmax(q, dim=-1), reduction='none')
-    q_loss = F.kl_div(F.log_softmax(q, dim=-1), F.softmax(p, dim=-1), reduction='none')
 
-    # pad_mask is for seq-level tasks
-    if pad_mask is not None:
-        p_loss.masked_fill_(pad_mask, 0.)
-        q_loss.masked_fill_(pad_mask, 0.)
+class KLDivLoss(nn.Module):
+    def __init__(self,reduction='none',log_target: bool = False):
+        super(KLDivLoss, self).__init__()
+        self.reduction = reduction
+        self.log_target = log_target
+        self.loss_fn = nn.KLDivLoss(reduction=self.reduction,log_target=log_target)
 
-    # You can choose whether to use function "sum" and "mean" depending on your task
-    p_loss = p_loss.sum()
-    q_loss = q_loss.sum()
+    def forward(self,inputs,pad_mask = None):
+        p,q = inputs
+        p_loss = self.loss_fn(F.log_softmax(p, dim=-1), F.softmax(q, dim=-1))
+        q_loss = self.loss_fn(F.log_softmax(q, dim=-1), F.softmax(p, dim=-1))
 
-    loss = (p_loss + q_loss) / 2
-    return loss
+        # pad_mask is for seq-level tasks
+        if pad_mask is not None:
+            p_loss.masked_fill_(pad_mask, 0.)
+            q_loss.masked_fill_(pad_mask, 0.)
+
+
+
+        loss = (p_loss + q_loss) / 2
+        return loss
+
