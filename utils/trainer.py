@@ -1,31 +1,36 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/12/21 11:38
+import copy
+import logging
+import warnings
 from typing import Optional, Any, Dict
 import torch
 from pytorch_lightning import Callback
 from pytorch_lightning.callbacks import ModelCheckpoint,Checkpoint
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from pytorch_lightning import Trainer
-
+from torch import Tensor
 __all__ = [
-    'CheckpointCallback'
+    'SimpleModelCheckpoint'
 ]
 
-
-class CheckpointCallback(Checkpoint):
+class SimpleModelCheckpoint(Checkpoint):
     def __init__(self,
                  rank=0,# 执行节点
                  every_n_train_steps: Optional[int] = None,
                  every_n_epochs: Optional[int] = 1,
                  skip_n_train_steps :  Optional[int] = None,
                  skip_n_epochs: Optional[int] = None,
-                 monitor='val_f1'):
+                 monitor='loss',
+                 mode='min',
+                 weight_file='./best.pt'):
 
         self.__every_n_train_steps = every_n_train_steps
         self.__every_n_epochs = every_n_epochs
         assert not (self.__every_n_epochs is None and self.__every_n_train_steps is None)
         self.best = {}
         self.monitor = monitor
+        self.mode = mode # min max
         self.rank = rank
 
         self.last_eval_step = -1
@@ -33,10 +38,51 @@ class CheckpointCallback(Checkpoint):
         self.skip_n_train_steps = skip_n_train_steps
         self.skip_n_epochs = skip_n_epochs
 
+        self.weight_file = weight_file
+
+    def _monitor_candidates(self, trainer: "pl.Trainer") -> Dict[str, Tensor]:
+        monitor_candidates = copy.deepcopy(trainer.callback_metrics)
+        # cast to int if necessary because `self.log("epoch", 123)` will convert it to float. if it's not a tensor
+        # or does not exist we overwrite it as it's likely an error
+        epoch = monitor_candidates.get("epoch")
+        monitor_candidates["epoch"] = epoch.int() if isinstance(epoch, Tensor) else torch.tensor(trainer.current_epoch)
+        step = monitor_candidates.get("step")
+        monitor_candidates["step"] = step.int() if isinstance(step, Tensor) else torch.tensor(trainer.global_step)
+        return monitor_candidates
+
+    def on_get_metric( self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"):
+        return {}
+
+
     def on_save_model(
         self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
     ) -> None:
-        ...
+
+        monitor_candidates = self._monitor_candidates(trainer)
+        monitor_candidates.update(self.on_get_metric(trainer,pl_module))
+        val = monitor_candidates.get(self.monitor,None)
+        if val is not None:
+            flag = False
+            if isinstance(val,torch.Tensor):
+                if self.monitor not in self.best:
+                    self.best[self.monitor] = val
+                monitor_op = torch.le if self.mode.lower() == 'min' else torch.ge
+                if monitor_op(val ,self.best[self.monitor]).bool().cpu().item():
+                    flag = True
+            else:
+                warnings.warn('monitor {} is not tensor'.format(self.monitor))
+            if flag:
+                self.best[self.monitor] = val
+                logging.info('epoch {} ,step {} save best {}, {}\n'.format(monitor_candidates['epoch'],
+                                                                           monitor_candidates['step'],
+                                                                           self.best[self.monitor],
+                                                                           self.weight_file))
+                trainer.save_checkpoint(self.weight_file)
+        else:
+            warnings.warn('monitor {} is not in metirc'.format(self.monitor))
+
+
+
 
     def __on_save_model(
         self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
