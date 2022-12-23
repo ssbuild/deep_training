@@ -265,7 +265,7 @@ class TransformerLightningModule(pl.LightningModule):
 
 
     def forward(self,*args, **kwargs):
-        return self.model.compute_loss(*args,**kwargs)
+        return self.compute_loss(*args,**kwargs)
 
 
     def setup(self, stage: str) -> None:
