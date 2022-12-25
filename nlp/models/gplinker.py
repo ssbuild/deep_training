@@ -160,7 +160,7 @@ def evaluate_events(y_trues: typing.List,y_preds: typing.List,id2label: typing.D
 
     ex, ey, ez = 1e-10, 1e-10, 1e-10  # 事件级别
     ax, ay, az = 1e-10, 1e-10, 1e-10  # 论元级别
-    for pred_events,true_events in tqdm(zip(trues_all,preds_all),total=len(trues_all)):
+    for true_events,pred_events in tqdm(zip(trues_all,preds_all),total=len(trues_all)):
 
         # 事件级别
         R, T = DedupList(), DedupList()
