@@ -7,6 +7,8 @@ from itertools import groupby
 import numpy as np
 import torch
 from torch import nn
+from tqdm import tqdm
+
 from .transformer import TransformerModel
 from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer
 from ..losses.loss_globalpointer import loss_for_gplinker
@@ -127,7 +129,72 @@ def clique_search(argus, links):
         return [list(sorted(argus))]
 
 
+def evaluate_events(y_trues: typing.List,y_preds: typing.List,id2label: typing.Dict):
+    """评估函数，计算f1、precision、recall
+    """
+
+    trues_all,preds_all = [], []
+
+    for one in y_preds:
+        events = []
+        for evt in one:
+            event = []
+            for l, s, e in evt:
+                event.append((id2label[l], s, e))
+            events.append(event)
+        preds_all.append(events)
+
+    for one in y_trues:
+        events = []
+        for evt in one:
+            event = []
+            for l,s,e in evt:
+                event.append((id2label[l],s,e))
+            events.append(event)
+        trues_all.append(events)
+
+
+    # print(trues_all[:3])
+    # print(trues_all[:3])
+
+
+    ex, ey, ez = 1e-10, 1e-10, 1e-10  # 事件级别
+    ax, ay, az = 1e-10, 1e-10, 1e-10  # 论元级别
+    for pred_events,true_events in tqdm(zip(trues_all,preds_all),total=len(trues_all)):
+
+        # 事件级别
+        R, T = DedupList(), DedupList()
+        for event in pred_events:
+            if any([argu[0].find(u'触发词') != -1 for argu in event]):
+                R.append(list(sorted(event)))
+        for event in true_events:
+            T.append(list(sorted(event)))
+        for event in R:
+            if event in T:
+                ex += 1
+        ey += len(R)
+        ez += len(T)
+        # 论元级别
+        R, T = DedupList(), DedupList()
+        for event in pred_events:
+            for argu in event:
+                if argu[0].find(u'触发词') == -1:
+                    R.append(argu)
+        for event in true_events:
+            for argu in event:
+                if argu[0].find(u'触发词') == -1:
+                    T.append(argu)
+        for argu in R:
+            if argu in T:
+                ax += 1
+        ay += len(R)
+        az += len(T)
+    e_f1, e_pr, e_rc = 2 * ex / (ey + ez), ex / ey, ex / ez
+    a_f1, a_pr, a_rc = 2 * ax / (ay + az), ax / ay, ax / az
+    return e_f1, e_pr, e_rc, a_f1, a_pr, a_rc
+
 def extract_events(outputs,threshold=1e-8,trigger=True):
+    batch_result = []
     for entities,heads,tails in zip(outputs[0],outputs[1],outputs[2]):
         # 抽取论元
         argus = set()
@@ -150,12 +217,14 @@ def extract_events(outputs,threshold=1e-8,trigger=True):
             for event in clique_search(list(sub_argus), links):
                 events.append([])
                 for argu in event:
-                    events[-1].append(argu[:1] + (argu[1],argu[2]))
+                    events[-1].append(argu[:1] + (argu[1]-1,argu[2]-1))
                     # start, end = mapping[argu[2]][0], mapping[argu[3]][-1] + 1
                     # events[-1].append(argu[:2] + (text[start:end], start))
-                if trigger and all([argu[0] != u'触发词' for argu in event]):
-                    events.pop()
+                # if trigger and all([argu[0] != u'触发词' for argu in event]):
+                #     events.pop()
 
+        batch_result.append(events)
+    return batch_result
 
 class TransformerForGplinkerEvent(TransformerModel):
     def __init__(self,  *args, **kwargs):

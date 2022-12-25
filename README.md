@@ -7,6 +7,8 @@
   -  [deep_training-examples](https://github.com/ssbuild/deep_training-example)
 
 ## 更新
+- <strong>2022年12月24</strong>
+  - 增加unilm模型蒸馏和事件抽取模型
 - <strong>2022年12月16</strong>
   - crf_cascad crf级联抽取实体
   - span ner 可重叠多标签，非重叠多标签两种实现方式抽取实体
