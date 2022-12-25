@@ -135,15 +135,6 @@ def evaluate_events(y_trues: typing.List,y_preds: typing.List,id2label: typing.D
 
     trues_all,preds_all = [], []
 
-    for one in y_preds:
-        events = []
-        for evt in one:
-            event = []
-            for l, s, e in evt:
-                event.append((id2label[l], s, e))
-            events.append(event)
-        preds_all.append(events)
-
     for one in y_trues:
         events = []
         for evt in one:
@@ -153,6 +144,14 @@ def evaluate_events(y_trues: typing.List,y_preds: typing.List,id2label: typing.D
             events.append(event)
         trues_all.append(events)
 
+    for one in y_preds:
+        events = []
+        for evt in one:
+            event = []
+            for l, s, e in evt:
+                event.append((id2label[l], s, e))
+            events.append(event)
+        preds_all.append(events)
 
     # print(trues_all[:3])
     # print(trues_all[:3])
@@ -217,7 +216,7 @@ def extract_events(outputs,threshold=1e-8,trigger=True):
             for event in clique_search(list(sub_argus), links):
                 events.append([])
                 for argu in event:
-                    events[-1].append(argu[:1] + (argu[1]-1,argu[2]-1))
+                    events[-1].append((argu[0] , argu[1] - 1, argu[2] - 1))
                     # start, end = mapping[argu[2]][0], mapping[argu[3]][-1] + 1
                     # events[-1].append(argu[:2] + (text[start:end], start))
                 # if trigger and all([argu[0] != u'触发词' for argu in event]):
