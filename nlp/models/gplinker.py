@@ -104,7 +104,7 @@ def neighbors(host, argus, links):
     """
     results = [host]
     for argu in argus:
-        if host[1:] + argu[1:] in links:
+        if host[2:] + argu[2:] in links:
             results.append(argu)
     return list(sorted(results))
 
@@ -113,8 +113,8 @@ def clique_search(argus, links):
     搜索思路：找出不相邻的节点，然后分别构建它们的邻集，递归处理。
     """
     Argus = DedupList()
-    for i1, (_,  h1, t1) in enumerate(argus):
-        for i2, (_,  h2, t2) in enumerate(argus):
+    for i1, (_,_,  h1, t1) in enumerate(argus):
+        for i2, (_,_,  h2, t2) in enumerate(argus):
             if i2 > i1:
                 if (h1, t1, h2, t2) not in links:
                     Argus.append(neighbors(argus[i1], argus, links))
@@ -153,9 +153,6 @@ def evaluate_events(y_trues: typing.List,y_preds: typing.List,id2label: typing.D
             events.append(event)
         preds_all.append(events)
 
-    # print(trues_all[:3])
-    # print(trues_all[:3])
-
 
     ex, ey, ez = 1e-10, 1e-10, 1e-10  # 事件级别
     ax, ay, az = 1e-10, 1e-10, 1e-10  # 论元级别
@@ -192,7 +189,7 @@ def evaluate_events(y_trues: typing.List,y_preds: typing.List,id2label: typing.D
     a_f1, a_pr, a_rc = 2 * ax / (ay + az), ax / ay, ax / az
     return e_f1, e_pr, e_rc, a_f1, a_pr, a_rc
 
-def extract_events(outputs,threshold=1e-8,trigger=True):
+def extract_events(outputs,label2id,id2label: dict,threshold: float=1e-8,trigger=True):
     batch_result = []
     for entities,heads,tails in zip(outputs[0],outputs[1],outputs[2]):
         # 抽取论元
@@ -200,28 +197,25 @@ def extract_events(outputs,threshold=1e-8,trigger=True):
         entities[:, [0, -1]] -= np.inf
         entities[:, :, [0, -1]] -= np.inf
         for l, h, t in zip(*np.where(entities > threshold)):
-            argus.add((l,h,t))
+            l: str = id2label[l].rsplit('+',1)
+            argus.add((*l,h,t))
         # 构建链接
         links = set()
-        for i1, (_, h1, t1) in enumerate(argus):
-            for i2, (_, h2, t2) in enumerate(argus):
+        for i1, (_,_, h1, t1) in enumerate(argus):
+            for i2, (_,_, h2, t2) in enumerate(argus):
                 if i2 > i1:
-                    if heads[0, min(h1, h2), max(h1, h2)] > threshold:
-                        if tails[0, min(t1, t2), max(t1, t2)] > threshold:
-                            links.add((h1, t1, h2, t2))
-                            links.add((h2, t2, h1, t1))
+                    if heads[0, min(h1, h2), max(h1, h2)] > threshold and tails[0, min(t1, t2), max(t1, t2)] > threshold:
+                        links.add((h1, t1, h2, t2))
+                        links.add((h2, t2, h1, t1))
         # 析出事件
         events = []
         for _, sub_argus in groupby(sorted(argus), key=lambda s: s[0]):
             for event in clique_search(list(sub_argus), links):
                 events.append([])
                 for argu in event:
-                    events[-1].append((argu[0] , argu[1] - 1, argu[2] - 1))
-                    # start, end = mapping[argu[2]][0], mapping[argu[3]][-1] + 1
-                    # events[-1].append(argu[:2] + (text[start:end], start))
-                # if trigger and all([argu[0] != u'触发词' for argu in event]):
-                #     events.pop()
-
+                    events[-1].append((label2id['+'.join(argu[:2])] , argu[2] - 1, argu[3] - 1))
+                if trigger and all([argu[1] != u'触发词' for argu in event]):
+                    events.pop()
         batch_result.append(events)
     return batch_result
 
