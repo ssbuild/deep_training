@@ -60,13 +60,16 @@
   -  <strong>cluener tplinkerplus 提取</strong>
   -  <strong>cluener w2ner 提取</strong>
 - <strong>关系提取</strong>
-  -  <strong>参考数据</strong>  [duie和法研杯第一阶段数据](https://github.com/ssbuild/cail2022-info-extract)
-  -  <strong>gplinker 关系提取</strong>
-  -  <strong>casrel 关系提取</strong>
-  -  <strong>spliner 关系提取</strong>
-  -  <strong>mhslinker 关系提取</strong>
-  -  <strong>tplinker 关系提取</strong>
-  -  <strong>tplinkerplus 关系提取</strong>
+  - <strong>参考数据</strong>  [duie和法研杯第一阶段数据](https://github.com/ssbuild/cail2022-info-extract)
+  - <strong>gplinker 关系提取</strong>
+  - <strong>casrel 关系提取</strong>
+  - <strong>spliner 关系提取</strong>
+  - <strong>mhslinker 关系提取</strong>
+  - <strong>tplinker 关系提取</strong>
+  - <strong>tplinkerplus 关系提取</strong>
+- <strong>事件提取</strong>
+  - <strong>参考数据</strong> duee事件抽取 [DuEE v1.0数据集](https://aistudio.baidu.com/aistudio/competition/detail/46/0/datasets)
+  - <strong>gplinker 事件提取</strong>
 - <strong> prompt 系列</strong>: 
   - 例子 <strong>prefixprompt tnews中文分类</strong>
   - 例子 <strong>prefixtuning tnews 中文分类</strong>
