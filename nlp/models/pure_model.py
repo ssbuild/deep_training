@@ -3,6 +3,7 @@
 import typing
 from dataclasses import dataclass, field
 
+import numpy as np
 import torch
 from torch import nn
 from torch.nn import functional as F, CrossEntropyLoss
@@ -41,9 +42,17 @@ class PureModelArguments:
 
 def extract_lse(outputs):
     batch_result = []
-    for logits in outputs:
-        ...
-
+    for logits,span,span_mask in zip(np.argmax(outputs[0],axis=-1),outputs[1],outputs[2]):
+        seq_map = {}
+        for seq,(pt,s_mask) in enumerate(zip(span,span_mask)):
+            if s_mask > 0:
+                seq_map[seq] = tuple(pt[:2])
+        lse = []
+        for seq in np.nonzero(logits)[0]:
+            if seq in seq_map:
+                pt = seq_map[seq]
+                lse.append((logits[seq] - 1,pt[0]-1,pt[1] - 1))
+        batch_result.append(lse)
     return batch_result
 
 
@@ -65,7 +74,7 @@ class TransformerForPure(TransformerModel):
             nn.Dropout(p=config.hidden_dropout_prob),
             nn.Linear(self.puremodel_args.head_hidden_dim, config.num_labels + 1)
         )
-        self.loss_fn = CrossEntropyLoss(reduction='sum',ignore_index=-100)
+        self.loss_fn = CrossEntropyLoss(reduction='mean',ignore_index=-100)
 
     def get_model_lr(self):
         return super(TransformerForPure, self).get_model_lr() + [
@@ -107,24 +116,14 @@ class TransformerForPure(TransformerModel):
             labels = labels.long()
             device = logits.device
             if spans_mask is not None:
-                #b,num_spans,
                 active_loss = spans_mask.view(-1) == 1
-                #b,num_spans,num_labels
                 active_logits = logits.view(-1, logits.shape[-1])
                 ignore_value = torch.ones_like(labels,device=device,dtype=torch.long) * self.loss_fn.ignore_index
-                # b,num_spans,
-                active_labels = torch.where(
-                    active_loss, labels.view(-1), ignore_value.view(-1)
-                )
-                print(active_logits.shape,active_labels.shape)
-
-                print(ignore_value.cpu())
-                print(labels.cpu())
-                print(active_labels.cpu())
+                active_labels = torch.where(active_loss, labels.view(-1), ignore_value.view(-1))
                 loss = self.loss_fn(active_logits, active_labels)
             else:
                 loss = self.loss_fn(logits.view(-1, logits.shape[-1]), labels.view(-1))
-            outputs = (loss,logits,labels)
+            outputs = (loss,logits,spans,spans_mask,labels)
         else:
-            outputs = (logits,)
+            outputs = (logits,spans,spans_mask)
         return outputs
