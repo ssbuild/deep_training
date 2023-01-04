@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/1/3 9:02
+#参考实现: https://github.com/princeton-nlp/PURE
+
 import typing
 from dataclasses import dataclass, field
 
@@ -74,7 +76,7 @@ class TransformerForPure(TransformerModel):
             nn.Dropout(p=config.hidden_dropout_prob),
             nn.Linear(self.puremodel_args.head_hidden_dim, config.num_labels + 1)
         )
-        self.loss_fn = CrossEntropyLoss(reduction='mean',ignore_index=-100)
+        self.loss_fn = CrossEntropyLoss(reduction='sum',ignore_index=-100)
 
     def get_model_lr(self):
         return super(TransformerForPure, self).get_model_lr() + [
@@ -120,9 +122,9 @@ class TransformerForPure(TransformerModel):
                 active_logits = logits.view(-1, logits.shape[-1])
                 ignore_value = torch.ones_like(labels,device=device,dtype=torch.long) * self.loss_fn.ignore_index
                 active_labels = torch.where(active_loss, labels.view(-1), ignore_value.view(-1))
-                loss = self.loss_fn(active_logits, active_labels)
+                loss = self.loss_fn(active_logits, active_labels) / logits.size(0)
             else:
-                loss = self.loss_fn(logits.view(-1, logits.shape[-1]), labels.view(-1))
+                loss = self.loss_fn(logits.view(-1, logits.shape[-1]), labels.view(-1))  / logits.size(0)
             outputs = (loss,logits,spans,spans_mask,labels)
         else:
             outputs = (logits,spans,spans_mask)
