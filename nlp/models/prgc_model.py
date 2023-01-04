@@ -152,6 +152,74 @@ class TransformerForPRGC(TransformerModel):
         score = torch.softmax(mask_, -1)
         return torch.matmul(score.unsqueeze(1), sent).squeeze(1)
 
+
+    def predict_potential_rels_output(self,sequence_output,attention_mask, rel_pred,bs,seqlen,h):
+        device = sequence_output.device
+        if self.prgcmodel_args.ensure_rel:
+            # (bs, rel_num)
+            rel_pred_onehot = torch.where(torch.sigmoid(rel_pred) > self.prgcmodel_args.rel_threshold,
+                                          torch.ones(rel_pred.size(), device=device),
+                                          torch.zeros(rel_pred.size(), device=device))
+
+            # if potential relation is null
+            for idx, sample in enumerate(rel_pred_onehot):
+                if 1 not in sample:
+                    # (rel_num,)
+                    max_index = torch.argmax(rel_pred[idx])
+                    sample[max_index] = 1
+                    rel_pred_onehot[idx] = sample
+
+            # 2*(sum(x_i),)
+            bs_idxs, pred_rels = torch.nonzero(rel_pred_onehot)
+            # get x_i
+            xi_dict = Counter(bs_idxs.tolist())
+            xi = [xi_dict[idx] for idx in range(bs)]
+
+            pos_seq_output = []
+            pos_potential_rel = []
+            pos_attention_mask = []
+            for bs_idx, rel_idx in zip(bs_idxs, pred_rels):
+                # (seq_len, h)
+                pos_seq_output.append(sequence_output[bs_idx])
+                pos_attention_mask.append(attention_mask[bs_idx])
+                pos_potential_rel.append(rel_idx)
+            # (sum(x_i), seq_len, h)
+            sequence_output = torch.stack(pos_seq_output, dim=0)
+            # (sum(x_i), seq_len)
+            attention_mask = torch.stack(pos_attention_mask, dim=0)
+            # (sum(x_i),)
+            potential_rels = torch.stack(pos_potential_rel, dim=0)
+            # ablation of relation judgement
+        else:
+            # construct test data
+            sequence_output = sequence_output.repeat((1, self.rel_num, 1)).view(bs * self.rel_num, seqlen, h)
+            attention_mask = attention_mask.repeat((1, self.rel_num)).view(bs * self.rel_num, seqlen)
+            potential_rels = torch.arange(0, self.rel_num, device=device).repeat(bs)
+
+        return sequence_output,attention_mask,potential_rels,xi
+
+    def predict_sub_obj_output(self,sequence_output,potential_rels,seqlen, h):
+        # (bs/sum(x_i), h)
+        rel_emb = self.rel_embedding(potential_rels)
+
+        # relation embedding vector fusion
+        # b,s,h
+        rel_emb = rel_emb.unsqueeze(1).expand(-1, seqlen, h)
+        if self.prgcmodel_args.emb_fusion == 'concat':
+            # (bs/sum(x_i), seq_len, 2*h)
+            decode_input = torch.cat([sequence_output, rel_emb], dim=-1)
+            # (bs/sum(x_i), seq_len, tag_size)
+            output_sub = self.sequence_tagging_sub(decode_input)
+            output_obj = self.sequence_tagging_obj(decode_input)
+        elif self.prgcmodel_args.emb_fusion == 'sum':
+            # (bs/sum(x_i), seq_len, h)
+            decode_input = sequence_output + rel_emb
+            # (bs/sum(x_i), seq_len, tag_size)
+            output_sub, output_obj = self.sequence_tagging_sum(decode_input)
+        else:
+            raise ValueError('bad emb_fusion',self.prgcmodel_args.emb_fusion)
+        return output_sub, output_obj
+
     def compute_loss(self, *args,**batch) -> tuple:
         """
          Args:
@@ -201,64 +269,12 @@ class TransformerForPRGC(TransformerModel):
         xi, pred_rels = None, None
 
         if seq_tags is None:
-            if self.prgcmodel_args.ensure_rel:
-                # (bs, rel_num)
-                rel_pred_onehot = torch.where(torch.sigmoid(rel_pred) > self.prgcmodel_args.rel_threshold,
-                                              torch.ones(rel_pred.size(), device=device),
-                                              torch.zeros(rel_pred.size(), device=device))
+            sequence_output,attention_mask,potential_rels,xi = self.predict_potential_rels_output(sequence_output,attention_mask, rel_pred, bs, seqlen, h)
 
-                # if potential relation is null
-                for idx, sample in enumerate(rel_pred_onehot):
-                    if 1 not in sample:
-                        # (rel_num,)
-                        max_index = torch.argmax(rel_pred[idx])
-                        sample[max_index] = 1
-                        rel_pred_onehot[idx] = sample
 
-                # 2*(sum(x_i),)
-                bs_idxs, pred_rels = torch.nonzero(rel_pred_onehot)
-                # get x_i
-                xi_dict = Counter(bs_idxs.tolist())
-                xi = [xi_dict[idx] for idx in range(bs)]
 
-                pos_seq_output = []
-                pos_potential_rel = []
-                pos_attention_mask = []
-                for bs_idx, rel_idx in zip(bs_idxs, pred_rels):
-                    # (seq_len, h)
-                    pos_seq_output.append(sequence_output[bs_idx])
-                    pos_attention_mask.append(attention_mask[bs_idx])
-                    pos_potential_rel.append(rel_idx)
-                # (sum(x_i), seq_len, h)
-                sequence_output = torch.stack(pos_seq_output, dim=0)
-                # (sum(x_i), seq_len)
-                attention_mask = torch.stack(pos_attention_mask, dim=0)
-                # (sum(x_i),)
-                potential_rels = torch.stack(pos_potential_rel, dim=0)
-            # ablation of relation judgement
-            else:
-                # construct test data
-                sequence_output = sequence_output.repeat((1, self.rel_num, 1)).view(bs * self.rel_num, seqlen, h)
-                attention_mask = attention_mask.repeat((1, self.rel_num)).view(bs * self.rel_num, seqlen)
-                potential_rels = torch.arange(0, self.rel_num, device=device).repeat(bs)
+        output_sub, output_obj = self.predict_sub_obj_output(sequence_output,potential_rels,seqlen,h)
 
-        # (bs/sum(x_i), h)
-        rel_emb = self.rel_embedding(potential_rels)
-
-        # relation embedding vector fusion
-        #b,s,h
-        rel_emb = rel_emb.unsqueeze(1).expand(-1, seqlen, h)
-        if self.prgcmodel_args.emb_fusion == 'concat':
-            # (bs/sum(x_i), seq_len, 2*h)
-            decode_input = torch.cat([sequence_output, rel_emb], dim=-1)
-            # (bs/sum(x_i), seq_len, tag_size)
-            output_sub = self.sequence_tagging_sub(decode_input)
-            output_obj = self.sequence_tagging_obj(decode_input)
-        elif self.prgcmodel_args.emb_fusion == 'sum':
-            # (bs/sum(x_i), seq_len, h)
-            decode_input = sequence_output + rel_emb
-            # (bs/sum(x_i), seq_len, tag_size)
-            output_sub, output_obj = self.sequence_tagging_sum(decode_input)
 
         # train
         if seq_tags is not None:
