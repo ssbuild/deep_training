@@ -153,8 +153,9 @@ class TransformerForPRGC(TransformerModel):
         return torch.matmul(score.unsqueeze(1), sent).squeeze(1)
 
 
-    def predict_potential_rels_output(self, sequence_outputs, attention_masks, pred_rels, bs, seqlen, h):
+    def predict_potential_rels_output(self, sequence_outputs, attention_masks, pred_rels):
         device = sequence_outputs.device
+        bs,seqlen,h = sequence_outputs.size()
         if self.prgcmodel_args.ensure_rel:
             # (bs, rel_num)
 
@@ -204,15 +205,7 @@ class TransformerForPRGC(TransformerModel):
         o_preds = torch.argmax(torch.softmax(o_outputs, dim=-1), dim=-1)
         # (sum(x_i), 2, seq_len)
         pred_seqs = torch.cat([s_preds.unsqueeze(1), o_preds.unsqueeze(1)], dim=1)
-        if self.prgcmodel_args.ensure_corres:
-            pred_corres = torch.sigmoid(corres_pred) * corres_mask
-            # (bs, seq_len, seq_len)
-            outputs = (pred_rels, pred_seqs, pred_corres)
-        else:
-            outputs = (pred_rels, pred_seqs,)
-
-
-        return sequence_outputs, attention_masks, potential_rels
+        return pred_seqs
 
     def predict_sub_obj_output(self, sequence_output, potential_rels, seqlen, h):
 
@@ -324,32 +317,13 @@ class TransformerForPRGC(TransformerModel):
                 pred_rels = torch.sigmoid(rel_pred)
             else:
                 pred_rels = None
-
-            sequence_output, attention_mask, potential_rels = self.predict_potential_rels_output(sequence_output,
-                                                                                                 attention_mask,
-                                                                                                 pred_rels,
-                                                                                                 bs,
-                                                                                                 seqlen,
-                                                                                                 h)
-
-            if potential_rels:
-                #(bs/sum(x_i), seq_len,tags),(bs/sum(x_i), seq_len,tags)
-                output_sub, output_obj = self.predict_sub_obj_output(sequence_output, potential_rels, seqlen, h)
-
-                # (sum(x_i), seq_len)
-                pred_seq_sub = torch.argmax(torch.softmax(output_sub, dim=-1), dim=-1)
-                pred_seq_obj = torch.argmax(torch.softmax(output_obj, dim=-1), dim=-1)
-                # (sum(x_i), 2, seq_len)
-                pred_seqs = torch.cat([pred_seq_sub.unsqueeze(1), pred_seq_obj.unsqueeze(1)], dim=1)
-                if self.prgcmodel_args.ensure_corres:
-                    pred_corres = torch.sigmoid(corres_pred) * corres_mask
-                    # (bs, seq_len, seq_len)
-                    outputs = (pred_rels,pred_seqs, pred_corres)
-                else:
-                    outputs = (pred_rels,pred_seqs, )
+            pred_seqs = self.predict_potential_rels_output(sequence_output,attention_mask,pred_rels)
+            if self.prgcmodel_args.ensure_corres:
+                pred_corres = torch.sigmoid(corres_pred) * corres_mask
+                # (bs, seq_len, seq_len)
+                outputs = (pred_rels, pred_seqs, pred_corres)
             else:
-                outputs = (pred_rels,[])
-
+                outputs = (pred_rels, pred_seqs,)
         #evaluate
         if seq_tags is not None and not self.training:
             outputs = (None,) + outputs
