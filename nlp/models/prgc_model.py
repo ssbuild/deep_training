@@ -153,36 +153,66 @@ class TransformerForPRGC(TransformerModel):
         return torch.matmul(score.unsqueeze(1), sent).squeeze(1)
 
 
-    def predict_potential_rels_output(self,sequence_output,attention_mask, pred_rel,bs,seqlen,h):
-        device = sequence_output.device
+    def predict_potential_rels_output(self, sequence_outputs, attention_masks, pred_rels, bs, seqlen, h):
+        device = sequence_outputs.device
         if self.prgcmodel_args.ensure_rel:
             # (bs, rel_num)
 
             # 2*(sum(x_i),)
-            bs_idxs, pred_rels = torch.where(pred_rel > self.prgcmodel_args.rel_threshold)
+            bs_idxs, pred_rels = torch.where(pred_rels > self.prgcmodel_args.rel_threshold)
 
             pos_seq_output = []
-            pos_potential_rel = []
-            pos_attention_mask = []
+            pos_potential_rels = []
+            pos_attention_masks = []
             for bs_idx, rel_idx in zip(bs_idxs, pred_rels):
                 # (seq_len, h)
-                pos_seq_output.append(sequence_output[bs_idx])
-                pos_attention_mask.append(attention_mask[bs_idx])
-                pos_potential_rel.append(rel_idx)
+                pos_seq_output.append(sequence_outputs[bs_idx])
+                pos_attention_masks.append(attention_masks[bs_idx])
+                pos_potential_rels.append(rel_idx)
             # (sum(x_i), seq_len, h)
-            sequence_output = torch.stack(pos_seq_output, dim=0) if pos_seq_output else pos_seq_output
+            sequence_outputs = torch.stack(pos_seq_output, dim=0) if pos_seq_output else pos_seq_output
             # (sum(x_i), seq_len)
-            attention_mask = torch.stack(pos_attention_mask, dim=0) if pos_attention_mask else pos_attention_mask
+            attention_masks = torch.stack(pos_attention_masks, dim=0) if pos_attention_masks else pos_attention_masks
             # (sum(x_i),)
-            potential_rels = torch.stack(pos_potential_rel, dim=0) if pos_potential_rel else pos_potential_rel
+            potential_rels = torch.stack(pos_potential_rels, dim=0) if pos_potential_rels else pos_potential_rels
             # ablation of relation judgement
         else:
             # construct test data
-            sequence_output = sequence_output.repeat((1, self.rel_num, 1)).view(bs * self.rel_num, seqlen, h)
-            attention_mask = attention_mask.repeat((1, self.rel_num)).view(bs * self.rel_num, seqlen)
+            sequence_outputs = sequence_outputs.repeat((1, self.rel_num, 1)).view(bs * self.rel_num, seqlen, h)
+            attention_masks = attention_masks.repeat((1, self.rel_num)).view(bs * self.rel_num, seqlen)
             potential_rels = torch.arange(0, self.rel_num, device=device).repeat(bs)
 
-        return sequence_output,attention_mask,potential_rels
+        # (bs/sum(x_i), seq_len,tags),(bs/sum(x_i), seq_len,tags)
+
+        s_outputs,o_outputs = [],[]
+        for sequence_output, potential_rel, attention_mask in zip(sequence_outputs, potential_rels, attention_masks):
+            # 1 ,s, h
+            sequence_output = torch.unsqueeze(sequence_output,dim=0)
+            potential_rel = torch.unsqueeze(potential_rel, dim=0)
+
+            #1,s,t
+            s_output, o_output = self.predict_sub_obj_output(sequence_output, potential_rel, seqlen, h)
+            s_outputs.append(s_output)
+            o_outputs.append(o_output)
+
+        # (sum(x_i), s,t)
+        s_outputs = torch.cat(s_outputs, dim=0)
+        o_outputs = torch.cat(o_outputs, dim=0)
+
+        # (sum(x_i), s)
+        s_preds = torch.argmax(torch.softmax(s_outputs, dim=-1), dim=-1)
+        o_preds = torch.argmax(torch.softmax(o_outputs, dim=-1), dim=-1)
+        # (sum(x_i), 2, seq_len)
+        pred_seqs = torch.cat([s_preds.unsqueeze(1), o_preds.unsqueeze(1)], dim=1)
+        if self.prgcmodel_args.ensure_corres:
+            pred_corres = torch.sigmoid(corres_pred) * corres_mask
+            # (bs, seq_len, seq_len)
+            outputs = (pred_rels, pred_seqs, pred_corres)
+        else:
+            outputs = (pred_rels, pred_seqs,)
+
+
+        return sequence_outputs, attention_masks, potential_rels
 
     def predict_sub_obj_output(self, sequence_output, potential_rels, seqlen, h):
 
