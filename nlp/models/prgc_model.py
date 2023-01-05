@@ -153,27 +153,13 @@ class TransformerForPRGC(TransformerModel):
         return torch.matmul(score.unsqueeze(1), sent).squeeze(1)
 
 
-    def predict_potential_rels_output(self,sequence_output,attention_mask, rel_pred,bs,seqlen,h):
+    def predict_potential_rels_output(self,sequence_output,attention_mask, pred_rel,bs,seqlen,h):
         device = sequence_output.device
         if self.prgcmodel_args.ensure_rel:
             # (bs, rel_num)
-            rel_pred_onehot = torch.where(torch.sigmoid(rel_pred) > self.prgcmodel_args.rel_threshold,
-                                          torch.ones(rel_pred.size(), device=device),
-                                          torch.zeros(rel_pred.size(), device=device))
-
-            # if potential relation is null
-            for idx, sample in enumerate(rel_pred_onehot):
-                if 1 not in sample:
-                    # (rel_num,)
-                    max_index = torch.argmax(rel_pred[idx])
-                    sample[max_index] = 1
-                    rel_pred_onehot[idx] = sample
 
             # 2*(sum(x_i),)
-            bs_idxs, pred_rels = torch.nonzero(rel_pred_onehot)
-            # get x_i
-            xi_dict = Counter(bs_idxs.tolist())
-            xi = [xi_dict[idx] for idx in range(bs)]
+            bs_idxs, pred_rels = torch.where(pred_rel > self.prgcmodel_args.rel_threshold)
 
             pos_seq_output = []
             pos_potential_rel = []
@@ -184,11 +170,11 @@ class TransformerForPRGC(TransformerModel):
                 pos_attention_mask.append(attention_mask[bs_idx])
                 pos_potential_rel.append(rel_idx)
             # (sum(x_i), seq_len, h)
-            sequence_output = torch.stack(pos_seq_output, dim=0)
+            sequence_output = torch.stack(pos_seq_output, dim=0) if pos_seq_output else pos_seq_output
             # (sum(x_i), seq_len)
-            attention_mask = torch.stack(pos_attention_mask, dim=0)
+            attention_mask = torch.stack(pos_attention_mask, dim=0) if pos_attention_mask else pos_attention_mask
             # (sum(x_i),)
-            potential_rels = torch.stack(pos_potential_rel, dim=0)
+            potential_rels = torch.stack(pos_potential_rel, dim=0) if pos_potential_rel else pos_potential_rel
             # ablation of relation judgement
         else:
             # construct test data
@@ -196,9 +182,11 @@ class TransformerForPRGC(TransformerModel):
             attention_mask = attention_mask.repeat((1, self.rel_num)).view(bs * self.rel_num, seqlen)
             potential_rels = torch.arange(0, self.rel_num, device=device).repeat(bs)
 
-        return sequence_output,attention_mask,potential_rels,xi
+        return sequence_output,attention_mask,potential_rels
 
-    def predict_sub_obj_output(self,sequence_output,potential_rels,seqlen, h):
+    def predict_sub_obj_output(self, sequence_output, potential_rels, seqlen, h):
+
+        #potential_rels: (bs,), only in train stage.
         # (bs/sum(x_i), h)
         rel_emb = self.rel_embedding(potential_rels)
 
@@ -220,6 +208,7 @@ class TransformerForPRGC(TransformerModel):
             raise ValueError('bad emb_fusion',self.prgcmodel_args.emb_fusion)
         return output_sub, output_obj
 
+    #PRGC将关系抽取分解成三个任务：关系判断、实体抽取和主客体对齐
     def compute_loss(self, *args,**batch) -> tuple:
         """
          Args:
@@ -231,10 +220,11 @@ class TransformerForPRGC(TransformerModel):
              seq_tags: (bs, 2, seq_len)
         """
         # get params for experiments
+        corres_tags: torch.Tensor = batch.pop('corres_tags', None)
         rel_tags: torch.Tensor = batch.pop('rel_tags', None)
         potential_rels: torch.Tensor = batch.pop('potential_rels', None)
         seq_tags: torch.Tensor = batch.pop('seq_tags', None)
-        corres_tags: torch.Tensor = batch.pop('corres_tags', None)
+
 
 
         attention_mask = batch['attention_mask']
@@ -243,7 +233,6 @@ class TransformerForPRGC(TransformerModel):
         if self.model.training:
             sequence_output = self.dropout(sequence_output)
 
-        device = sequence_output.device
         bs, seqlen, h = sequence_output.size()
 
         if self.prgcmodel_args.ensure_rel:
@@ -251,8 +240,10 @@ class TransformerForPRGC(TransformerModel):
             h_k_avg = self.masked_avgpool(sequence_output, attention_mask)
             # (bs, rel_num)
             rel_pred = self.rel_judgement(h_k_avg)
+        else:
+            rel_pred = None
 
-            # before fuse relation representation
+        # before fuse relation representation
         if self.prgcmodel_args.ensure_corres:
             # for every position $i$ in sequence, should concate $j$ to predict.
             sub_extend = sequence_output.unsqueeze(2).expand(-1, -1, seqlen, -1)  # (bs, s, s, h)
@@ -265,59 +256,72 @@ class TransformerForPRGC(TransformerModel):
             mask_tmp2 = attention_mask.unsqueeze(1)
             corres_mask = mask_tmp1 * mask_tmp2
 
-        # relation predict and data construction in inference stage
-        xi, pred_rels = None, None
+        if self.training:
+            # (bs/sum(x_i), s, tag_size)
+            output_sub, output_obj = self.predict_sub_obj_output(sequence_output, potential_rels, seqlen, h)
 
-        if seq_tags is None:
-            sequence_output,attention_mask,potential_rels,xi = self.predict_potential_rels_output(sequence_output,attention_mask, rel_pred, bs, seqlen, h)
-
-
-
-        output_sub, output_obj = self.predict_sub_obj_output(sequence_output,potential_rels,seqlen,h)
-
-
-        # train
-        if seq_tags is not None:
-            # calculate loss
-            attention_mask = attention_mask.view(-1)
-            # sequence label loss
-            loss_seq_sub = (self.loss_fn1(output_sub.view(-1, self.seq_tag_size),seq_tags[:, 0, :].reshape(-1)) * attention_mask).sum() / attention_mask.sum()
-            loss_seq_obj = (self.loss_fn1(output_obj.view(-1, self.seq_tag_size),seq_tags[:, 1, :].reshape(-1)) * attention_mask).sum() / attention_mask.sum()
-            loss_seq = (loss_seq_sub + loss_seq_obj) / 2
-            # init
             loss_matrix, loss_rel = torch.tensor(0), torch.tensor(0)
+
+            # loss rel
+            if self.prgcmodel_args.ensure_rel:
+                loss_rel = self.loss_fn2(rel_pred, rel_tags.float())
+
+            # loss corres
             if self.prgcmodel_args.ensure_corres:
                 corres_pred = corres_pred.view(bs, -1)
                 corres_mask = corres_mask.view(bs, -1)
                 corres_tags = corres_tags.view(bs, -1)
-                loss_matrix = (self.loss_fn2(corres_pred,corres_tags.float()) * corres_mask).sum() / corres_mask.sum()
+                loss_matrix = (self.loss_fn2(corres_pred, corres_tags.float()) * corres_mask).sum() / corres_mask.sum()
 
-            if self.prgcmodel_args.ensure_rel:
-                loss_rel = self.loss_fn2(rel_pred, rel_tags.float())
-
+            # sequence label loss
+            attention_mask = attention_mask.view(-1)
+            loss_seq_sub = (self.loss_fn1(output_sub.view(-1, self.seq_tag_size),
+                                          seq_tags[:, 0, :].reshape(-1)) * attention_mask).sum() / attention_mask.sum()
+            loss_seq_obj = (self.loss_fn1(output_obj.view(-1, self.seq_tag_size),
+                                          seq_tags[:, 1, :].reshape(-1)) * attention_mask).sum() / attention_mask.sum()
+            loss_seq = (loss_seq_sub + loss_seq_obj) / 2
 
             loss_dict = {
-                'loss':  loss_seq + loss_matrix + loss_rel,
+                'loss': loss_seq + loss_matrix + loss_rel,
                 'loss_seq': loss_seq,
                 'loss_matrix': loss_matrix,
                 'loss_rel': loss_rel,
             }
-
-            outputs = (loss_dict, pred_seqs, xi, pred_rels)
-        # inference
+            outputs = (loss_dict,)
         else:
-            # (sum(x_i), seq_len)
-            pred_seq_sub = torch.argmax(torch.softmax(output_sub, dim=-1), dim=-1)
-            pred_seq_obj = torch.argmax(torch.softmax(output_obj, dim=-1), dim=-1)
-            # (sum(x_i), 2, seq_len)
-            pred_seqs = torch.cat([pred_seq_sub.unsqueeze(1), pred_seq_obj.unsqueeze(1)], dim=1)
-            if self.prgcmodel_args.ensure_corres:
-                corres_pred = torch.sigmoid(corres_pred) * corres_mask
-                # (bs, seq_len, seq_len)
-                pred_corres_onehot = torch.where(corres_pred > self.prgcmodel_args.corres_threshold,
-                                                 torch.ones(corres_pred.size(), device=corres_pred.device),
-                                                 torch.zeros(corres_pred.size(), device=corres_pred.device))
-                outputs= (pred_seqs, pred_corres_onehot, xi, pred_rels)
+            # (bs, rel_num)
+            if self.prgcmodel_args.ensure_rel:
+                pred_rels = torch.sigmoid(rel_pred)
             else:
-                outputs = (pred_seqs, xi, pred_rels)
+                pred_rels = None
+
+            sequence_output, attention_mask, potential_rels = self.predict_potential_rels_output(sequence_output,
+                                                                                                 attention_mask,
+                                                                                                 pred_rels,
+                                                                                                 bs,
+                                                                                                 seqlen,
+                                                                                                 h)
+
+            if potential_rels:
+                #(bs/sum(x_i), seq_len,tags),(bs/sum(x_i), seq_len,tags)
+                output_sub, output_obj = self.predict_sub_obj_output(sequence_output, potential_rels, seqlen, h)
+
+                # (sum(x_i), seq_len)
+                pred_seq_sub = torch.argmax(torch.softmax(output_sub, dim=-1), dim=-1)
+                pred_seq_obj = torch.argmax(torch.softmax(output_obj, dim=-1), dim=-1)
+                # (sum(x_i), 2, seq_len)
+                pred_seqs = torch.cat([pred_seq_sub.unsqueeze(1), pred_seq_obj.unsqueeze(1)], dim=1)
+                if self.prgcmodel_args.ensure_corres:
+                    pred_corres = torch.sigmoid(corres_pred) * corres_mask
+                    # (bs, seq_len, seq_len)
+                    outputs = (pred_rels,pred_seqs, pred_corres)
+                else:
+                    outputs = (pred_rels,pred_seqs, )
+            else:
+                outputs = (pred_rels,[])
+
+        #evaluate
+        if seq_tags is not None and not self.training:
+            outputs = (None,) + outputs
+
         return outputs
