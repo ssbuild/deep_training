@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/1/4 13:41
 #参考实现: https://github.com/hy-struggle/PRGC
-
+import copy
 import typing
 from collections import Counter
 from dataclasses import dataclass, field
 
+import numpy as np
 import torch
 from torch import nn
 from .transformer import TransformerModel
@@ -66,12 +67,105 @@ class PrgcModelArguments:
     )
 
 
+class Chunk:
+    l, s, e = -1, -1, -1
+    def reset(self):
+        self.l = -1
+        self.s = -1
+        self.e = -1
+
+def get_entities(logits_tags):
+    length = len(logits_tags)
+    chunks = []
+    chunk = Chunk()
+
+    def reset_chunk(chunk: Chunk):
+        chunk.reset()
+
+    L = 0
+    for indx,T in enumerate(logits_tags):
+        if T == 'S':
+            if chunk.e != -1:
+                chunks.append(copy.deepcopy(chunk))
+            chunk.s = indx
+            chunk.e = indx
+            chunk.l = L
+            chunks.append(copy.deepcopy(chunk))
+            reset_chunk(chunk)
+        elif T == 'B':
+            if chunk.e != -1:
+                chunks.append(copy.deepcopy(chunk))
+            reset_chunk(chunk)
+            chunk.s = indx
+            chunk.l = L
+        elif T == 'I' and chunk.s != -1:
+            if L == chunk.l:
+                chunk.e = indx
+            else:
+                reset_chunk(chunk)
+            if indx == length - 1:
+                if chunk.e != -1:
+                    chunks.append(copy.deepcopy(chunk))
+                    reset_chunk(chunk)
+        elif T == 'O' and chunk.s != -1:
+            if chunk.e != -1:
+                chunks.append(copy.deepcopy(chunk))
+            reset_chunk(chunk)
+        else:
+            if chunk.e != -1:
+                chunks.append(copy.deepcopy(chunk))
+            reset_chunk(chunk)
+    if chunk.e != -1:
+        chunks.append(copy.deepcopy(chunk))
+        reset_chunk(chunk)
+
+    return [(chunk.s,chunk.e) for chunk in chunks]
 
 
-def extract_spoes(outputs: typing.List):
+def extract_spoes(outputs: typing.List,rel_threshold = 0.5,corres_threshold=0.5):
+    id2ents = {
+        0: 'O',
+        1: 'B',
+        2: 'I'
+    }
     batch_result = []
-    for logits in outputs:
-        ...
+    #b,num_rels ; b,n,2,s,tags , b,s,s
+    if outputs[2] is None:
+        iter_objs = zip(outputs[0], outputs[1])
+    else:
+        iter_objs = zip(outputs[0], outputs[1], outputs[2])
+
+    item: tuple
+    for item in iter_objs:
+        if len(item) == 2:
+            item = item + (None,)
+        pred_rels, pred_seqs, pred_corres = item
+        potential_rels = []
+        for rel_id,pred_rel in enumerate(pred_rels):
+            if pred_rel > rel_threshold:
+                potential_rels.append(rel_id)
+
+        spoes = set()
+        if potential_rels:
+            if pred_corres is not None:
+                sohs = set()
+                for h1,h2 in zip(*np.where(pred_corres > corres_threshold)):
+                    sohs.add((h1,h2))
+            else:
+                sohs = None
+
+            for p,pred_seq in zip(potential_rels,pred_seqs):
+                sub_preds = np.argmax(pred_seq[0], axis=-1)
+                obj_preds = np.argmax(pred_seq[1], axis=-1)
+                subs = get_entities([id2ents[_] for _ in sub_preds])
+                objs = get_entities([id2ents[_] for _ in obj_preds])
+                for sh,st in subs:
+                    for oh,ot in objs:
+                        if sohs is not None:
+                            if (sh,oh) not in sohs:
+                                continue
+                        spoes.add((sh-1,st-1,p,oh-1,ot-1))
+        batch_result.append(list(spoes))
     return batch_result
 
 class MultiNonLinearClassifier(nn.Module):
@@ -118,9 +212,10 @@ class TransformerForPRGC(TransformerModel):
         self.prgcmodel_args = prgcmodel_args
         config = self.config
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+
 
         seq_tag_size = 3
+        self.seq_tag_size = seq_tag_size
         # sequence tagging
         self.sequence_tagging_sub = MultiNonLinearClassifier(config.hidden_size * 2, seq_tag_size,prgcmodel_args.dropout)
         self.sequence_tagging_obj = MultiNonLinearClassifier(config.hidden_size * 2, seq_tag_size,prgcmodel_args.dropout)
@@ -131,13 +226,13 @@ class TransformerForPRGC(TransformerModel):
         self.rel_judgement = MultiNonLinearClassifier(config.hidden_size,config.num_labels,prgcmodel_args.dropout)
         self.rel_embedding = nn.Embedding(config.num_labels,config.hidden_size)
 
-        self.loss_fn1 = nn.CrossEntropyLoss(reduction='none')
-        self.loss_fn2 = nn.BCEWithLogitsLoss(reduction='mean')
+        self.loss_fn1 = nn.CrossEntropyLoss(reduction='none',ignore_index=-100)
+        self.loss_fn2 = nn.BCEWithLogitsLoss(reduction='none')
 
 
     def get_model_lr(self):
         return super(TransformerForPRGC, self).get_model_lr() + [
-            (self.classifier, self.config.task_specific_params['learning_rate']),
+            (self.dropout, self.config.task_specific_params['learning_rate_for_task']),
             (self.sequence_tagging_sub, self.config.task_specific_params['learning_rate_for_task']),
             (self.sequence_tagging_obj, self.config.task_specific_params['learning_rate_for_task']),
             (self.sequence_tagging_sum, self.config.task_specific_params['learning_rate_for_task']),
@@ -153,62 +248,32 @@ class TransformerForPRGC(TransformerModel):
         return torch.matmul(score.unsqueeze(1), sent).squeeze(1)
 
 
-    def predict_potential_rels_output(self, sequence_outputs, attention_masks, pred_rels):
+    def predict_seqs_output(self, sequence_outputs, attention_masks, pred_rels):
         device = sequence_outputs.device
         bs,seqlen,h = sequence_outputs.size()
-        if self.prgcmodel_args.ensure_rel:
-            # (bs, rel_num)
+        # (bs, rel_num)
+        preds_seqs_list = []
+        for sequence_output, attention_mask,pred_rel in zip(sequence_outputs, attention_masks, pred_rels):
+            potential_rels = []
+            for rel_id,one_rel in enumerate(pred_rel):
+                if one_rel > self.prgcmodel_args.rel_threshold:
+                    potential_rels.append(rel_id)
+            if potential_rels:
+                potential_rels = torch.tensor(potential_rels, dtype=torch.long).to(device)
+                sequence_output = torch.repeat_interleave(sequence_output.unsqueeze(0), len(potential_rels), 0)
+                #(bs / sum(x_i), 2,seq_len, tags)
+                seqs_preds = self.forward_sub_obj_output(sequence_output, potential_rels)
+                preds_seqs_list.append(seqs_preds)
+            else:
+                preds_seqs_list.append(torch.zeros(size=(1,2,seqlen,self.seq_tag_size)))
 
-            # 2*(sum(x_i),)
-            bs_idxs, pred_rels = torch.where(pred_rels > self.prgcmodel_args.rel_threshold)
+        #b,n,2,s,t
+        return preds_seqs_list
 
-            pos_seq_output = []
-            pos_potential_rels = []
-            pos_attention_masks = []
-            for bs_idx, rel_idx in zip(bs_idxs, pred_rels):
-                # (seq_len, h)
-                pos_seq_output.append(sequence_outputs[bs_idx])
-                pos_attention_masks.append(attention_masks[bs_idx])
-                pos_potential_rels.append(rel_idx)
-            # (sum(x_i), seq_len, h)
-            sequence_outputs = torch.stack(pos_seq_output, dim=0) if pos_seq_output else pos_seq_output
-            # (sum(x_i), seq_len)
-            attention_masks = torch.stack(pos_attention_masks, dim=0) if pos_attention_masks else pos_attention_masks
-            # (sum(x_i),)
-            potential_rels = torch.stack(pos_potential_rels, dim=0) if pos_potential_rels else pos_potential_rels
-            # ablation of relation judgement
-        else:
-            # construct test data
-            sequence_outputs = sequence_outputs.repeat((1, self.rel_num, 1)).view(bs * self.rel_num, seqlen, h)
-            attention_masks = attention_masks.repeat((1, self.rel_num)).view(bs * self.rel_num, seqlen)
-            potential_rels = torch.arange(0, self.rel_num, device=device).repeat(bs)
+    #,b,s,h ; b,
+    def forward_sub_obj_output(self, sequence_output, potential_rels):
 
-        # (bs/sum(x_i), seq_len,tags),(bs/sum(x_i), seq_len,tags)
-
-        s_outputs,o_outputs = [],[]
-        for sequence_output, potential_rel, attention_mask in zip(sequence_outputs, potential_rels, attention_masks):
-            # 1 ,s, h
-            sequence_output = torch.unsqueeze(sequence_output,dim=0)
-            potential_rel = torch.unsqueeze(potential_rel, dim=0)
-
-            #1,s,t
-            s_output, o_output = self.predict_sub_obj_output(sequence_output, potential_rel, seqlen, h)
-            s_outputs.append(s_output)
-            o_outputs.append(o_output)
-
-        # (sum(x_i), s,t)
-        s_outputs = torch.cat(s_outputs, dim=0)
-        o_outputs = torch.cat(o_outputs, dim=0)
-
-        # (sum(x_i), s)
-        s_preds = torch.argmax(torch.softmax(s_outputs, dim=-1), dim=-1)
-        o_preds = torch.argmax(torch.softmax(o_outputs, dim=-1), dim=-1)
-        # (sum(x_i), 2, seq_len)
-        pred_seqs = torch.cat([s_preds.unsqueeze(1), o_preds.unsqueeze(1)], dim=1)
-        return pred_seqs
-
-    def predict_sub_obj_output(self, sequence_output, potential_rels, seqlen, h):
-
+        seqlen, h = sequence_output.size()[1:]
         #potential_rels: (bs,), only in train stage.
         # (bs/sum(x_i), h)
         rel_emb = self.rel_embedding(potential_rels)
@@ -220,16 +285,16 @@ class TransformerForPRGC(TransformerModel):
             # (bs/sum(x_i), seq_len, 2*h)
             decode_input = torch.cat([sequence_output, rel_emb], dim=-1)
             # (bs/sum(x_i), seq_len, tag_size)
-            output_sub = self.sequence_tagging_sub(decode_input)
-            output_obj = self.sequence_tagging_obj(decode_input)
+            sub_output = self.sequence_tagging_sub(decode_input)
+            obj_output = self.sequence_tagging_obj(decode_input)
         elif self.prgcmodel_args.emb_fusion == 'sum':
             # (bs/sum(x_i), seq_len, h)
             decode_input = sequence_output + rel_emb
             # (bs/sum(x_i), seq_len, tag_size)
-            output_sub, output_obj = self.sequence_tagging_sum(decode_input)
+            sub_output, obj_output = self.sequence_tagging_sum(decode_input)
         else:
             raise ValueError('bad emb_fusion',self.prgcmodel_args.emb_fusion)
-        return output_sub, output_obj
+        return torch.stack([sub_output, obj_output],dim=1)
 
     #PRGC将关系抽取分解成三个任务：关系判断、实体抽取和主客体对齐
     def compute_loss(self, *args,**batch) -> tuple:
@@ -248,61 +313,61 @@ class TransformerForPRGC(TransformerModel):
         potential_rels: torch.Tensor = batch.pop('potential_rels', None)
         seq_tags: torch.Tensor = batch.pop('seq_tags', None)
 
-
-
         attention_mask = batch['attention_mask']
         outputs = self.model(*args,**batch)
-        sequence_output = outputs[0]
+        sequence_outputs = outputs[0]
         if self.model.training:
-            sequence_output = self.dropout(sequence_output)
+            sequence_outputs = self.dropout(sequence_outputs)
 
-        bs, seqlen, h = sequence_output.size()
+        bs, seqlen, h = sequence_outputs.size()
 
         if self.prgcmodel_args.ensure_rel:
             # (bs, h)
-            h_k_avg = self.masked_avgpool(sequence_output, attention_mask)
+            h_k_avg = self.masked_avgpool(sequence_outputs, attention_mask)
             # (bs, rel_num)
-            rel_pred = self.rel_judgement(h_k_avg)
+            pred_rels = self.rel_judgement(h_k_avg)
         else:
-            rel_pred = None
+            pred_rels = torch.tensor([1] * self.rel_num, device=sequence_outputs.device).repeat(bs).reshape(bs, -1)
 
         # before fuse relation representation
         if self.prgcmodel_args.ensure_corres:
             # for every position $i$ in sequence, should concate $j$ to predict.
-            sub_extend = sequence_output.unsqueeze(2).expand(-1, -1, seqlen, -1)  # (bs, s, s, h)
-            obj_extend = sequence_output.unsqueeze(1).expand(-1, seqlen, -1, -1)  # (bs, s, s, h)
+            sub_extend = sequence_outputs.unsqueeze(2).expand(-1, -1, seqlen, -1)  # (bs, s, s, h)
+            obj_extend = sequence_outputs.unsqueeze(1).expand(-1, seqlen, -1, -1)  # (bs, s, s, h)
             # batch x seq_len x seq_len x 2*hidden
-            corres_pred = torch.cat([sub_extend, obj_extend], 3)
+            pred_corres = torch.cat([sub_extend, obj_extend], 3)
             # (bs, seq_len, seq_len)
-            corres_pred = self.global_corres(corres_pred).squeeze(-1)
+            pred_corres = self.global_corres(pred_corres).squeeze(-1)
             mask_tmp1 = attention_mask.unsqueeze(-1)
             mask_tmp2 = attention_mask.unsqueeze(1)
             corres_mask = mask_tmp1 * mask_tmp2
 
         if self.training:
-            # (bs/sum(x_i), s, tag_size)
-            output_sub, output_obj = self.predict_sub_obj_output(sequence_output, potential_rels, seqlen, h)
+            # (bs/sum(x_i), 2, s, tag_size)
+            pred_seqs = self.forward_sub_obj_output(sequence_outputs, potential_rels)
 
             loss_matrix, loss_rel = torch.tensor(0), torch.tensor(0)
-
             # loss rel
             if self.prgcmodel_args.ensure_rel:
-                loss_rel = self.loss_fn2(rel_pred, rel_tags.float())
+                loss_rel = self.loss_fn2(pred_rels, rel_tags.float()).mean()
 
             # loss corres
             if self.prgcmodel_args.ensure_corres:
-                corres_pred = corres_pred.view(bs, -1)
-                corres_mask = corres_mask.view(bs, -1)
-                corres_tags = corres_tags.view(bs, -1)
-                loss_matrix = (self.loss_fn2(corres_pred, corres_tags.float()) * corres_mask).sum() / corres_mask.sum()
+                corres_mask_tmp = corres_mask.view(bs, -1)
+                # corres_tags = corres_tags.view(bs, -1)
+                corres_tags = corres_tags.float()
+                loss_matrix = (self.loss_fn2(pred_corres.view(bs,-1), corres_tags.view(bs,-1)) * corres_mask_tmp).sum() / corres_mask_tmp.sum()
 
             # sequence label loss
-            attention_mask = attention_mask.view(-1)
-            loss_seq_sub = (self.loss_fn1(output_sub.view(-1, self.seq_tag_size),
-                                          seq_tags[:, 0, :].reshape(-1)) * attention_mask).sum() / attention_mask.sum()
-            loss_seq_obj = (self.loss_fn1(output_obj.view(-1, self.seq_tag_size),
-                                          seq_tags[:, 1, :].reshape(-1)) * attention_mask).sum() / attention_mask.sum()
-            loss_seq = (loss_seq_sub + loss_seq_obj) / 2
+
+            mask = attention_mask.view(-1)
+            #b,2,s,tags , b, 2, s
+            loss_seq1 = self.loss_fn1(pred_seqs[:, 0].reshape(-1, self.seq_tag_size), seq_tags[:, 0].reshape(-1).long())
+            loss_seq2 = self.loss_fn1(pred_seqs[:, 1].reshape(-1, self.seq_tag_size), seq_tags[:, 1].reshape(-1).long())
+            loss_seq1 = (loss_seq1 * mask).sum() / mask.sum()
+            loss_seq2 = (loss_seq2 * mask).sum() / mask.sum()
+            loss_seq = loss_seq1 + loss_seq2
+            loss_seq = loss_seq.sum()
 
             loss_dict = {
                 'loss': loss_seq + loss_matrix + loss_rel,
@@ -310,22 +375,32 @@ class TransformerForPRGC(TransformerModel):
                 'loss_matrix': loss_matrix,
                 'loss_rel': loss_rel,
             }
-            outputs = (loss_dict,)
+            # (bs, rel_num)
+            if self.prgcmodel_args.ensure_rel:
+                pred_rels = torch.sigmoid(pred_rels)
+
+            # (bs, seq_len, seq_len)
+            if self.prgcmodel_args.ensure_corres:
+                pred_corres = torch.sigmoid(pred_corres) * corres_mask
+            else:
+                pred_corres = None
+
+            outputs = (loss_dict,pred_rels, pred_seqs, pred_corres)
         else:
             # (bs, rel_num)
             if self.prgcmodel_args.ensure_rel:
-                pred_rels = torch.sigmoid(rel_pred)
-            else:
-                pred_rels = None
-            pred_seqs = self.predict_potential_rels_output(sequence_output,attention_mask,pred_rels)
+                pred_rels = torch.sigmoid(pred_rels)
+
+            #b,n,2,s,tags
+            pred_seqs = self.predict_seqs_output(sequence_outputs, attention_mask, pred_rels)
+            # (bs, seq_len, seq_len)
             if self.prgcmodel_args.ensure_corres:
-                pred_corres = torch.sigmoid(corres_pred) * corres_mask
-                # (bs, seq_len, seq_len)
-                outputs = (pred_rels, pred_seqs, pred_corres)
+                pred_corres = torch.sigmoid(pred_corres) * corres_mask
+
             else:
-                outputs = (pred_rels, pred_seqs,)
+                pred_corres = None
+            outputs = (pred_rels, pred_seqs, pred_corres)
         #evaluate
         if seq_tags is not None and not self.training:
             outputs = (None,) + outputs
-
         return outputs
