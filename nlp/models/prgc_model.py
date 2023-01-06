@@ -3,7 +3,6 @@
 #参考实现: https://github.com/hy-struggle/PRGC
 import copy
 import typing
-from collections import Counter
 from dataclasses import dataclass, field
 
 import numpy as np
