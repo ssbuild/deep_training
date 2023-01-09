@@ -8,6 +8,8 @@
 
 ## 更新
 - <strong>2023年01月08</strong>
+  - 增加SPN4RE关系模型抽取
+- <strong>2023年01月08</strong>
   - 增加infonce对比学习
 - <strong>2023年01月06</strong>
   - 增加onerel关系模型抽取，prgc关系模型抽取，pure实体模型提取
