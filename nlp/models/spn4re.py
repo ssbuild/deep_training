@@ -112,9 +112,9 @@ def _get_best_indexes(logits, n_best_size):
         best_indexes.append(index_and_score[i][0])
     return best_indexes
 
-def get_best_spans(logits,seqlen,n_best_size,max_span_length):
-    ss = _get_best_indexes(logits[0], n_best_size)
-    ee = _get_best_indexes(logits[1], n_best_size)
+def get_best_spans(start_logits,end_logits,n_best_size,max_span_length):
+    ss = _get_best_indexes(start_logits, n_best_size)
+    ee = _get_best_indexes(end_logits, n_best_size)
     spans = set()
     if 0 in ss:
         ss.remove(0)
@@ -126,11 +126,16 @@ def get_best_spans(logits,seqlen,n_best_size,max_span_length):
                 continue
             if j -i + 1 > max_span_length:
                 continue
-            if j >= seqlen-1:
-                continue
-
             spans.add((i, j))
     return list(spans)
+
+
+def softmax(x,axis = None):
+    """Compute the softmax of vector x."""
+    exp_x = np.exp(x)
+    softmax_x = exp_x / np.sum(exp_x,axis=axis,keepdims=True)
+    return softmax_x
+
 
 def extract_spoes(outputs: typing.List,n_best_size,max_span_length):
     batch_result = []
@@ -142,8 +147,12 @@ def extract_spoes(outputs: typing.List,n_best_size,max_span_length):
             p = class_logits[i]
             if p == 0:
                 continue
-            subs = get_best_spans(head_logits[i], seqlen, n_best_size, max_span_length)
-            objs = get_best_spans(tail_logits[i], seqlen, n_best_size, max_span_length)
+            start_logits = softmax(head_logits[i][0][:seqlen],axis=-1)
+            end_logigts = softmax(head_logits[i][1][:seqlen],axis=-1)
+            subs = get_best_spans(start_logits,end_logigts, n_best_size, max_span_length)
+            start_logits = softmax(tail_logits[i][0][:seqlen],axis=-1)
+            end_logigts = softmax(tail_logits[i][1][:seqlen],axis=-1)
+            objs = get_best_spans(start_logits,end_logigts, n_best_size, max_span_length)
             for s in subs:
                 for o in objs:
                     spoes.add((s[0]-1,s[1]-1,p-1,o[0]-1,o[1]-1))
@@ -290,6 +299,7 @@ class TransformerForSPN4RE(TransformerModel):
 
     def get_model_lr(self):
         return super(TransformerForSPN4RE, self).get_model_lr() + [
+            (self.dropout, self.config.task_specific_params['learning_rate']),
             (self.decoder, self.config.task_specific_params['learning_rate']),
             (self.criterion, self.config.task_specific_params['learning_rate']),
         ]
