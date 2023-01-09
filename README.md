@@ -7,7 +7,7 @@
   -  [deep_training-examples](https://github.com/ssbuild/deep_training-example)
 
 ## 更新
-- <strong>2023年01月08</strong>
+- <strong>2023年01月09</strong>
   - 增加SPN4RE关系模型抽取
 - <strong>2023年01月08</strong>
   - 增加infonce对比学习
