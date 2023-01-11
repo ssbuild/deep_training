@@ -7,6 +7,8 @@
   -  [deep_training-examples](https://github.com/ssbuild/deep_training-example)
 
 ## 更新
+- <strong>2023年01月11</strong>
+  - 增加TSDAE句向量模型
 - <strong>2023年01月09</strong>
   - 增加infonce对比学习,SPN4RE关系模型抽取
 - <strong>2023年01月06</strong>

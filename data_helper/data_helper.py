@@ -113,7 +113,8 @@ class DataHelper(DataPreprocessHelper):
                      num_processes: int = 1,
                      process_index: int = 0,
                      with_record_iterable_dataset: bool = False,
-                     with_load_memory: bool =False,
+                     with_load_memory: bool = False,
+                     with_torchdataset: bool = True
                      ):
         assert process_index <= num_processes and num_processes >= 1
         if not files:
@@ -158,8 +159,8 @@ class DataHelper(DataPreprocessHelper):
 
             if infinite:
                 dataset = dataset.repeat(-1)
-
-            dataset = torch_IterableDataset(dataset)
+            if with_torchdataset:
+                dataset = torch_IterableDataset(dataset)
 
         else:
             dataset: RandomDatasetBase
@@ -168,8 +169,8 @@ class DataHelper(DataPreprocessHelper):
 
             if shuffle:
                 dataset = dataset.shuffle(-1)
-
-            dataset = torch_Dataset(dataset)
+            if with_torchdataset:
+                dataset = torch_Dataset(dataset)
         return dataset
 
     # 返回制作特征数据的中间文件
