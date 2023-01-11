@@ -1,6 +1,7 @@
 
 ## transformer is all you need.
 - 基于pytorch-lightning 和 transformers实现的上下游训练框架
+- 安装 pip installl -U deep_training
 
 ## 例子
   -  [deep_training-examples](https://github.com/ssbuild/deep_training-example)
@@ -53,15 +54,16 @@
 - <strong>中文分类</strong>:
   - 例子 <strong>tnews 中文分类</strong>
 - <strong>命名实体提取</strong>: 
-  -  <strong>参考数据</strong>  cluner
-  -  <strong>cluener 全局指针提取</strong>
-  -  <strong>cluener crf提取</strong>
-  -  <strong>cluener crf prompt提取</strong>
-  -  <strong>cluener mhs ner多头选择提取</strong>
-  -  <strong>cluener span指针提取</strong>
-  -  <strong>cluener crf 级联提取</strong>
-  -  <strong>cluener tplinkerplus 提取</strong>
-  -  <strong>cluener w2ner 提取</strong>
+  - <strong>参考数据</strong>  cluner
+  - <strong>cluener 全局指针提取</strong>
+  - <strong>cluener crf提取</strong>
+  - <strong>cluener crf prompt提取</strong>
+  - <strong>cluener mhs ner多头选择提取</strong>
+  - <strong>cluener span指针提取</strong>
+  - <strong>cluener crf 级联提取</strong>
+  - <strong>cluener tplinkerplus 提取</strong>
+  - <strong>pure 提取</strong>
+  - <strong>cluener w2ner 提取</strong>
 - <strong>关系提取</strong>
   - <strong>参考数据</strong>  [duie和法研杯第一阶段数据](https://github.com/ssbuild/cail2022-info-extract)
   - <strong>gplinker 关系提取</strong>
@@ -70,6 +72,9 @@
   - <strong>mhslinker 关系提取</strong>
   - <strong>tplinker 关系提取</strong>
   - <strong>tplinkerplus 关系提取</strong>
+  - <strong>onerel 关系抽取</strong>
+  - <strong>prgc 关系提取</strong>
+  - <strong>spn4re 关系提取</strong>
 - <strong>事件提取</strong>
   - <strong>参考数据</strong> duee事件抽取 [DuEE v1.0数据集](https://aistudio.baidu.com/aistudio/competition/detail/46/0/datasets)
   - <strong>gplinker 事件提取</strong>

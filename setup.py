@@ -17,5 +17,5 @@ setup(
                       'tfrecords >= 0.2.4 , <=3',
                       'numpy',
                       'transformers','seqmetric','sklearn','scipy','scikit-learn','tqdm','six','jieba'],
-    packages=[p for p in find_packages() if  p not in ignore]
+    packages=[p for p in find_packages() if p not in ignore]
 )
