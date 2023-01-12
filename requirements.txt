@@ -1,6 +1,6 @@
 transformers
 pytorch_lightning >= 1.8
-fastdatasets >= 0.9.2
+fastdatasets >= 0.9.4
 seqmetric >= 0.1.2
 sklearn
 scipy

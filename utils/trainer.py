@@ -79,7 +79,7 @@ class SimpleModelCheckpoint(Checkpoint):
                                                                            self.weight_file))
                 trainer.save_checkpoint(self.weight_file)
         else:
-            warnings.warn('monitor {} is not in metirc'.format(self.monitor))
+            warnings.warn('monitor {} is not in metirc !!!'.format(self.monitor))
 
 
 

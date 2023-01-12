@@ -90,20 +90,23 @@ class DataHelper(DataPreprocessHelper):
            num_key='total_num',
            cycle_length=1,
            block_length=1,
-           with_record_iterable_dataset: bool=False):
+           backend=None,
+           with_record_iterable_dataset: bool=False,
+           with_parse_from_numpy: bool =True):
 
-        return NumpyReaderAdapter.load(files, self.backend , options,
+        return NumpyReaderAdapter.load(files, backend or self.backend , options,
                                        data_key_prefix_list=data_key_prefix_list,
                                        num_key=num_key,
                                        cycle_length=cycle_length,
                                        block_length=block_length,
-                                       with_record_iterable_dataset=with_record_iterable_dataset)
+                                       with_record_iterable_dataset=with_record_iterable_dataset,
+                                       with_parse_from_numpy=with_parse_from_numpy)
 
     """
         cycle_length for IterableDataset
         block_length for IterableDataset
-        返回: 
-            torch DataLoader
+        return: 
+            torch DataLoader or fastdatasets numpy dataset
     """
     def load_dataset(self,files: typing.Union[typing.List, str],
                      shuffle: bool=False,
@@ -112,6 +115,7 @@ class DataHelper(DataPreprocessHelper):
                      block_length: int=10,
                      num_processes: int = 1,
                      process_index: int = 0,
+                     backend=None,
                      with_record_iterable_dataset: bool = False,
                      with_load_memory: bool = False,
                      with_torchdataset: bool = True
@@ -136,8 +140,8 @@ class DataHelper(DataPreprocessHelper):
         dataset = self.load_numpy_dataset(files,
                                           cycle_length=cycle_length,
                                           block_length=block_length,
-                                          with_record_iterable_dataset=with_record_iterable_dataset)
-
+                                          with_record_iterable_dataset=with_record_iterable_dataset,
+                                          with_parse_from_numpy=not with_load_memory)
         #加载至内存
         if with_load_memory:
             logging.info('load dataset to memory...')
@@ -147,10 +151,12 @@ class DataHelper(DataPreprocessHelper):
                 raw_data = [dataset[i] for i in range(len(dataset))]
 
             dataset = MEMORY.load_dataset.SingleRandomDataset(raw_data)
+            #解析numpy数据
+            if self.backend != 'memory_raw':
+                dataset = dataset.parse_from_numpy_writer()
 
         if isinstance(dataset, typing.Iterator):
             dataset: IterableDatasetBase
-
             if num_processes > 1:
                 dataset = dataset.mutiprocess(num_processes, process_index)
 
