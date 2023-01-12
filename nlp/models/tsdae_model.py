@@ -14,6 +14,15 @@ __all__ = [
 
 @dataclass
 class TsdaelArguments:
+    pooling: typing.Optional[str] = field(
+        default='reduce',
+        metadata={
+            "help": (
+                "one of [cls , reduce]"
+            )
+        },
+    )
+
     vector_size: typing.Optional[int] = field(
         default=512,
         metadata={
@@ -121,10 +130,31 @@ class TransformerForTSDAE(TransformerModel):
 
     def forward_for_encoder(self,*args, **inputs):
         outputs = self.model(*args, **inputs, output_hidden_states=True)
+
+        # simcse_logits = outputs[0][:, 0]
+        # if self.pooling == 'cls':
+        #     simcse_logits = outputs[0][:, 0]
+        # elif self.pooling == 'pooler':
+        #     simcse_logits = outputs[1]
+        # elif self.pooling == 'last-avg':
+        #     last = outputs[0].transpose(1, 2)  # [batch, 768, seqlen]
+        #     return torch.avg_pool1d(last, kernel_size=last.shape[-1]).squeeze(-1)  # [batch, 768]
+        # elif self.pooling == 'first-last-avg':
+        #     first = outputs[2][1].transpose(1, 2)  # [batch, 768, seqlen]
+        #     last = outputs[2][-1].transpose(1, 2)  # [batch, 768, seqlen]
+        #     first_avg = torch.avg_pool1d(first, kernel_size=last.shape[-1]).squeeze(-1)  # [batch, 768]
+        #     last_avg = torch.avg_pool1d(last, kernel_size=last.shape[-1]).squeeze(-1)  # [batch, 768]
+        #     avg = torch.cat((first_avg.unsqueeze(1), last_avg.unsqueeze(1)), dim=1)  # [batch, 2, 768]
+        #     return torch.avg_pool1d(avg.transpose(1, 2), kernel_size=2).squeeze(-1)  # [batch, 768]
+        # elif self.pooling == 'reduce':
+        #     simcse_logits = self.sim_head(outputs[1])
+        #     simcse_logits = torch.tanh(simcse_logits)
+        # return simcse_logits
+
         logits = outputs[2][self.tsdae_args.num_encoder_layer][:, 0]
-        if self.model.training:
-            logits = self.dropout(logits)
-        logits = self.classifier(logits)
+        if self.tsdae_args.pooling == 'reduce':
+            logits = self.classifier(logits)
+            logits = torch.tanh(logits)
         return logits
 
     def compute_loss(self, *args, **batch) -> tuple:
@@ -138,7 +168,11 @@ class TransformerForTSDAE(TransformerModel):
         attention_mask = batch['attention_mask']
         logits = self.forward_for_encoder(*args,**batch)
         if self.training:
-            logits2 = self.classifier2(logits)
+            if self.tsdae_args.pooling == 'reduce':
+                logits2 = self.classifier2(logits)
+                logits2 = torch.tanh(logits2)
+            else:
+                logits2 = logits
 
             decoder_input_ids = inputs['input_ids']
             decoder_attention_mask = inputs['attention_mask']
