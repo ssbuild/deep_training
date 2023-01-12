@@ -121,7 +121,7 @@ class TransformerForTSDAE(TransformerModel):
 
     def forward_for_encoder(self,*args, **inputs):
         outputs = self.model(*args, **inputs, output_hidden_states=True)
-        logits = outputs[2][-self.tsdae_args.num_encoder_layer][:, 0]
+        logits = outputs[2][self.tsdae_args.num_encoder_layer][:, 0]
         if self.model.training:
             logits = self.dropout(logits)
         logits = self.classifier(logits)
@@ -166,7 +166,7 @@ class TransformerForTSDAE(TransformerModel):
                 use_cache=False
             )
             # Calculate loss
-            output_hidden = decoder_outputs[1][-self.tsdae_args.num_decoder_layer]
+            output_hidden = decoder_outputs[1][self.tsdae_args.num_decoder_layer]
             lm_logits = self.predictions(output_hidden)
             loss = self.loss_fn(lm_logits.view(-1, lm_logits.shape[-1]), labels.reshape(-1))
             outputs = (loss, logits)
