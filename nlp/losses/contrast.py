@@ -3,18 +3,27 @@
 # @FileName: contrast.py
 
 import torch
-from torch.nn.functional import cross_entropy
+from torch import nn
+from torch.nn import functional as F
 
 
-def compute_simcse_loss(y_pred: torch.Tensor,scale = 20):
-    batch_size = y_pred.size()[0]
-    idxs = torch.arange(0, batch_size)
-    idxs = torch.reshape(idxs, (-1, 2))
-    idxs = torch.cat([idxs[:, 1:], idxs[:, :1]], dim=1)
-    labels = torch.reshape(idxs, (-1,)).to(y_pred.device).long()
-    similarities = torch.mm(y_pred, torch.transpose(y_pred,1,0))
-    similarities = similarities - torch.eye(batch_size).to(y_pred.device) * 1e12
-    similarities = similarities * scale  # scale
-    loss = cross_entropy(similarities, labels)
-    return loss
+class SimcseLoss(nn.Module):
+    def __init__(self,scale = 20,reduction='sum',ignore_index=-100):
+        super(SimcseLoss, self).__init__()
+        self.scale = scale
+        self.reduction = reduction
+        self.loss_fn = nn.CrossEntropyLoss(ignore_index=ignore_index)
+
+    def forward(self,inputs):
+        batch_size = inputs.size(0)
+        idxs = torch.arange(0, batch_size)
+        idxs = torch.reshape(idxs, (-1, 2))
+        idxs = torch.cat([idxs[:, 1:], idxs[:, :1]], dim=1)
+        y_true = torch.flatten(idxs).to(inputs.device).long()
+        # sim = torch.mm(y_pred, torch.transpose(y_pred,1,0))
+        sim = F.cosine_similarity(inputs.unsqueeze(1), inputs.unsqueeze(0), dim=-1)
+        sim = sim - torch.eye(batch_size).to(inputs.device) * 1e12
+        sim = sim * self.scale  # scale
+        loss = F.cross_entropy(sim, y_true, reduction='sum')
+        return loss
 
