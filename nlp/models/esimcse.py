@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/1/13 14:14
 # 参考实现: https://github.com/shuxinyin/SimCSE-Pytorch
+from typing import Union, Optional, Callable, Any
 
 import torch
+from pytorch_lightning.core.optimizer import LightningOptimizer
+from torch.optim.optimizer import Optimizer
+
 from .transformer import TransformerModel
 from ..losses.MultipleNegativesRankingLoss import MultipleNegativesRankingLoss
 
@@ -13,8 +17,10 @@ __all__ = [
 class TransformerForESimcse(TransformerModel):
     def __init__(self, *args,**kwargs):
         pooling = kwargs.pop('pooling','cls')
+        gamma = kwargs.pop('gamma', 0.95)
         super(TransformerForESimcse, self).__init__(*args,**kwargs)
         self.pooling = pooling
+        self.gamma = gamma
         # config = self.config
         # self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.momentum_encoder = TransformerModel(*args,**kwargs)
@@ -53,6 +59,28 @@ class TransformerForESimcse(TransformerModel):
         outputs = self.momentum_encoder(*args, **batch, output_hidden_states=True, )
         return self.pooling_output(outputs)
 
+    def optimizer_step(self,
+            epoch: int,
+            batch_idx: int,
+            optimizer: Union[Optimizer, LightningOptimizer],
+            optimizer_idx: int = 0,
+            optimizer_closure: Optional[Callable[[], Any]] = None,
+            on_tpu: bool = False,
+            using_lbfgs: bool = False,
+            **kwargs
+    ) -> None:
+        # update params
+        optimizer.step(closure=optimizer_closure)
+        model = self.model
+        momentum_encoder = self.momentum_encoder
+
+        #  Momentum Contrast Encoder Update
+        for encoder_param, moco_encoder_param in zip(model.parameters(), momentum_encoder.parameters()):
+            # print("--", moco_encoder_param.data.shape, encoder_param.data.shape)
+            moco_encoder_param.data = self.gamma \
+                                      * moco_encoder_param.data \
+                                      + (1. - self.gamma) * encoder_param.data
+
 
     def compute_loss(self, *args,**batch) -> tuple:
         labels: torch.Tensor = batch.pop('labels',None)
@@ -89,6 +117,7 @@ class TransformerForESimcse(TransformerModel):
                         inputs[k.replace('2', '')] = batch.pop(k)
             logits1 = self.forward_for_pos_hidden(*args, **batch)
             logits2 = self.forward_for_pos_hidden(*args, **inputs)
+            labels = torch.squeeze(labels, dim=-1)
             outputs = (None, logits1,logits2, labels)
         else:
             logits = self.forward_for_pos_hidden(*args, **batch)
