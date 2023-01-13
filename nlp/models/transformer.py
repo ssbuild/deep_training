@@ -329,7 +329,6 @@ class TransformerLightningModule(pl.LightningModule):
             outputs = self.compute_loss(**batch)
         else:
             outputs = self.compute_loss(*batch)
-
         o = {}
         out = outputs
         if isinstance(out, (tuple, list)):

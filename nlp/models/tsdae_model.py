@@ -162,8 +162,8 @@ class TransformerForTSDAE(TransformerModel):
         if self.training or labels is not None:
             inputs = {}
             for k in list(batch.keys()):
-                if k.startswith('target_'):
-                    inputs[k.replace('target_','')] = batch.pop(k)
+                if k.endswith('2'):
+                    inputs[k.replace('2','')] = batch.pop(k)
 
         attention_mask = batch['attention_mask']
         logits = self.forward_for_encoder(*args,**batch)
