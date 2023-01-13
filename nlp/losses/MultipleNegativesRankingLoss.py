@@ -1,7 +1,7 @@
 import torch
-from torch import nn, Tensor
-from typing import Iterable, Dict
+from torch import nn
 from .utils import cos_sim
+
 
 class MultipleNegativesRankingLoss(nn.Module):
     """
@@ -36,7 +36,7 @@ class MultipleNegativesRankingLoss(nn.Module):
         self.cross_entropy_loss = nn.CrossEntropyLoss()
 
 
-    def forward(self, reps, labels: Tensor):
+    def forward(self, reps):
         # reps = [self.model(sentence_feature)['sentence_embedding'] for sentence_feature in sentence_features]
         embeddings_a = reps[0]
         embeddings_b = torch.cat(reps[1:])
@@ -47,8 +47,3 @@ class MultipleNegativesRankingLoss(nn.Module):
 
     def get_config_dict(self):
         return {'scale': self.scale, 'similarity_fct': self.similarity_fct.__name__}
-
-
-
-
-

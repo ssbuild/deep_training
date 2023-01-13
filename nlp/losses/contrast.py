@@ -26,4 +26,3 @@ class SimcseLoss(nn.Module):
         sim = sim * self.scale  # scale
         loss = F.cross_entropy(sim, y_true, reduction='sum')
         return loss
-
