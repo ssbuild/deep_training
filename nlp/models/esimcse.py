@@ -82,8 +82,14 @@ class TransformerForESimcse(TransformerModel):
             loss = self.loss_fn(loss_logits_list)
             outputs = (loss,)
         elif labels is not None:
-            logits = self.forward_for_pos_hidden(*args, **batch)
-            outputs = (None, logits, labels)
+            if labels is not None:
+                inputs = {}
+                for k in list(batch.keys()):
+                    if k.endswith('2'):
+                        inputs[k.replace('2', '')] = batch.pop(k)
+            logits1 = self.forward_for_pos_hidden(*args, **batch)
+            logits2 = self.forward_for_pos_hidden(*args, **inputs)
+            outputs = (None, logits1,logits2, labels)
         else:
             logits = self.forward_for_pos_hidden(*args, **batch)
             outputs = (logits,)
