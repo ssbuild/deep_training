@@ -18,7 +18,7 @@ class SimpleModelCheckpoint(Checkpoint):
     def __init__(self,
                  rank=0,# 执行节点
                  every_n_train_steps: Optional[int] = None,
-                 every_n_epochs: Optional[int] = 1,
+                 every_n_epochs: Optional[int] = None,
                  skip_n_train_steps :  Optional[int] = None,
                  skip_n_epochs: Optional[int] = None,
                  monitor='loss',
@@ -27,7 +27,7 @@ class SimpleModelCheckpoint(Checkpoint):
 
         self.__every_n_train_steps = every_n_train_steps
         self.__every_n_epochs = every_n_epochs
-        assert not (self.__every_n_epochs is None and self.__every_n_train_steps is None)
+        assert not (self.__every_n_epochs is None and self.__every_n_train_steps is None),ValueError('must set value one of [every_n_train_steps,every_n_epochs]')
         self.best = {}
         self.monitor = monitor
         self.mode = mode # min max
