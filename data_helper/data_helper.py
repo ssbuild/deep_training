@@ -118,7 +118,8 @@ class DataHelper(DataPreprocessHelper):
                      backend=None,
                      with_record_iterable_dataset: bool = False,
                      with_load_memory: bool = False,
-                     with_torchdataset: bool = True
+                     with_torchdataset: bool = True,
+                     transform_fn : typing.Callable = None
                      ):
         assert process_index <= num_processes and num_processes >= 1
         if not files:
@@ -141,7 +142,8 @@ class DataHelper(DataPreprocessHelper):
                                           cycle_length=cycle_length,
                                           block_length=block_length,
                                           with_record_iterable_dataset=with_record_iterable_dataset,
-                                          with_parse_from_numpy=not with_load_memory)
+                                          with_parse_from_numpy=not with_load_memory,
+                                          backend=backend)
         #加载至内存
         if with_load_memory:
             logging.info('load dataset to memory...')
@@ -165,6 +167,10 @@ class DataHelper(DataPreprocessHelper):
 
             if infinite:
                 dataset = dataset.repeat(-1)
+
+            if transform_fn is not None:
+                dataset = dataset.map(transform_fn)
+
             if with_torchdataset:
                 dataset = torch_IterableDataset(dataset)
 
@@ -175,6 +181,10 @@ class DataHelper(DataPreprocessHelper):
 
             if shuffle:
                 dataset = dataset.shuffle(-1)
+
+            if transform_fn is not None:
+                dataset = dataset.map(transform_fn)
+
             if with_torchdataset:
                 dataset = torch_Dataset(dataset)
         return dataset

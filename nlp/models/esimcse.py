@@ -85,6 +85,8 @@ class TransformerForESimcse(TransformerModel):
     def compute_loss(self, *args,**batch) -> tuple:
         labels: torch.Tensor = batch.pop('labels',None)
         if self.model.training:
+            neg_num = batch.pop('neg_num').cpu().numpy().tolist()
+
             input_ids = batch['input_ids']
             attention_mask = batch['attention_mask']
             n = input_ids.size(1)
@@ -95,26 +97,25 @@ class TransformerForESimcse(TransformerModel):
                 inputs['attention_mask'] = attention_mask[:, i]
                 pos.append(self.forward_for_pos_hidden(**inputs))
 
+
             loss_logits_list = [*pos]
-            if 'input_ids2' in batch:
-                input_ids = batch['input_ids2']
-                attention_mask = batch['attention_mask2']
-                n = input_ids.size(1)
-                for i in range(n):
-                    inputs = {}
-                    inputs['input_ids'] = input_ids[:, i]
-                    inputs['attention_mask'] = attention_mask[:, i]
-                    neg.append(self.forward_for_neg_hidden(**inputs))
-                neg_key = torch.stack(neg, dim=1)
+            for i in range(neg_num):
+                input_ids = batch['input_ids' + str(i)]
+                attention_mask = batch['attention_mask' + str(i)]
+                inputs = {}
+                inputs['input_ids'] = input_ids
+                inputs['attention_mask'] = attention_mask
+                neg.append(self.forward_for_neg_hidden(**inputs))
+            if neg_num > 0:
+                neg_key = torch.cat(neg, dim=0)
                 loss_logits_list.append(neg_key)
             loss = self.loss_fn(loss_logits_list)
             outputs = (loss,)
         elif labels is not None:
-            if labels is not None:
-                inputs = {}
-                for k in list(batch.keys()):
-                    if k.endswith('2'):
-                        inputs[k.replace('2', '')] = batch.pop(k)
+            inputs = {}
+            for k in list(batch.keys()):
+                if k.endswith('2'):
+                    inputs[k.replace('2', '')] = batch.pop(k)
             logits1 = self.forward_for_pos_hidden(*args, **batch)
             logits2 = self.forward_for_pos_hidden(*args, **inputs)
             labels = torch.squeeze(labels, dim=-1)
