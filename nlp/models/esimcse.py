@@ -86,7 +86,6 @@ class TransformerForESimcse(TransformerModel):
         labels: torch.Tensor = batch.pop('labels',None)
         if self.model.training:
             neg_num = batch.pop('neg_num').cpu().numpy().tolist()
-
             input_ids = batch['input_ids']
             attention_mask = batch['attention_mask']
             n = input_ids.size(1)
@@ -96,8 +95,6 @@ class TransformerForESimcse(TransformerModel):
                 inputs['input_ids'] = input_ids[:, i]
                 inputs['attention_mask'] = attention_mask[:, i]
                 pos.append(self.forward_for_pos_hidden(**inputs))
-
-
             loss_logits_list = [*pos]
             for i in range(neg_num):
                 input_ids = batch['input_ids' + str(i)]
