@@ -97,6 +97,15 @@ class DiffcselArguments:
         },
     )
 
+    generator_config_name: typing.Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                ""
+            )
+        },
+    )
+
 
 class BertPredictionHeadTransform(nn.Module):
     def __init__(self, config):
@@ -144,15 +153,15 @@ class TransformerForDiffcse(TransformerModel):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
         if generator_config is not None:
-            self.discriminator = TransformerModel(*args, **kwargs)
+            self.discriminator_cls = TransformerModel(*args, **kwargs)
+            self.discriminator = self.discriminator_cls.model
             # self.generator = DistilBertForMaskedLM.from_pretrained(
             #     'distilbert-base-uncased') if cls.model_args.generator_name is None else transformers.AutoModelForMaskedLM.from_pretrained(
             #     cls.model_args.generator_name)
             self.discriminator.electra_head = torch.nn.Linear(768, 2)
             self.discriminator_embeddings_fn = self.discriminator.embeddings.forward
 
-            self.generator_config.is_decoder = True
-            self.generator_config.add_cross_attention = True
+
 
             model_name_or_path = diffcse_args.generator_model_name_or_path
             if model_name_or_path is not None:
@@ -161,10 +170,11 @@ class TransformerForDiffcse(TransformerModel):
                                                                     config=self.generator_config)
             else:
                 self.generator = AutoModelForMaskedLM.from_pretrained(self.generator_config)
-            self.loss_fn = nn.CrossEntropyLoss(ignore_index=self.generator_config.pad_token_id)
+
         else:
             self.classifier2, self.decoder, self.loss_fn = None, None, None
 
+        self.loss_fn = nn.CrossEntropyLoss(ignore_index=self.generator_config.pad_token_id,reduction='mean')
         self.loss_fn_cse = MultipleNegativesRankingLoss()
 
 
@@ -174,41 +184,46 @@ class TransformerForDiffcse(TransformerModel):
             (self.discriminator, self.config.task_specific_params['learning_rate_for_task']),
         ]
 
-    def forward_for_hidden(self, *args, **batch):
-        outputs = self.model(*args, **batch, output_hidden_states=True, )
-        return self.pooling_output(outputs)
 
 
 
-    def pooling_output(self, outputs):
-        if self.pooling == 'cls':
-            simcse_logits = outputs[0][:, 0]
-        elif self.pooling == 'pooler':
+
+    def pooling_output(self, outputs,num_layers):
+        pooling = self.diffcse_args.pooling
+        if pooling == 'cls':
+            simcse_logits = outputs[2][num_layers][:, 0]
+        elif pooling== 'pooler':
             simcse_logits = outputs[1]
-        elif self.pooling == 'last-avg':
-            last = outputs[0].transpose(1, 2)  # [batch, 768, seqlen]
+        elif pooling == 'last-avg':
+            last = outputs[2][num_layers] # [batch, 768, seqlen]
             simcse_logits = torch.avg_pool1d(last, kernel_size=last.shape[-1]).squeeze(-1)  # [batch, 768]
-        elif self.pooling == 'first-last-avg':
+        elif pooling == 'first-last-avg':
             first = outputs[2][1].transpose(1, 2)  # [batch, 768, seqlen]
-            last = outputs[2][-1].transpose(1, 2)  # [batch, 768, seqlen]
+            last = outputs[2][num_layers].transpose(1, 2)  # [batch, 768, seqlen]
             first_avg = torch.avg_pool1d(first, kernel_size=last.shape[-1]).squeeze(-1)  # [batch, 768]
             last_avg = torch.avg_pool1d(last, kernel_size=last.shape[-1]).squeeze(-1)  # [batch, 768]
             avg = torch.cat((first_avg.unsqueeze(1), last_avg.unsqueeze(1)), dim=1)  # [batch, 2, 768]
             simcse_logits = torch.avg_pool1d(avg.transpose(1, 2), kernel_size=2).squeeze(-1)  # [batch, 768]
-        # elif self.pooling == 'reduce':
+        # elif pooling == 'reduce':
         #     simcse_logits = self.sim_head(outputs[1])
         #     simcse_logits = torch.tanh(simcse_logits)
         else:
             raise ValueError('not support pooling', self.pooling)
         return simcse_logits
 
-    def get_generator_output(self,*args,**batch):
+    def forward_for_hidden(self, *args, **batch):
+        outputs = self.model(*args, **batch, output_hidden_states=True, )
+        return self.pooling_output(outputs, self.diffcse_args.num_encoder_layer)
+
+    def forward_generator_output(self, *args, **batch):
         with torch.no_grad():
-            preds = self.generator(**batch)[0].argmax(-1)
-        preds[:,0] = self.generator.cls_token_id
+            outputs = self.generator(**batch,output_hidden_states=True,)
+            # outputs = self.pooling_output(outputs, self.diffcse_args.num_generator_layer)
+            preds = outputs[0].argmax(-1)
+        preds[:,0] = batch['input_ids'][0][0]
         return preds
 
-    def get_discriminator_output(self,*args,**batch):
+    def forward_discriminator_output(self, *args, **batch):
         #self.discriminator_embeddings_fn = self.discriminator.embeddings.forward
         cls_input = batch.pop('cls_input')
         def forward_fn(*args,**kwargs):
@@ -217,7 +232,7 @@ class TransformerForDiffcse(TransformerModel):
             return embedding_output
         setattr(self.discriminator.embeddings,'forward',forward_fn)
         outputs = self.discriminator(*args, **batch, output_hidden_states=True, )
-        return self.pooling_output(outputs)
+        return self.pooling_output(outputs, self.diffcse_args.num_discriminator_layer)
 
     def compute_loss(self, *args,**batch) -> tuple:
         labels: torch.Tensor = batch.pop('labels',None)
@@ -247,22 +262,28 @@ class TransformerForDiffcse(TransformerModel):
                 inputs = {}
                 inputs['input_ids'] = input_ids2[:, i] * attention_mask[:, i]
                 inputs['attention_mask'] = attention_mask[:, i]
-                g_pred = self.get_generator_output(**inputs)
+                g_pred = self.forward_generator_output(**inputs)
                 replaced_label = (g_pred != input_ids[:, i]) * inputs['attention_mask']
                 inputs['input_ids'] = g_pred * inputs['attention_mask']
                 #b,s,h
                 cls_input = logits_list[i]
                 cls_input.view(-1,cls_input.size(-1))
                 inputs['cls_input'] = cls_input
-                mlm.append(self.get_discriminator_output(**inputs))
+                mlm.append(self.forward_discriminator_output(**inputs))
                 mlm_labels.append(replaced_label)
 
-            mlm = torch.cat(mlm,dim=1)
-            mlm_labels = torch.cat(mlm_labels, dim=1)
+            mlm = torch.cat(mlm,dim=0)
+            mlm_labels = torch.cat(mlm_labels, dim=0)
             prediction_scores = self.discriminator.electra_head(mlm)
-            masked_lm_loss = self.loss_fn(prediction_scores.view(-1, 2), mlm_labels.view(-1))
-            loss = loss_cse + masked_lm_loss
-            outputs = (loss,)
+            mlm_loss = self.loss_fn(prediction_scores.view(-1, 2), mlm_labels.view(-1))
+            loss = loss_cse + mlm_loss * self.diffcse_args.lambda_weight
+            loss_dict = {
+                'loss_cse': loss_cse,
+                'mlm_loss': mlm_loss,
+                'loss': loss
+            }
+
+            outputs = (loss_dict,)
         # 评估
         elif labels is not None:
             inputs = {}
