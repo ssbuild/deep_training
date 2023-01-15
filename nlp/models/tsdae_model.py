@@ -88,8 +88,8 @@ class TsdaelArguments:
 class TransformerForTSDAE(TransformerModel):
     def __init__(self, *args,**kwargs):
         tsdae_args: TsdaelArguments = kwargs.pop('tsdae_args')
-        decoder_config: TsdaelArguments = kwargs.pop('decoder_config',None)
-        decoder_tokenizer: TsdaelArguments = kwargs.pop('decoder_tokenizer',None)
+        decoder_config = kwargs.pop('decoder_config',None)
+        decoder_tokenizer = kwargs.pop('decoder_tokenizer',None)
         super(TransformerForTSDAE, self).__init__(*args,**kwargs)
         self.tsdae_args = tsdae_args
         config = self.config
@@ -151,6 +151,7 @@ class TransformerForTSDAE(TransformerModel):
         #     simcse_logits = torch.tanh(simcse_logits)
         # return simcse_logits
 
+        #cls
         logits = outputs[2][self.tsdae_args.num_encoder_layer][:, 0]
         if self.tsdae_args.pooling == 'reduce':
             logits = self.classifier(logits)
