@@ -293,19 +293,14 @@ class TransformerForDiffcse(TransformerModel):
             input_ids = batch['input_ids']
             attention_mask = batch['attention_mask']
             n = input_ids.size(1)
-            pos,neg = [], []
+            loss_logits = []
             for i in range(n):
                 inputs = {}
                 inputs['input_ids'] = input_ids[:, i]
                 inputs['attention_mask'] = attention_mask[:, i]
-                obj = pos if i < 2 else neg
-                obj.append(self.forward_for_hidden(**inputs))
-            loss_logits_list = [*pos]
-            logits_list  = [*pos]
-            if neg:
-                logits_list.extend(neg)
-                loss_logits_list.append(torch.cat(neg, dim=0))
-            loss_cse = self.loss_fn_cse(loss_logits_list)
+                loss_logits.append(self.forward_for_hidden(**inputs))
+
+            loss_cse = self.loss_fn_cse(loss_logits)
 
             input_ids2 = batch['mlm_input_ids']
             n = input_ids2.size(1)
@@ -318,7 +313,7 @@ class TransformerForDiffcse(TransformerModel):
                 replaced_label = (g_pred != input_ids[:, i]) * inputs['attention_mask']
                 inputs['input_ids'] = g_pred * inputs['attention_mask']
                 #b,s,h
-                cls_input = logits_list[i]
+                cls_input = loss_logits[i]
                 cls_input.view(-1,cls_input.size(-1))
                 inputs['cls_input'] = cls_input
                 mlm.append(self.forward_discriminator_output(**inputs))

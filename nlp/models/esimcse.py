@@ -89,24 +89,20 @@ class TransformerForESimcse(TransformerModel):
             input_ids = batch['input_ids']
             attention_mask = batch['attention_mask']
             n = input_ids.size(1)
-            pos, neg = [], []
+            loss_logits = []
             for i in range(n):
                 inputs = {}
                 inputs['input_ids'] = input_ids[:, i]
                 inputs['attention_mask'] = attention_mask[:, i]
-                pos.append(self.forward_for_pos_hidden(**inputs))
-            loss_logits_list = [*pos]
+                loss_logits.append(self.forward_for_pos_hidden(**inputs))
             for i in range(neg_num):
                 input_ids = batch['input_ids' + str(i)]
                 attention_mask = batch['attention_mask' + str(i)]
                 inputs = {}
                 inputs['input_ids'] = input_ids
                 inputs['attention_mask'] = attention_mask
-                neg.append(self.forward_for_neg_hidden(**inputs))
-            if neg_num > 0:
-                neg_key = torch.cat(neg, dim=0)
-                loss_logits_list.append(neg_key)
-            loss = self.loss_fn(loss_logits_list)
+                loss_logits.append(self.forward_for_neg_hidden(**inputs))
+            loss = self.loss_fn(loss_logits)
             outputs = (loss,)
         elif labels is not None:
             inputs = {}
