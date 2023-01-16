@@ -64,6 +64,15 @@ class DiffcselArguments:
         },
     )
 
+    encoder_with_mlp: typing.Optional[bool] = field(
+        default=True,
+        metadata={
+            "help": (
+                ""
+            )
+        },
+    )
+
     discriminator_with_mlp: typing.Optional[bool] = field(
         default = True,
         metadata={
@@ -91,14 +100,7 @@ class DiffcselArguments:
             )
         },
     )
-    num_generator_layer: typing.Optional[int] = field(
-        default=6,
-        metadata={
-            "help": (
-                ""
-            )
-        },
-    )
+
 
     generator_model_type: typing.Optional[str] = field(
         default='bert',
@@ -237,9 +239,6 @@ class TransformerForDiffcse(TransformerModel):
         ]
 
 
-
-
-
     def pooling_output(self, outputs,num_layers):
         pooling = self.diffcse_args.pooling
         if pooling == 'cls':
@@ -270,13 +269,11 @@ class TransformerForDiffcse(TransformerModel):
     def forward_generator_output(self, *args, **batch):
         with torch.no_grad():
             outputs = self.generator(**batch,output_hidden_states=True,)
-            # outputs = self.pooling_output(outputs, self.diffcse_args.num_generator_layer)
             preds = outputs[0].argmax(-1)
         preds[:,0] = batch['input_ids'][0][0]
         return preds
 
     def forward_discriminator_output(self, *args, **batch):
-        #self.discriminator_embeddings_fn = self.discriminator.embeddings.forward
         cls_input = batch.pop('cls_input')
         def forward_fn(*args,**kwargs):
             embedding_output = self.discriminator_embeddings_fn(*args,**kwargs)
