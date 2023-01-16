@@ -74,8 +74,8 @@ class TransformerForInfoNce(TransformerModel):
             for k in list(batch.keys()):
                 if k.endswith('2'):
                     inputs[k.replace('2', '')] = batch.pop(k)
-            logits1 = self.forward_hidden(*args, **batch)
-            logits2 = self.forward_hidden(*args, **inputs)
+            logits1 = self.forward_for_hidden(*args, **batch)
+            logits2 = self.forward_for_hidden(*args, **inputs)
             labels = torch.squeeze(labels, dim=-1)
             outputs = (None, logits1, logits2, labels)
         else:
