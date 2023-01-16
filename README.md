@@ -8,13 +8,13 @@
 
 ## 更新
 - <strong>2023年01月16</strong>
-  - 增加diffcse 模型
+  - 增加diffcse 监督和非监督模型
 - <strong>2023年01月13</strong>
   - 增加ESimcse 模型
 - <strong>2023年01月11</strong>
   - 增加TSDAE句向量模型
 - <strong>2023年01月09</strong>
-  - 增加infonce对比学习,SPN4RE关系模型抽取
+  - 增加infonce监督和非监督,simcse监督和非监督,SPN4RE关系模型抽取
 - <strong>2023年01月06</strong>
   - 增加onerel关系模型抽取，prgc关系模型抽取，pure实体模型提取
 - <strong>2022年12月24</strong>
