@@ -14,11 +14,12 @@ __all__ = [
 class TransformerForInfoNce(TransformerModel):
     def __init__(self, *args, **kwargs):
         pooling = kwargs.pop('pooling', 'cls')
+        temperature = kwargs.pop('temperature', 0.1)
         super(TransformerForInfoNce, self).__init__(*args, **kwargs)
         config = self.config
         self.pooling = pooling
         self.feat_head = nn.Linear(config.hidden_size, 512, bias=False)
-        self.loss_fn = InfoNCE(negative_mode='paired', reduction='sum')
+        self.loss_fn = InfoNCE(temperature=temperature,negative_mode='paired', reduction='sum')
 
     def get_model_lr(self):
         return super(TransformerForInfoNce, self).get_model_lr() + [
