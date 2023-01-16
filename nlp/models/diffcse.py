@@ -35,6 +35,17 @@ class DiffcselArguments:
             )
         },
     )
+
+
+    batchnorm: typing.Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to use two-layer mlp for the pooler"
+            )
+        },
+    )
+
     lambda_weight:typing.Optional[float] = field(
         default=0.05,
         metadata={
@@ -46,6 +57,15 @@ class DiffcselArguments:
 
     mlm_probability: typing.Optional[float] = field(
         default=0.15,
+        metadata={
+            "help": (
+                ""
+            )
+        },
+    )
+
+    discriminator_with_mlp: typing.Optional[bool] = field(
+        default = True,
         metadata={
             "help": (
                 ""
@@ -142,6 +162,38 @@ class BertLMPredictionHead(nn.Module):
         hidden_states = self.decoder(hidden_states)
         return hidden_states
 
+class MLPLayer(nn.Module):
+    """
+    Head for getting sentence representations over RoBERTa/BERT's CLS representation.
+    """
+
+    def __init__(self, config):
+        super().__init__()
+        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.activation = nn.Tanh()
+
+    def forward(self, features, **kwargs):
+        x = self.dense(features)
+        x = self.activation(x)
+        return x
+
+class ProjectionMLP(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        in_dim = config.hidden_size
+        hidden_dim = config.hidden_size * 2
+        out_dim = config.hidden_size
+        affine=False
+        list_layers = [nn.Linear(in_dim, hidden_dim, bias=False),
+                       nn.BatchNorm1d(hidden_dim),
+                       nn.ReLU(inplace=True)]
+        list_layers += [nn.Linear(hidden_dim, out_dim, bias=False),
+                        nn.BatchNorm1d(out_dim, affine=affine)]
+        self.net = nn.Sequential(*list_layers)
+
+    def forward(self, x):
+        return self.net(x)
+
 class TransformerForDiffcse(TransformerModel):
     def __init__(self, *args,**kwargs):
         diffcse_args: DiffcselArguments = kwargs.pop('diffcse_args', None)
@@ -160,7 +212,7 @@ class TransformerForDiffcse(TransformerModel):
             #     cls.model_args.generator_name)
             self.discriminator.electra_head = torch.nn.Linear(768, 2)
             self.discriminator_embeddings_fn = self.discriminator.embeddings.forward
-
+            self.discriminator.mlp = MLPLayer(config) if not self.diffcse_args.batchnorm else ProjectionMLP(config)
 
 
             model_name_or_path = diffcse_args.generator_model_name_or_path
@@ -174,7 +226,7 @@ class TransformerForDiffcse(TransformerModel):
         else:
             self.classifier2, self.decoder, self.loss_fn = None, None, None
 
-        self.loss_fn = nn.CrossEntropyLoss(ignore_index=self.generator_config.pad_token_id,reduction='mean')
+        self.loss_fn = nn.CrossEntropyLoss(ignore_index=self.generator_config.pad_token_id,reduction='none')
         self.loss_fn_cse = MultipleNegativesRankingLoss()
 
 
@@ -232,7 +284,10 @@ class TransformerForDiffcse(TransformerModel):
             return embedding_output
         setattr(self.discriminator.embeddings,'forward',forward_fn)
         outputs = self.discriminator(*args, **batch, output_hidden_states=True, )
-        return self.pooling_output(outputs, self.diffcse_args.num_discriminator_layer)
+        outputs = outputs[2][self.diffcse_args.num_discriminator_layer]
+        if self.diffcse_args.discriminator_with_mlp:
+            outputs = self.discriminator.mlp(outputs)
+        return outputs
 
     def compute_loss(self, *args,**batch) -> tuple:
         labels: torch.Tensor = batch.pop('labels',None)
@@ -257,7 +312,7 @@ class TransformerForDiffcse(TransformerModel):
 
             input_ids2 = batch['mlm_input_ids']
             n = input_ids2.size(1)
-            mlm,mlm_labels = [],[]
+            mlm,mlm_labels,attention_masks = [],[],[]
             for i in range(n):
                 inputs = {}
                 inputs['input_ids'] = input_ids2[:, i] * attention_mask[:, i]
@@ -271,18 +326,19 @@ class TransformerForDiffcse(TransformerModel):
                 inputs['cls_input'] = cls_input
                 mlm.append(self.forward_discriminator_output(**inputs))
                 mlm_labels.append(replaced_label)
+                attention_masks.append(inputs['attention_mask'])
 
             mlm = torch.cat(mlm,dim=0)
             mlm_labels = torch.cat(mlm_labels, dim=0)
+            attention_masks = torch.cat(attention_masks, dim=0).view(-1)
             prediction_scores = self.discriminator.electra_head(mlm)
-            mlm_loss = self.loss_fn(prediction_scores.view(-1, 2), mlm_labels.view(-1))
+            mlm_loss = torch.sum(self.loss_fn(prediction_scores.view(-1, 2), mlm_labels.long().view(-1)) * attention_masks) / torch.sum(attention_masks)
             loss = loss_cse + mlm_loss * self.diffcse_args.lambda_weight
             loss_dict = {
                 'loss_cse': loss_cse,
                 'mlm_loss': mlm_loss,
                 'loss': loss
             }
-
             outputs = (loss_dict,)
         # 评估
         elif labels is not None:
@@ -290,6 +346,7 @@ class TransformerForDiffcse(TransformerModel):
             for k in list(batch.keys()):
                 if k.endswith('2'):
                     inputs[k.replace('2', '')] = batch.pop(k)
+            labels = torch.squeeze(labels,dim=-1)
             logits1 = self.forward_for_hidden(*args, **batch)
             logits2 = self.forward_for_hidden(*args, **inputs)
             outputs = (None, logits1, logits2, labels)
