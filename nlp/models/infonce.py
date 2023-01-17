@@ -15,10 +15,11 @@ class TransformerForInfoNce(TransformerModel):
     def __init__(self, *args, **kwargs):
         pooling = kwargs.pop('pooling', 'cls')
         temperature = kwargs.pop('temperature', 0.1)
+        vector_size = kwargs.pop('vector_size', 512)
         super(TransformerForInfoNce, self).__init__(*args, **kwargs)
         config = self.config
         self.pooling = pooling
-        self.feat_head = nn.Linear(config.hidden_size, 512, bias=False)
+        self.feat_head = nn.Linear(config.hidden_size, vector_size, bias=False)
         self.loss_fn = InfoNCE(temperature=temperature,negative_mode='paired', reduction='sum')
 
     def get_model_lr(self):
@@ -43,7 +44,7 @@ class TransformerForInfoNce(TransformerModel):
             avg = torch.cat((first_avg.unsqueeze(1), last_avg.unsqueeze(1)), dim=1)  # [batch, 2, 768]
             simcse_logits = torch.avg_pool1d(avg.transpose(1, 2), kernel_size=2).squeeze(-1)  # [batch, 768]
         elif self.pooling == 'reduce':
-            simcse_logits = self.sim_head(outputs[1])
+            simcse_logits = self.feat_head(outputs[1])
             simcse_logits = torch.tanh(simcse_logits)
         else:
             raise ValueError('not support pooling', self.pooling)
