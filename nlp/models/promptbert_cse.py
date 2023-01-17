@@ -14,6 +14,16 @@ __all__ = [
 
 @dataclass
 class PromptBertcseArguments:
+    mask_embedding_sentence_template: str = field(
+        default='*cls*_This_sentence_:_\'*sent_0*\'_means*mask*.*sep+*',
+        metadata={
+        }
+    )
+    mask_embedding_sentence_different_template: str = field(
+        default='',
+        metadata={
+        }
+    )
     mask_embedding_sentence_org_mlp: typing.Optional[bool] = field(
         default=False,
         metadata={
@@ -52,14 +62,16 @@ class PromptBertcseArguments:
             )
         })
 
-    mask_embedding_sentence_different_template: typing.Optional[bool] = field(
+    mask_embedding_sentence_autoprompt_freeze_prompt: bool = field(
         default=False,
         metadata={
-            "help": (
-                ""
-            )
-        })
-
+        }
+    )
+    mask_embedding_sentence_autoprompt_random_init: bool = field(
+        default=False,
+        metadata={
+        }
+    )
 
 
 class MLPLayer(nn.Module):
@@ -87,10 +99,29 @@ class TransformerForPromptbertcse(TransformerModel):
         self.loss_fn = MultipleNegativesRankingLoss()
         self.config.mask_token_id = self.config.task_specific_params['mask_token_id']
 
-    
-        self.dict_mbv = None
-        self.fl_mbv = None
-        self.p_mbv = None
+        model = self.model
+        if self.promptbertcse_args.mask_embedding_sentence_autoprompt:
+            # register p_mbv in init, avoid not saving weight
+            self.p_mbv = torch.nn.Parameter(torch.zeros(10))
+            for param in self.model.parameters():
+                param.requires_grad = False
+
+
+            mask_index = model.mask_embedding_template.index(self.config.mask_token_id)
+            index_mbv = model.mask_embedding_template[1:mask_index] + model.mask_embedding_template[mask_index + 1:-1]
+
+            self.dict_mbv = index_mbv
+            self.fl_mbv = [i <= 3 for i, k in enumerate(index_mbv)]
+            p_mbv_w = model.embeddings.word_embeddings.weight[self.dict_mbv].clone()
+            self.register_parameter(name='p_mbv', param=torch.nn.Parameter(p_mbv_w))
+            if self.promptbertcse_args.mask_embedding_sentence_autoprompt_freeze_prompt:
+                self.p_mbv.requires_grad = False
+
+            if self.promptbertcse_args.mask_embedding_sentence_autoprompt_random_init:
+                self.p_mbv.data.normal_(mean=0.0, std=0.02)
+        else:
+            self.dict_mbv = None
+            self.fl_mbv = None
         self.bs = None
         self.es = None
         self.mask_embedding_template = None
@@ -142,16 +173,12 @@ class TransformerForPromptbertcse(TransformerModel):
     def compute_loss(self, *args, **batch) -> tuple:
         labels: torch.Tensor = batch.pop('labels', None)
         if self.training:
-
             input_ids = batch['input_ids']
             device = input_ids.device
-
             if self.promptbertcse_args.mask_embedding_sentence_delta:
                 delta, template_len = self.get_delta([self.mask_embedding_template],device)
                 if len(self.promptbertcse_args.mask_embedding_sentence_different_template) > 0:
                     delta1, template_len1 = self.get_delta([self.mask_embedding_template2],device)
-
-
             attention_mask = batch['attention_mask']
             n = input_ids.size(1)
             loss_logits = []
@@ -180,14 +207,13 @@ class TransformerForPromptbertcse(TransformerModel):
 
             # If using "cls", we add an extra MLP layer
             # (same as BERT's original implementation) over the representation.
-            if cls.model_args.mask_embedding_sentence_delta and cls.model_args.mask_embedding_sentence_org_mlp:
+            if self.promptbertcse_args.mask_embedding_sentence_delta and self.promptbertcse_args.mask_embedding_sentence_org_mlp:
                 # ignore the delta and org
                 pass
             else:
-                pooler_output = cls.mlp(pooler_output)
+                pooler_output = self.mlp(pooler_output)
 
-
-            loss = self.loss_fn(loss_logits)
+            loss = self.loss_fn(pooler_output)
             outputs = (loss,)
         elif labels is not None:
             inputs = {}
