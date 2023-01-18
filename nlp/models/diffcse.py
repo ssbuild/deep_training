@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/11/15 12:26
-# 参考实现: https://github.com/voidism/DiffCSE , https://arxiv.org/pdf/2204.10298.pdf
+# reference: https://github.com/voidism/DiffCSE , https://arxiv.org/pdf/2204.10298.pdf
 import typing
 from dataclasses import dataclass, field
 

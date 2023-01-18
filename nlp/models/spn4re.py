@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/1/9 10:52
-#参考实现: https://github.com/DianboWork/SPN4RE
+#reference: https://github.com/DianboWork/SPN4RE
 
 import typing
 from dataclasses import dataclass, field

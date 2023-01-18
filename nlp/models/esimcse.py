@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/1/13 14:14
-# 参考实现: https://github.com/shuxinyin/SimCSE-Pytorch
+# reference: https://github.com/shuxinyin/SimCSE-Pytorch
 from typing import Union, Optional, Callable, Any
 
 import torch

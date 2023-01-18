@@ -2,7 +2,7 @@
 # @Author  : tk
 # @FileName: w2ner.py
 '''
-参考: https://github.com/ljynlp/W2NER
+reference: https://github.com/ljynlp/W2NER
 '''
 import typing
 from dataclasses import dataclass, field

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/1/4 13:41
-#参考实现: https://github.com/hy-struggle/PRGC
+#reference: https://github.com/hy-struggle/PRGC
 import copy
 import typing
 from dataclasses import dataclass, field

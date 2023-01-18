@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/11/15 12:26
-#参考实现: https://github.com/ssnvxia/OneRel
+#reference: https://github.com/ssnvxia/OneRel
 
 import numpy as np
 import torch

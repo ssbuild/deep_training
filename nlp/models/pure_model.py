@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/1/3 9:02
-#参考实现: https://github.com/princeton-nlp/PURE
+#reference: https://github.com/princeton-nlp/PURE
 
 import typing
 from dataclasses import dataclass, field
