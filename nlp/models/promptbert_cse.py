@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/1/16 15:15
-#reference: https://github.com/kongds/Prompt-BERT
+# reference: https://github.com/kongds/Prompt-BERT
 
 import typing
 from dataclasses import field, dataclass
+
+import numpy as np
 import torch
 from torch import nn
 from .transformer import TransformerModel
@@ -13,9 +15,10 @@ __all__ = [
     'TransformerForPromptbertcse'
 ]
 
+
 @dataclass
 class PromptBertcseArguments:
-    mask_embedding_sentence : typing.Optional[bool] = field(
+    mask_embedding_sentence: typing.Optional[bool] = field(
         default=True,
         metadata={
         }
@@ -64,21 +67,21 @@ class PromptBertcseArguments:
             "help": (
                 ""
             )
-    })
+        })
     mask_embedding_sentence_autoprompt: typing.Optional[bool] = field(
         default=False,
         metadata={
             "help": (
                 ""
             )
-    })
+        })
     mask_embedding_sentence_delta_no_position: typing.Optional[bool] = field(
         default=False,
         metadata={
             "help": (
                 ""
             )
-    })
+        })
 
     mask_embedding_sentence_delta: typing.Optional[bool] = field(
         default=True,
@@ -86,7 +89,7 @@ class PromptBertcseArguments:
             "help": (
                 ""
             )
-    })
+        })
 
     mask_embedding_sentence_autoprompt_freeze_prompt: typing.Optional[bool] = field(
         default=False,
@@ -98,7 +101,6 @@ class PromptBertcseArguments:
         metadata={
         }
     )
-
 
 
 class MLPLayer(nn.Module):
@@ -116,11 +118,12 @@ class MLPLayer(nn.Module):
         x = self.activation(x)
         return x
 
+
 class TransformerForPromptbertcse(TransformerModel):
-    def __init__(self, *args,**kwargs):
+    def __init__(self, *args, **kwargs):
         promptbertcse_args: PromptBertcseArguments = kwargs.pop('promptbertcse_args')
         tokenizer = kwargs.pop('tokenizer')
-        super(TransformerForPromptbertcse, self).__init__(*args,**kwargs)
+        super(TransformerForPromptbertcse, self).__init__(*args, **kwargs)
         self.promptbertcse_args = promptbertcse_args
         config = self.config
         self.mlp = MLPLayer(config)
@@ -134,7 +137,8 @@ class TransformerForPromptbertcse(TransformerModel):
             es2 = tokenizer.encode(promptbertcse_args.mask_embedding_sentence_es2, add_special_tokens=False)
         else:
             bs2, es2 = bs, es
-        mask_embedding_template = tokenizer.encode(promptbertcse_args.mask_embedding_sentence_bs + promptbertcse_args.mask_embedding_sentence_es)
+        mask_embedding_template = tokenizer.encode(
+            promptbertcse_args.mask_embedding_sentence_bs + promptbertcse_args.mask_embedding_sentence_es)
 
         print('template bs', bs)
         print('template es', es)
@@ -146,13 +150,13 @@ class TransformerForPromptbertcse(TransformerModel):
 
         if len(promptbertcse_args.mask_embedding_sentence_different_template) > 0:
             mask_embedding_template2 = tokenizer.encode(promptbertcse_args.mask_embedding_sentence_bs2 + \
-                                                              promptbertcse_args.mask_embedding_sentence_es2)
+                                                        promptbertcse_args.mask_embedding_sentence_es2)
             print('d template mask_embedding_template', tokenizer.decode(mask_embedding_template2))
             print('d template mask_embedding_template', mask_embedding_template2)
         else:
             mask_embedding_template2 = None
 
-        self.model_extra= {
+        self.model_extra = {
             'bs': bs,
             'es': es,
             'bs2': bs2,
@@ -168,7 +172,7 @@ class TransformerForPromptbertcse(TransformerModel):
                 param.requires_grad = False
 
             mask_index = self.model_extra['mask_embedding_template'].index(self.config.mask_token_id)
-            index_mbv = self.model_extra['mask_embedding_template'][1:mask_index] + self.model_extra['mask_embedding_template'][mask_index + 1:-1]
+            index_mbv = self.model_extra['mask_embedding_template'][1:mask_index] + self.model_extra['mask_embedding_template'][ mask_index + 1:-1]
 
             self.dict_mbv = index_mbv
             self.fl_mbv = [i <= 3 for i, k in enumerate(index_mbv)]
@@ -183,17 +187,16 @@ class TransformerForPromptbertcse(TransformerModel):
             self.dict_mbv = None
             self.fl_mbv = None
 
-
     def get_model_lr(self):
         current = [(self.mlp, self.config.task_specific_params['learning_rate_for_task']),
-                   (getattr(self,'p_mbv',None), self.config.task_specific_params['learning_rate_for_task']),
-                   (getattr(self,'dict_mbv',None), self.config.task_specific_params['learning_rate_for_task']),
-                   (getattr(self,'fl_mbv',None), self.config.task_specific_params['learning_rate_for_task']),]
+                   (getattr(self, 'p_mbv', None), self.config.task_specific_params['learning_rate_for_task']),
+                   (getattr(self, 'dict_mbv', None), self.config.task_specific_params['learning_rate_for_task']),
+                   (getattr(self, 'fl_mbv', None), self.config.task_specific_params['learning_rate_for_task']), ]
         return super(TransformerForPromptbertcse, self).get_model_lr() + [
             item for item in current if item[0] is not None
         ]
 
-    def get_delta(self,template_token,device, length=50):
+    def get_delta(self, template_token, device, length=50):
         with torch.set_grad_enabled(not self.promptbertcse_args.mask_embedding_sentence_delta_freeze):
             d_input_ids = torch.Tensor(template_token).repeat(length, 1).to(device).long()
             if self.promptbertcse_args.mask_embedding_sentence_autoprompt:
@@ -205,20 +208,19 @@ class TransformerForPromptbertcse(TransformerModel):
                         index = ((d_input_ids == k) * p).max(-1)[1]
                     else:
                         index = ((d_input_ids == k) * -p).min(-1)[1]
-                    #print(d_inputs_embeds[b,index][0].sum().item(), cls.p_mbv[i].sum().item())
-                    #print(d_inputs_embeds[b,index][0].mean().item(), cls.p_mbv[i].mean().item())
+                    # print(d_inputs_embeds[b,index][0].sum().item(), cls.p_mbv[i].sum().item())
+                    # print(d_inputs_embeds[b,index][0].mean().item(), cls.p_mbv[i].mean().item())
                     d_inputs_embeds[b, index] = self.p_mbv[i]
             else:
                 d_inputs_embeds = None
             d_position_ids = torch.arange(d_input_ids.shape[1]).to(device).unsqueeze(0).repeat(length, 1).long()
             if not self.promptbertcse_args.mask_embedding_sentence_delta_no_position:
-                d_position_ids[:, len(self.model_extra['bs'])+1:] += torch.arange(length).to(device).unsqueeze(-1)
+                d_position_ids[:, len(self.model_extra['bs']) + 1:] += torch.arange(length).to(device).unsqueeze(-1)
 
             template_len = d_input_ids.shape[1]
             inputs = dict(input_ids=d_input_ids if d_inputs_embeds is None else None,
-                              inputs_embeds=d_inputs_embeds,
-                              position_ids=d_position_ids)
-            #1,h
+                          inputs_embeds=d_inputs_embeds,
+                          position_ids=d_position_ids)
             delta = self.forward_for_hidden(**inputs)
             return delta, template_len
 
@@ -229,19 +231,18 @@ class TransformerForPromptbertcse(TransformerModel):
         if self.promptbertcse_args.mask_embedding_sentence_org_mlp:
             logits = self.mlp(logits)
         return logits
-    
-    
-    
-    def forward_for_test(self,*args,**batch):
+
+    def forward_for_test(self, *args, **batch):
         input_ids = batch['input_ids']
 
         if self.promptbertcse_args.mask_embedding_sentence_delta:
-            bsize = max(input_ids.size(0),128)
+            batch_size = input_ids.size(0)
+            N = max(int(batch_size * 1.5), 128)
             device = input_ids.device
-            d_input_ids = torch.Tensor([self.model_extra['mask_embedding_template']]).repeat(bsize, 1).to(device).long()
-            d_position_ids = torch.arange(d_input_ids.shape[1]).to(device).unsqueeze(0).repeat(bsize, 1).long()
+            d_input_ids = torch.Tensor([self.model_extra['mask_embedding_template']]).repeat(N, 1).to(device).long()
+            d_position_ids = torch.arange(d_input_ids.shape[1]).to(device).unsqueeze(0).repeat(N, 1).long()
             if not self.promptbertcse_args.mask_embedding_sentence_delta_no_position:
-                d_position_ids[:, len(self.model_extra['bs']) + 1:] += torch.arange(bsize).to(device).unsqueeze(-1)
+                d_position_ids[:, len(self.model_extra['bs']) + 1:] += torch.arange(N).to(device).unsqueeze(-1)
             inputs = dict(input_ids=d_input_ids, position_ids=d_position_ids)
             delta = self.forward_for_hidden(**inputs)
             delta.requires_grad = False
@@ -301,17 +302,19 @@ class TransformerForPromptbertcse(TransformerModel):
                 pooler_output -= delta[blen]
         return pooler_output
 
-
     def compute_loss(self, *args, **batch) -> tuple:
         labels: torch.Tensor = batch.pop('labels', None)
         if self.training:
             input_ids = batch['input_ids']
-            batch_size, n = input_ids.size()[:2]
+            batch_size, n,seqlen = input_ids.size()
             device = input_ids.device
             if self.promptbertcse_args.mask_embedding_sentence_delta:
-                delta, template_len = self.get_delta([self.model_extra['mask_embedding_template']],device,length=batch_size* n)
+                N = max(int(batch_size * n * 1.5),128)
+                delta, template_len = self.get_delta([self.model_extra['mask_embedding_template']], device,
+                                                     length=N)
                 if len(self.promptbertcse_args.mask_embedding_sentence_different_template) > 0:
-                    delta1, template_len1 = self.get_delta([self.model_extra['mask_embedding_template2']],device,length=batch_size* n)
+                    delta1, template_len1 = self.get_delta([self.model_extra['mask_embedding_template2']], device,
+                                                           length=N)
             attention_mask = batch['attention_mask']
             logits_list = []
             for i in range(n):
@@ -320,8 +323,8 @@ class TransformerForPromptbertcse(TransformerModel):
                     'attention_mask': attention_mask[:, i]
                 }
                 logits_list.append(self.forward_for_hidden(*args, **inputs))
-
             pooler_output = torch.cat(logits_list, dim=0)
+
             if self.promptbertcse_args.mask_embedding_sentence_delta:
                 if len(self.promptbertcse_args.mask_embedding_sentence_different_template) > 0:
                     pooler_output = pooler_output.view(batch_size, n, -1)
@@ -335,11 +338,10 @@ class TransformerForPromptbertcse(TransformerModel):
                     if n == 3:
                         pooler_output[:, 2, :] -= delta1[blen[:, 2]]
                 else:
-                    blen = attention_mask.view(-1,attention_mask.size(2)).sum(-1) - template_len
-                    torch.clamp_min(blen,0,out=blen)
+                    blen = attention_mask.view(-1, attention_mask.size(2)).sum(-1) - template_len
+                    torch.clamp_min(blen, 0, out=blen)
                     pooler_output -= delta[blen]
             logits_list = torch.split(pooler_output, batch_size, dim=0)
-            assert len(logits_list) == 2
             loss = self.loss_fn(logits_list)
             outputs = (loss,)
         elif labels is not None:

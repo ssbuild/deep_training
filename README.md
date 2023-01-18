@@ -7,6 +7,8 @@
   -  [deep_training-examples](https://github.com/ssbuild/deep_training-example)
 
 ## 更新
+- <strong>2023年01月19</strong>
+  - 增加promptbertcse监督和非监督模型
 - <strong>2023年01月16</strong>
   - 增加diffcse 监督和非监督模型
 - <strong>2023年01月13</strong>
