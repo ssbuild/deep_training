@@ -7,6 +7,9 @@
   -  [deep_training-examples](https://github.com/ssbuild/deep_training-example)
 
 ## 更新
+
+- <strong>2023年01月20</strong>
+  - 增加对抗训练 FGM, FGSM_Local,FreeAT, PGD, FGSM,FreeAT_Local, 其中FreeAT推荐使用FreeAT_Local,FGSM 推荐使用 FGSM_Local
 - <strong>2023年01月19</strong>
   - 增加promptbertcse监督和非监督模型
 - <strong>2023年01月16</strong>

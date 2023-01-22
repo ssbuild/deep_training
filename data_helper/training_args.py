@@ -1,7 +1,9 @@
 # @Time    : 2022/11/17 22:18
 # @Author  : tk
 # @FileName: training_args.py
+import copy
 import os
+import typing
 from dataclasses import dataclass, field
 from typing import Optional
 from pytorch_lightning.utilities.seed import seed_everything
@@ -110,6 +112,7 @@ class PrefixModelArguments:
     )
 
 
+
 @dataclass
 class TrainingArguments:
     optimizer: str = field(
@@ -138,6 +141,17 @@ class TrainingArguments:
                           CAWR {'T_mult': 1, 'rewarm_epoch_num': 2,'verbose': True} ,\
                           CAL: {'rewarm_epoch_num': 2,'verbose': True} \
                           "},
+    )
+    adv: dict = field(
+        default_factory= lambda: {
+            'mode': None, # None, fgm, fgsm_local, fgsm, pgd, free_local, free
+            'emb_name=': 'embedding',
+            'attack_iters': 2, # pgd
+            'minibatch_replays': 2, # free
+            'alpha': 0.1, # pgd
+            'epsilon': 1.0 # pgd,fgm
+        },
+        metadata={"help": "对抗训练"},
     )
 
     learning_rate : float = field(

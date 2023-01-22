@@ -3,17 +3,20 @@
 # @FileName: model.py
 
 import argparse
+import sys
 import typing
 from typing import Any
 import torch
 import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
-from torch import nn
+from torch import nn, Tensor
 from torch.nn import CrossEntropyLoss
 from transformers.models.auto.auto_factory import _get_model_class
 from ...data_helper import TrainingArguments, ModelArguments, PrefixModelArguments, DataArguments
 from ..layers.mask import lm_mask,unilm_mask
 from ..utils import configure_optimizers, get_value_from_args
+from ..utils.adversarial import AdversarialMethods
+
 
 from transformers import (
     CONFIG_MAPPING,
@@ -45,6 +48,16 @@ from transformers import (
 #         cls_ = super(TransformerMeta, cls).__new__(cls, name, (TransformerLightningModule,) + tuple(b for b in base if not issubclass(b, TransformerBase)), attr)
 #         cls_.__ALTER_CLASS__ = alter
 #         return cls_
+
+
+
+def verify_manual_optimization_support(trainer: "pl.Trainer", model: "pl.LightningModule") -> None:
+    if model.automatic_optimization:
+        return
+    trainer.gradient_clip_val = None
+    trainer.accumulate_grad_batches = 1
+
+
 
 class TransformerFakeMeta(type):
     def __new__(cls, name, base, attr,*args,**kwargs):
@@ -197,6 +210,10 @@ class TransformerLightningModule(pl.LightningModule):
             if training_args.learning_rate_for_task is not None else training_args.learning_rate
         print(training_args)
         print(model_args)
+        if training_args.adv['mode'] != None:
+            assert training_args.adv['mode']  in AdversarialMethods.keys(), ValueError('no support adv mode {} , must be in {}'.format(training_args.adv['mode'],','.join(AdversarialMethods.keys())))
+            self.automatic_optimization = False
+
         try:
             self.save_hyperparameters(ignore=['config'])
         except:
@@ -207,6 +224,28 @@ class TransformerLightningModule(pl.LightningModule):
         self.__model : typing.Optional[TransformerBase] = None
         if hasattr(self,'__ALTER_CLASS__') and len(self.__ALTER_CLASS__) > 0:
             self.set_model(self.__ALTER_CLASS__[0](*args, **kwargs))
+
+
+        self.training_step_fn = self.training_step
+        self.embeddings_forward_fn = None
+        if training_args.adv['mode'] is not None:
+            self.embeddings_forward_fn = self.model.model.embeddings.forward
+
+            self.training_step = self.adv_training_step
+            if training_args.adv['mode'].find('local') != -1:
+                self.adversarial = AdversarialMethods[training_args.adv['mode']](model=self.model)
+            else:
+                self.adversarial = AdversarialMethods[training_args.adv['mode']](model=self.model,
+                                                                                 emb_name=training_args.adv.get('emb_name', 'embedding'))
+            k = 'pytorch_lightning.trainer.configuration_validator'
+            if k in sys.modules:
+                setattr( sys.modules[k],'__verify_manual_optimization_support' , verify_manual_optimization_support)
+        else:
+            self.adversarial = None
+
+        self.gradient_clip_val = training_args.max_grad_norm
+
+
 
     @property
     def model(self):
@@ -276,12 +315,138 @@ class TransformerLightningModule(pl.LightningModule):
     def configure_optimizers(self):
         return configure_optimizers(self.get_model_lr(), self.training_args,self.trainer.estimated_stepping_batches)
 
+
+    def manual_backward(self,loss: Tensor, *args: Any, **kwargs: Any):
+        if isinstance(loss,dict):
+            loss = loss['loss']
+        return super(TransformerLightningModule, self).manual_backward(loss)
+        
+    def adv_training_step(self,batch):
+        mode = self.training_args.adv['mode']
+        opt = self.optimizers()
+        gradient_clip_val = self.gradient_clip_val
+        epsilon = self.training_args.adv['epsilon']
+        if mode == 'fgm':
+            opt.zero_grad()
+            loss = self.training_step_fn(batch)
+            self.manual_backward(loss)
+            self.adversarial.attack(epsilon=epsilon)
+            loss = self.training_step_fn(batch)
+            opt.zero_grad()
+            self.manual_backward(loss)
+            if gradient_clip_val is not None:
+                self.clip_gradients(opt, gradient_clip_val=gradient_clip_val)
+            opt.step()
+            self.adversarial.restore()  # 恢复embedding参数
+            self.model.zero_grad()
+        elif mode == 'fgsm_local':
+            alpha = self.training_args.adv['alpha']
+            opt.zero_grad()
+            delta = torch.zeros((*batch['input_ids'].size()[:2], self.config.hidden_size), dtype=torch.float32).to(
+                batch['input_ids'].device)
+            def forward_fn(*args, **kwargs):
+                embedding_output = self.embeddings_forward_fn(*args, **kwargs)
+                embedding_output += delta
+                return embedding_output
+            setattr(self.model.model.embeddings, 'forward', forward_fn)
+            delta = self.adversarial.attack(is_first_attack=True, delta=delta,alpha=alpha,epsilon=epsilon)
+            loss = self.training_step_fn(batch)
+            self.manual_backward(loss)
+
+            delta = self.adversarial.attack(delta=delta,alpha=alpha,epsilon=epsilon)
+            loss = self.training_step_fn(batch)
+            opt.zero_grad()
+            self.manual_backward(loss)
+            if gradient_clip_val is not None:
+                self.clip_gradients(opt, gradient_clip_val=gradient_clip_val)
+            opt.step()
+            self.model.zero_grad()
+
+            setattr(self.model.model.embeddings, 'forward', self.embeddings_forward_fn)
+        elif mode == 'fgsm':
+            alpha = self.training_args.adv['alpha']
+            self.adversarial.attack(is_first_attack=True,alpha=alpha,epsilon=epsilon)
+            loss = self.training_step_fn(batch)
+            self.manual_backward(loss)
+
+            self.adversarial.attack(alpha=alpha,epsilon=epsilon)
+            loss = self.training_step_fn(batch)
+            opt.zero_grad()
+            self.manual_backward(loss)
+            if gradient_clip_val is not None:
+                self.clip_gradients(opt, gradient_clip_val=gradient_clip_val)
+            opt.step()
+            self.adversarial.restore()  # 恢复embedding参数
+            self.model.zero_grad()
+        elif mode == 'pgd':
+            alpha = self.training_args.adv['alpha']
+            opt.zero_grad()
+            loss = self.training_step_fn(batch)
+            self.manual_backward(loss)
+
+            self.adversarial.backup_grad()
+            attack_iters = self.training_args.adv['attack_iters']
+            for t in range(attack_iters):
+                self.adversarial.attack(is_first_attack=(t == 0),alpha=alpha,epsilon=epsilon)
+                if t != attack_iters - 1:
+                    opt.zero_grad()
+                else:
+                    self.adversarial.restore_grad()
+                loss = self.training_step_fn(batch)
+                self.manual_backward(loss)
+                if gradient_clip_val is not None:
+                    self.clip_gradients(opt, gradient_clip_val=gradient_clip_val)
+            self.adversarial.restore()  # 恢复embedding参数
+            opt.step()
+            self.model.zero_grad()
+        elif mode == 'free_local':
+            if not hasattr(self.adversarial,'delta_'):
+                setattr(self.adversarial,'delta_', torch.zeros((batch['input_ids'].size(0),self.config.max_position_embeddings, self.config.hidden_size),requires_grad=True).to(batch['input_ids'].device))
+            delta = getattr(self.adversarial,'delta_')
+            def forward_fn(*args, **kwargs):
+                embedding_output = self.embeddings_forward_fn(*args, **kwargs)
+                embedding_output += delta[:embedding_output.size(0),:embedding_output.size(1)]
+                return embedding_output
+
+            setattr(self.model.model.embeddings, 'forward', forward_fn)
+            for _ in range(self.training_args.adv['minibatch_replays']):
+                delta.retain_grad()
+                loss = self.training_step_fn(batch)
+                opt.zero_grad()
+                self.manual_backward(loss)
+                if gradient_clip_val is not None:
+                    self.clip_gradients(opt, gradient_clip_val=gradient_clip_val)
+                opt.step()
+                delta = self.adversarial.attack(delta=delta,epsilon=epsilon)
+                # delta.grad.zero_()
+                self.model.zero_grad()
+
+            setattr(self.model.model.embeddings, 'forward', self.embeddings_forward_fn)
+        elif mode == 'free':
+            for _ in range(self.training_args.adv['minibatch_replays']):
+                opt.zero_grad()
+                loss = self.training_step_fn(batch)
+                self.manual_backward(loss)
+                if gradient_clip_val is not None:
+                    self.clip_gradients(opt, gradient_clip_val=gradient_clip_val)
+                opt.step()
+                self.adversarial.attack(epsilon=epsilon)
+                self.model.zero_grad()
+        else:
+            opt.zero_grad()
+            loss = self.training_step_fn(batch)
+            self.manual_backward(loss)
+            if gradient_clip_val is not None:
+                self.clip_gradients(opt, gradient_clip_val=gradient_clip_val)
+            opt.step()
+            self.model.zero_grad()
+        return loss
+
     def training_step(self, batch):
         if isinstance(batch, dict):
             outputs = self.compute_loss(**batch)
         else:
             outputs = self.compute_loss(*batch)
-
         loss = outputs[0]
         if isinstance(loss,dict):
             self.log_dict(loss,prog_bar=True)
