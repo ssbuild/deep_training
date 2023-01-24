@@ -489,12 +489,12 @@ class TransformerLightningModule(pl.LightningModule):
                         elif isinstance(node, list) or isinstance(node, tuple):
                             tmp_list[idx] = [_.cpu().numpy() for _ in node]
                         else:
-                            raise ValueError('test_step: outputs not support', type(t))
+                            raise ValueError('validation_step: outputs not support', type(t))
                     obj.append(tmp_list)
                 elif isinstance(t, dict):
                     obj.append({k:v.cpu().numpy() for k,v in t.items()})
                 else:
-                    raise ValueError('not support')
+                    raise ValueError('validation_step: outputs not support', type(t))
         else:
             o['outputs'] = out.cpu().numpy()
         return o
