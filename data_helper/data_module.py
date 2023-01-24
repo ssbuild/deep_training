@@ -15,7 +15,8 @@ def load_tokenizer(tokenizer_name,
                    do_lower_case=True,
                    use_fast_tokenizer=True,
                    model_revision="main",
-                   use_auth_token=None,**kwargs):
+                   use_auth_token=None,
+                   **kwargs):
     tokenizer_kwargs = {
         "cache_dir": cache_dir,
         "do_lower_case": do_lower_case,
@@ -46,6 +47,7 @@ def load_configure(config_name,
                    pad_token_id=None,
                    eos_token_id=None,
                    sep_token_id=None,
+                   return_dict=False,
                    task_specific_params=None,
                    **kwargs):
     config_kwargs = {
@@ -56,6 +58,7 @@ def load_configure(config_name,
         "pad_token_id": pad_token_id,
         "eos_token_id": eos_token_id,
         "sep_token_id": sep_token_id,
+        "return_dict": return_dict,
         "task_specific_params": task_specific_params,
         **kwargs
     }

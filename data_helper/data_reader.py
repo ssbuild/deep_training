@@ -32,6 +32,7 @@ def load_tokenizer_and_config_with_args(dataHelper: DataHelper,model_args: Model
                                         task_specific_params=None,
                                         with_labels = True,
                                         with_task_params = True,
+                                        return_dict=False,
                                         ):
     if with_labels:
         label2id, id2label = dataHelper.on_get_labels(data_args.label_file)
@@ -63,6 +64,7 @@ def load_tokenizer_and_config_with_args(dataHelper: DataHelper,model_args: Model
         "pad_token_id" : tokenizer.pad_token_id,
         "eos_token_id" : tokenizer.eos_token_id,
         "sep_token_id" : tokenizer.sep_token_id,
+        "return_dict": return_dict,
         "task_specific_params" : task_specific_params,
     }
 
@@ -80,7 +82,7 @@ def load_tokenizer_and_config_with_args(dataHelper: DataHelper,model_args: Model
                             )
 
     if with_labels and label2id is not None and hasattr(config,'num_labels'):
-        print('*' * 30,'num_labels=', config.num_labels)
+        print('*' * 30,'num_labels = ', config.num_labels)
         print(label2id)
         print(id2label)
     if with_labels:

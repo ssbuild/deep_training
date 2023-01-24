@@ -3,6 +3,7 @@
 # @FileName: model.py
 
 import argparse
+import copy
 import sys
 import typing
 from typing import Any
@@ -479,8 +480,17 @@ class TransformerLightningModule(pl.LightningModule):
                     obj.append(t)
                 elif isinstance(t,torch.Tensor):
                     obj.append(t.cpu().numpy())
-                elif isinstance(t, list):
-                    obj.append([tt.cpu().numpy() for tt in t])
+                elif isinstance(t, list) or isinstance(t, tuple):
+                    tmp_list =[_ for _ in t]
+                    for idx in range(len(tmp_list)):
+                        node = tmp_list[idx]
+                        if isinstance(node, torch.Tensor):
+                            tmp_list[idx] = node.cpu().numpy()
+                        elif isinstance(node, list) or isinstance(node, tuple):
+                            tmp_list[idx] = [_.cpu().numpy() for _ in node]
+                        else:
+                            raise ValueError('test_step: outputs not support', type(t))
+                    obj.append(tmp_list)
                 elif isinstance(t, dict):
                     obj.append({k:v.cpu().numpy() for k,v in t.items()})
                 else:
@@ -504,12 +514,21 @@ class TransformerLightningModule(pl.LightningModule):
                     obj.append(t)
                 elif isinstance(t, torch.Tensor):
                     obj.append(t.cpu().numpy())
-                elif isinstance(t, list):
-                    obj.append([tt.cpu().numpy() for tt in t])
+                elif isinstance(t, list) or isinstance(t, tuple):
+                    tmp_list =[_ for _ in t]
+                    for idx in range(len(tmp_list)):
+                        node = tmp_list[idx]
+                        if isinstance(node,torch.Tensor):
+                            tmp_list[idx] = node.cpu().numpy()
+                        elif isinstance(node, list) or isinstance(node, tuple):
+                            tmp_list[idx] = [_.cpu().numpy() for _ in node]
+                        else:
+                            raise ValueError('test_step: outputs not support', type(t))
+                    obj.append(tmp_list)
                 elif isinstance(t, dict):
                     obj.append({k: v.cpu().numpy() for k, v in t.items()})
                 else:
-                    raise ValueError('not support')
+                    raise ValueError('test_step: outputs not support',type(t))
         else:
             o['outputs'] = out.cpu().numpy()
         return o
@@ -564,6 +583,14 @@ class TransformerForCausalLM(TransformerBase):
         self.set_model(self.from_pretrained(AutoModelForCausalLM, *args, **kwargs))
 
 
+    # def compute_loss(self, *args,**batch) -> tuple:
+    #     outputs = super(TransformerForCausalLM, self).compute_loss(*args,**batch)
+    #     if not self.model.training:
+    #         if 'labels' in batch:
+    #             outputs = (*outputs[:2],)
+    #         else:
+    #             outputs = (outputs[0],)
+    #     return outputs
 
 
 class TransformerForMaskLM(TransformerBase):
@@ -571,6 +598,14 @@ class TransformerForMaskLM(TransformerBase):
         super().__init__(*args, **kwargs)
         self.set_model(self.from_pretrained(AutoModelForMaskedLM, *args, **kwargs))
 
+    # def compute_loss(self, *args,**batch) -> tuple:
+    #     outputs = super(TransformerForMaskLM, self).compute_loss(*args,**batch)
+    #     if not self.model.training:
+    #         if 'labels' in batch:
+    #             outputs = (*outputs[:2],)
+    #         else:
+    #             outputs = (outputs[0],)
+    #     return outputs
 
 
 
@@ -579,7 +614,15 @@ class TransformerForSeq2SeqLM(TransformerBase):
         super().__init__( *args, **kwargs)
         self.set_model(self.from_pretrained(AutoModelForSeq2SeqLM, *args, **kwargs))
 
-        
+
+    def compute_loss(self, *args,**batch) -> tuple:
+        outputs = super(TransformerForSeq2SeqLM, self).compute_loss(*args,**batch)
+        if not self.model.training:
+            if 'labels' in batch:
+                outputs = (*outputs[:2],)
+            else:
+                outputs = (outputs[0],)
+        return outputs
 
 
 class TransformerForSequenceClassification(TransformerBase):
