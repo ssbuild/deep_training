@@ -13,6 +13,8 @@ from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from torch import nn, Tensor
 from torch.nn import CrossEntropyLoss
 from transformers.models.auto.auto_factory import _get_model_class
+
+from ..losses.lm_loss import LM_loss
 from ...data_helper import TrainingArguments, ModelArguments, PrefixModelArguments, DataArguments
 from ..layers.mask import lm_mask,unilm_mask
 from ..utils import configure_optimizers, get_value_from_args
@@ -545,8 +547,9 @@ class TransformerModel(TransformerBase):
 
 class TransformerModelForUnilm(TransformerModel):
     def __init__(self,*args: Any, **kwargs: Any):
+        ignore_index = kwargs.pop('ignore_index',-100)
         super().__init__(*args, **kwargs)
-        self.loss_fct = CrossEntropyLoss(ignore_index=self.config.pad_token_id)
+        self.loss_fct = LM_loss(ignore_index=ignore_index)
         self.lm_head = nn.Linear(self.config.hidden_size, self.config.vocab_size, bias=False)
 
     def get_model_lr(self):
@@ -564,10 +567,7 @@ class TransformerModelForUnilm(TransformerModel):
         lm_logits = self.lm_head(hidden_states)
 
         if labels is not None:
-            labels = labels.long()
-            shift_logits = lm_logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            loss = self.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            loss = self.loss_fct(lm_logits,labels)
             outputs = (loss,lm_logits,labels)
         else:
             outputs = (lm_logits,)
