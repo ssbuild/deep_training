@@ -2,7 +2,8 @@
 # @Time    : 2022/11/9 11:02
 
 import typing
-from fastdatasets.utils.numpyadapter import NumpyWriterAdapter,ParallelNumpyWriter
+
+from fastdatasets.utils.numpyadapter import NumpyWriterAdapter, ParallelNumpyWriter
 
 __all__ = [
     'DataWriteHelper',
@@ -12,8 +13,7 @@ __all__ = [
 
 class DataWriteHelper:
     def __init__(self,
-                 input_fn: typing.Callable[
-                     [typing.Any, tuple], typing.Union[typing.Dict, typing.List, typing.Tuple]],
+                 input_fn: typing.Callable[[typing.Any, tuple], typing.Union[typing.Dict, typing.List, typing.Tuple]],
                  input_fn_args: typing.Union[typing.Tuple,typing.Dict],
                  outfile: typing.Union[str,list],
                  backend='record',

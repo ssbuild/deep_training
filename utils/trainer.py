@@ -23,7 +23,8 @@ class SimpleModelCheckpoint(Checkpoint):
                  skip_n_epochs: Optional[int] = None,
                  monitor='loss',
                  mode='min',
-                 weight_file='./best.pt'):
+                 weight_file='./best.pt',
+                 **kwargs):
 
         self.__every_n_train_steps = every_n_train_steps
         self.__every_n_epochs = every_n_epochs
@@ -31,6 +32,7 @@ class SimpleModelCheckpoint(Checkpoint):
         self.best = {}
         self.monitor = monitor
         self.mode = mode # min max
+
         self.rank = rank
 
         self.last_eval_step = -1
@@ -39,6 +41,11 @@ class SimpleModelCheckpoint(Checkpoint):
         self.skip_n_epochs = skip_n_epochs
 
         self.weight_file = weight_file
+        self._external_kwargs = kwargs
+
+    @property
+    def external_kwargs(self):
+        return self._external_kwargs
 
     def _monitor_candidates(self, trainer: "pl.Trainer") -> Dict[str, Tensor]:
         monitor_candidates = copy.deepcopy(trainer.callback_metrics)

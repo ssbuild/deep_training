@@ -1,11 +1,10 @@
 # @Time    : 2022/11/17 22:18
 # @Author  : tk
 # @FileName: training_args.py
-import copy
 import os
-import typing
 from dataclasses import dataclass, field
 from typing import Optional
+
 from pytorch_lightning.utilities.seed import seed_everything
 
 __all__ = [
