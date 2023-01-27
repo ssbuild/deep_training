@@ -2,6 +2,7 @@
 # @Author  : tk
 # @FileName: training_args.py
 import os
+import typing
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -230,17 +231,17 @@ class DataArguments:
     convert_file: Optional[bool] = field(
         default=True, metadata={"help": "是否需要转换语料到record记录"}
     )
-    train_file: Optional[str] = field(
-        default=None, metadata={"help": "训练语料，多个文件“,”分割"}
+    train_file: Optional[typing.Union[typing.List,typing.AnyStr]] = field(
+        default=None, metadata={"help": "训练语料，多个文件“,”分割或者文件List"}
     )
-    eval_file: Optional[str] = field(
-        default=None, metadata={"help": "评估语料，多个文件“,”分割"}
+    eval_file: Optional[typing.Union[typing.List,typing.AnyStr]] = field(
+        default=None, metadata={"help": "评估语料，多个文件“,”分割或者文件List"}
     )
-    test_file: Optional[str] = field(
-        default=None, metadata={"help": "测试语料，多个文件“,”分割"}
+    test_file: Optional[typing.Union[typing.List,typing.AnyStr]] = field(
+        default=None, metadata={"help": "测试语料，多个文件“,”分割或者文件List"}
     )
-    label_file: Optional[str] = field(
-        default=None, metadata={"help": "标签文件，多个文件“,”分割"}
+    label_file: Optional[typing.Union[typing.List,typing.AnyStr]] = field(
+        default=None, metadata={"help": "标签文件，多个文件“,”分割或者文件List"}
     )
     intermediate_name: Optional[str] = field(
         default='dataset', metadata={"help": "dataset文件名前缀"}
@@ -307,17 +308,17 @@ class DataArguments:
     )
 
     def __post_init__(self):
-        if self.train_file:
+        if isinstance(self.train_file,str):
             self.train_file = self.train_file.split(',')
 
-        if self.eval_file:
+        if isinstance(self.eval_file, str):
             self.eval_file = self.eval_file.split(',')
 
-        if self.test_file:
+        if isinstance(self.test_file,str):
             self.test_file = self.test_file.split(',')
 
 
-        if self.label_file:
+        if isinstance(self.label_file,str):
             self.label_file = self.label_file.split(',')
 
         if not self.train_file:

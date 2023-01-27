@@ -88,6 +88,24 @@ class DataPreprocessHelper(object):
 
 
 
+def check_dataset_file(files):
+    if not files:
+        return None
+
+    if isinstance(files, str):
+        if not os.path.exists(files):
+            return None
+    else:
+        #检测是否是文件list
+        files_ = [f for f in files if f is not None and isinstance(f, str) and os.path.exists(f)]
+        if not files_:
+            #检测是否是内存list
+            files = [f for f in files if f is not None and isinstance(f, list)]
+            if not files:
+                return None
+        else:
+            files = files_
+    return files
 
 class DataHelper(DataPreprocessHelper):
     def __init__(self,backend: typing.Union[E_file_backend, str],*args,**kwargs):
@@ -240,24 +258,14 @@ class DataHelper(DataPreprocessHelper):
                      with_record_iterable_dataset: bool = False,
                      with_load_memory: bool = False,
                      with_torchdataset: bool = True,
-                     transform_fn : typing.Callable = None
+                     transform_fn : typing.Callable = None,
+                     check_dataset_file_fn=None
                      ):
         assert process_index <= num_processes and num_processes >= 1
-        if not files:
+        check_dataset_file_fn = check_dataset_file_fn or check_dataset_file
+        files = check_dataset_file_fn(files)
+        if files is None:
             return None
-
-        if isinstance(files,str):
-            if not os.path.exists(files):
-                return None
-        else:
-            files_ = [f for f in files if f is not None and isinstance(f,str) and os.path.exists(f)]
-            if not files_:
-                files = [f for f in files if f is not None and isinstance(f,list)]
-                if not files:
-                    return None
-            else:
-                files = files_
-
 
         dataset = self.load_numpy_dataset(files,
                                           cycle_length=cycle_length,
