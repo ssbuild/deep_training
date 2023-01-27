@@ -231,17 +231,17 @@ class DataArguments:
     convert_file: Optional[bool] = field(
         default=True, metadata={"help": "是否需要转换语料到record记录"}
     )
-    train_file: Optional[list] = field(
-        default=None, metadata={"help": "训练语料list"}
+    train_file: Optional = field(
+        default_factory=lambda: [], metadata={"help": "训练语料list"}
     )
-    eval_file: Optional[list] = field(
-        default=None, metadata={"help": "评估语料list"}
+    eval_file: Optional = field(
+        default_factory=lambda: [], metadata={"help": "评估语料list"}
     )
-    test_file: Optional[list] = field(
-        default=None, metadata={"help": "测试语料list"}
+    test_file: Optional = field(
+        default_factory=lambda: [],metadata={"help": "测试语料list"}
     )
-    label_file: Optional[list] = field(
-        default=None, metadata={"help": "标签文件list"}
+    label_file: Optional = field(
+        default_factory=lambda: [], metadata={"help": "标签文件list"}
     )
     intermediate_name: Optional[str] = field(
         default='dataset', metadata={"help": "dataset文件名前缀"}
