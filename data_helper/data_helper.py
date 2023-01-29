@@ -334,7 +334,7 @@ class DataHelper(DataPreprocessHelper):
                      with_load_memory: bool = False,
                      with_torchdataset: bool = True,
                      transform_fn : typing.Callable = None,
-                     check_dataset_file_fn=None) -> typing.Optional[DataLoader,typing.Union[torch.utils.data.Dataset,torch.utils.data.IterableDataset,IterableDatasetBase,RandomDatasetBase]]:
+                     check_dataset_file_fn=None) -> typing.Optional[typing.Union[DataLoader,torch.utils.data.Dataset,torch.utils.data.IterableDataset,IterableDatasetBase,RandomDatasetBase]]:
 
         dataset = self.load_dataset(
             files,shuffle=shuffle,infinite=infinite,cycle_length=cycle_length,
@@ -362,7 +362,7 @@ class DataHelper(DataPreprocessHelper):
                      with_load_memory: bool = False,
                      with_torchdataset: bool = True,
                      transform_fn : typing.Callable = None,
-                     check_dataset_file_fn=None) -> typing.Optional[DataLoader,typing.Union[torch.utils.data.Dataset,torch.utils.data.IterableDataset,IterableDatasetBase,RandomDatasetBase]]:
+                     check_dataset_file_fn=None) -> typing.Optional[typing.Union[DataLoader,torch.utils.data.Dataset,torch.utils.data.IterableDataset,IterableDatasetBase,RandomDatasetBase]]:
 
         dataset = self.load_dataset(
             files,shuffle=shuffle,infinite=infinite,cycle_length=cycle_length,
