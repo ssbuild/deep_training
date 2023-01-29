@@ -5,6 +5,7 @@ import logging
 import os
 import typing
 
+import torch
 from fastdatasets import memory as MEMORY
 from fastdatasets.common.iterable_dataset import IterableDatasetBase
 from fastdatasets.common.random_dataset import RandomDatasetBase
@@ -13,6 +14,7 @@ from fastdatasets.lmdb import LMDB
 from fastdatasets.record import RECORD
 from fastdatasets.torch_dataset import IterableDataset as torch_IterableDataset, Dataset as torch_Dataset
 from fastdatasets.utils.numpyadapter import NumpyReaderAdapter, E_file_backend
+from torch.utils.data import DataLoader, IterableDataset
 
 from .data_module import load_tokenizer, load_configure
 from .data_writer import DataWriteHelper
@@ -260,7 +262,7 @@ class DataHelper(DataPreprocessHelper):
                      with_torchdataset: bool = True,
                      transform_fn : typing.Callable = None,
                      check_dataset_file_fn=None
-                     ):
+                     ) -> typing.Optional[typing.Union[torch.utils.data.Dataset,torch.utils.data.IterableDataset]]:
         assert process_index <= num_processes and num_processes >= 1
         check_dataset_file_fn = check_dataset_file_fn or check_dataset_file
         files = check_dataset_file_fn(files)
@@ -286,6 +288,7 @@ class DataHelper(DataPreprocessHelper):
             if self.backend != 'memory_raw':
                 dataset = dataset.parse_from_numpy_writer()
 
+
         if isinstance(dataset, typing.Iterator):
             dataset: IterableDatasetBase
             if num_processes > 1:
@@ -300,9 +303,7 @@ class DataHelper(DataPreprocessHelper):
             if transform_fn is not None:
                 dataset = dataset.map(transform_fn)
 
-            if with_torchdataset:
-                dataset = torch_IterableDataset(dataset)
-
+            dataset_ = torch_IterableDataset(dataset) if with_torchdataset else dataset
         else:
             dataset: RandomDatasetBase
             if num_processes > 1:
@@ -314,9 +315,65 @@ class DataHelper(DataPreprocessHelper):
             if transform_fn is not None:
                 dataset = dataset.map(transform_fn)
 
-            if with_torchdataset:
-                dataset = torch_Dataset(dataset)
-        return dataset
+            dataset_ = torch_Dataset(dataset) if with_torchdataset else dataset
+        return dataset_
+
+
+    def load_random_sampler(self,files: typing.Union[typing.List, str],
+                     batch_size,
+                     collate_fn=None,
+                     pin_memory=False,
+                     shuffle: bool=False,
+                     infinite: bool=False,
+                     cycle_length: int=4,
+                     block_length: int=10,
+                     num_processes: int = 1,
+                     process_index: int = 0,
+                     backend=None,
+                     with_record_iterable_dataset: bool = False,
+                     with_load_memory: bool = False,
+                     with_torchdataset: bool = True,
+                     transform_fn : typing.Callable = None,
+                     check_dataset_file_fn=None) -> typing.Optional[DataLoader,typing.Union[torch.utils.data.Dataset,torch.utils.data.IterableDataset,IterableDatasetBase,RandomDatasetBase]]:
+
+        dataset = self.load_dataset(
+            files,shuffle=shuffle,infinite=infinite,cycle_length=cycle_length,
+            block_length=block_length,num_processes=num_processes,process_index=process_index,
+            backend=backend,with_record_iterable_dataset=with_record_iterable_dataset,
+            with_load_memory=with_load_memory,with_torchdataset=with_torchdataset,
+            transform_fn=transform_fn,check_dataset_file_fn=check_dataset_file_fn,
+        )
+        if dataset is None:
+            return None
+        return DataLoader(dataset,batch_size=batch_size,shuffle=False if isinstance(dataset, IterableDataset) else shuffle,collate_fn=collate_fn,pin_memory=pin_memory)
+
+    def load_sequential_sampler(self,files: typing.Union[typing.List, str],
+                     batch_size,
+                     collate_fn=None,
+                     pin_memory=False,
+                     shuffle: bool=False,
+                     infinite: bool=False,
+                     cycle_length: int=4,
+                     block_length: int=10,
+                     num_processes: int = 1,
+                     process_index: int = 0,
+                     backend=None,
+                     with_record_iterable_dataset: bool = False,
+                     with_load_memory: bool = False,
+                     with_torchdataset: bool = True,
+                     transform_fn : typing.Callable = None,
+                     check_dataset_file_fn=None) -> typing.Optional[DataLoader,typing.Union[torch.utils.data.Dataset,torch.utils.data.IterableDataset,IterableDatasetBase,RandomDatasetBase]]:
+
+        dataset = self.load_dataset(
+            files,shuffle=shuffle,infinite=infinite,cycle_length=cycle_length,
+            block_length=block_length,num_processes=num_processes,process_index=process_index,
+            backend=backend,with_record_iterable_dataset=with_record_iterable_dataset,
+            with_load_memory=with_load_memory,with_torchdataset=with_torchdataset,
+            transform_fn=transform_fn,check_dataset_file_fn=check_dataset_file_fn,
+        )
+        if dataset is None:
+            return None
+        return DataLoader(dataset,batch_size=batch_size,shuffle=shuffle,collate_fn=collate_fn,pin_memory=pin_memory)
 
     # 返回制作特征数据的中间文件
     def get_intermediate_file(self,data_args: DataArguments, intermediate_name, mode):

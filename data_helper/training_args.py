@@ -225,6 +225,9 @@ class DataArguments:
             "help": "device str"
         }
     )
+    is_convert_onnx: Optional[str] =  field(
+        default=False, metadata={"help": "是否转换onnx"}
+    )
     data_backend: Optional[str] = field(
         default=None, metadata={"help": "record,leveldb,lmdb,memory,memory_raw"}
     )

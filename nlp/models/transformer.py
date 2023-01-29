@@ -6,7 +6,7 @@ import argparse
 import copy
 import sys
 import typing
-from typing import Any
+from typing import Any, Callable, cast, Dict, IO, MutableMapping, Optional, Type, Union
 import torch
 import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
@@ -61,10 +61,49 @@ def verify_manual_optimization_support(trainer: "pl.Trainer", model: "pl.Lightni
     trainer.accumulate_grad_batches = 1
 
 
+class MyLightningModule(pl.LightningModule):
+    def __init__(self,*args: Any, **kwargs: Any):
+        super(MyLightningModule, self).__init__(*args,**kwargs)
+
+    @classmethod
+    def load_from_checkpoint(
+            cls,
+            checkpoint_path: typing.Union[str, IO],
+            map_location = None,
+            hparams_file: typing.Optional[str] = None,
+            strict: bool = True,
+            **kwargs: Any,
+    ) -> typing.Union["pl.LightningModule", "pl.LightningDataModule","MyLightningModule"]:
+        return super(MyLightningModule, cls).load_from_checkpoint(checkpoint_path,map_location,hparams_file,strict,**kwargs)
+
+    def convert_to_onnx(self, file_path,
+                        input_sample=(
+                                torch.ones(size=(1, 128), dtype=torch.int64),
+                                torch.ones(size=(1, 128), dtype=torch.int64),
+                        ),
+                        input_names=("input_ids", "attention_mask"),
+                        output_names=("pred_ids",),
+                        dynamic_axes=None or {"input_ids": [0, 1], "attention_mask": [0, 1], "pred_ids": [0, 1]},
+                        opset_version=14,
+                        verbose=True,
+                        do_constant_folding=True
+                        ):
+        self.eval()
+        self.to('cuda')
+        self.to_onnx(file_path,
+                     input_sample=input_sample,
+                     verbose=verbose,
+                     opset_version=opset_version,
+                     do_constant_folding=do_constant_folding,
+                     input_names=input_names,
+                     output_names=output_names,
+                     dynamic_axes=dynamic_axes)
+
+
 
 class TransformerFakeMeta(type):
     def __new__(cls, name, base, attr,*args,**kwargs):
-        base_new =  tuple(b for b in base if b != pl.LightningModule)
+        base_new =  tuple(b for b in base if b != MyLightningModule)
         if name == 'TransformerBase':
             base_new =  base_new + (nn.Module,)
         with_pl = kwargs.get('with_pl',False)
@@ -78,7 +117,7 @@ class TransformerFakeMeta(type):
         return cls_
 
 
-class TransformerBase(pl.LightningModule,metaclass=TransformerFakeMeta):
+class TransformerBase(MyLightningModule,metaclass=TransformerFakeMeta):
     def __init__(self,*args,**kwargs):
         config = get_value_from_args('config',PretrainedConfig,*args,**kwargs)
         super(TransformerBase, self).__init__()
@@ -199,7 +238,7 @@ class TransformerBase(pl.LightningModule,metaclass=TransformerFakeMeta):
 
 
 
-class TransformerLightningModule(pl.LightningModule):
+class TransformerLightningModule(MyLightningModule):
     def __init__(self, *args,**kwargs):
         config = get_value_from_args('config',PretrainedConfig,*args,**kwargs)
         model_args = get_value_from_args('model_args', ModelArguments, *args, **kwargs)
@@ -249,6 +288,9 @@ class TransformerLightningModule(pl.LightningModule):
         self.gradient_clip_val = training_args.max_grad_norm
 
 
+    @property
+    def backbone(self):
+        return self.__model
 
     @property
     def model(self):
@@ -296,8 +338,6 @@ class TransformerLightningModule(pl.LightningModule):
                 setattr(self,e,a)
 
 
-
-
     def get_model_lr(self):
         return self.model.get_model_lr()
 
@@ -323,7 +363,9 @@ class TransformerLightningModule(pl.LightningModule):
         if isinstance(loss,dict):
             loss = loss['loss']
         return super(TransformerLightningModule, self).manual_backward(loss)
-        
+
+
+
     def adv_training_step(self,batch):
         mode = self.training_args.adv['mode']
         opt = self.optimizers()
@@ -471,7 +513,7 @@ class TransformerLightningModule(pl.LightningModule):
                 if 'loss' in o:
                     o['val_loss'] = o.pop('loss')
             else:
-                o['val_loss'] = loss.cpu().numpy()
+                o['val_loss'] = loss.cpu().detach().numpy()
 
         out = outputs[1:]
         if isinstance(out,(tuple,list)):
@@ -481,24 +523,24 @@ class TransformerLightningModule(pl.LightningModule):
                 if t is None:
                     obj.append(t)
                 elif isinstance(t,torch.Tensor):
-                    obj.append(t.cpu().numpy())
+                    obj.append(t.cpu().detach().numpy())
                 elif isinstance(t, list) or isinstance(t, tuple):
                     tmp_list =[_ for _ in t]
                     for idx in range(len(tmp_list)):
                         node = tmp_list[idx]
                         if isinstance(node, torch.Tensor):
-                            tmp_list[idx] = node.cpu().numpy()
+                            tmp_list[idx] = node.cpu().detach().numpy()
                         elif isinstance(node, list) or isinstance(node, tuple):
-                            tmp_list[idx] = [_.cpu().numpy() for _ in node]
+                            tmp_list[idx] = [_.cpu().detach().numpy() for _ in node]
                         else:
                             raise ValueError('validation_step: outputs not support', type(t))
                     obj.append(tmp_list)
                 elif isinstance(t, dict):
-                    obj.append({k:v.cpu().numpy() for k,v in t.items()})
+                    obj.append({k:v.cpu().detach().numpy() for k,v in t.items()})
                 else:
                     raise ValueError('validation_step: outputs not support', type(t))
         else:
-            o['outputs'] = out.cpu().numpy()
+            o['outputs'] = out.cpu().detach().numpy()
         return o
 
     def test_step(self, batch, batch_idx):
@@ -515,24 +557,24 @@ class TransformerLightningModule(pl.LightningModule):
                 if t is None:
                     obj.append(t)
                 elif isinstance(t, torch.Tensor):
-                    obj.append(t.cpu().numpy())
+                    obj.append(t.cpu().detach().numpy())
                 elif isinstance(t, list) or isinstance(t, tuple):
                     tmp_list =[_ for _ in t]
                     for idx in range(len(tmp_list)):
                         node = tmp_list[idx]
                         if isinstance(node,torch.Tensor):
-                            tmp_list[idx] = node.cpu().numpy()
+                            tmp_list[idx] = node.cpu().detach().numpy()
                         elif isinstance(node, list) or isinstance(node, tuple):
-                            tmp_list[idx] = [_.cpu().numpy() for _ in node]
+                            tmp_list[idx] = [_.cpu().detach().numpy() for _ in node]
                         else:
                             raise ValueError('test_step: outputs not support', type(t))
                     obj.append(tmp_list)
                 elif isinstance(t, dict):
-                    obj.append({k: v.cpu().numpy() for k, v in t.items()})
+                    obj.append({k: v.cpu().detach().numpy() for k, v in t.items()})
                 else:
                     raise ValueError('test_step: outputs not support',type(t))
         else:
-            o['outputs'] = out.cpu().numpy()
+            o['outputs'] = out.cpu().detach().numpy()
         return o
 
 
