@@ -321,6 +321,12 @@ class DataArguments:
         if not self.test_file:
             self.do_test = False
 
+        if self.convert_onnx:
+            self.do_train = False
+            self.do_eval = False
+            self.do_test = False
+
+
 
         if not os.path.exists(self.output_dir):
             os.mkdir(self.output_dir)

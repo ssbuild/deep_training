@@ -76,10 +76,18 @@ class MyLightningModule(pl.LightningModule):
     ) -> typing.Union["pl.LightningModule", "pl.LightningDataModule","MyLightningModule"]:
         return super(MyLightningModule, cls).load_from_checkpoint(checkpoint_path,map_location,hparams_file,strict,**kwargs)
 
+    @property
+    def backbone(self):
+        return self.__model
+
+    @property
+    def model(self):
+        return self.__model
+
     def convert_to_onnx(self, file_path,
                         input_sample=(
-                                torch.ones(size=(1, 128), dtype=torch.int64),
-                                torch.ones(size=(1, 128), dtype=torch.int64),
+                                ("input_ids",torch.ones(size=(1, 128), dtype=torch.int64)),
+                                ("attention_mask",torch.ones(size=(1, 128), dtype=torch.int64)),
                         ),
                         input_names=("input_ids", "attention_mask"),
                         output_names=("pred_ids",),
@@ -103,7 +111,7 @@ class MyLightningModule(pl.LightningModule):
 
 class TransformerFakeMeta(type):
     def __new__(cls, name, base, attr,*args,**kwargs):
-        base_new =  tuple(b for b in base if b != MyLightningModule)
+        base_new = tuple(b for b in base if b != MyLightningModule)
         if name == 'TransformerBase':
             base_new =  base_new + (nn.Module,)
         with_pl = kwargs.get('with_pl',False)
@@ -343,11 +351,13 @@ class TransformerLightningModule(MyLightningModule):
 
 
     def compute_loss(self,*args, **kwargs):
-        return self.model.compute_loss(*args, **kwargs)
+        kwargs.update(dict(args))
+        return self.model.compute_loss(**kwargs)
 
 
     def forward(self,*args, **kwargs):
-        return self.compute_loss(*args,**kwargs)
+        kwargs.update(dict(args))
+        return self.compute_loss(**kwargs)
 
 
     def setup(self, stage: str) -> None:
@@ -491,7 +501,7 @@ class TransformerLightningModule(MyLightningModule):
         if isinstance(batch, dict):
             outputs = self.compute_loss(**batch)
         else:
-            outputs = self.compute_loss(*batch)
+            outputs = self.compute_loss(**dict(batch))
         loss = outputs[0]
         if isinstance(loss,dict):
             self.log_dict(loss,prog_bar=True)
@@ -503,7 +513,7 @@ class TransformerLightningModule(MyLightningModule):
         if isinstance(batch, dict):
             outputs = self.compute_loss(**batch)
         else:
-            outputs = self.compute_loss(*batch)
+            outputs = self.compute_loss(**dict(batch))
 
         loss = outputs[0]
         o = {}
@@ -547,7 +557,7 @@ class TransformerLightningModule(MyLightningModule):
         if isinstance(batch, dict):
             outputs = self.compute_loss(**batch)
         else:
-            outputs = self.compute_loss(*batch)
+            outputs = self.compute_loss(**dict(batch))
         o = {}
         out = outputs
         if isinstance(out, (tuple, list)):
