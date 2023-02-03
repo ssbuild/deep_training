@@ -86,8 +86,8 @@ class MyLightningModule(pl.LightningModule):
 
     def convert_to_onnx(self, file_path,
                         input_sample=(
-                                ("input_ids",torch.ones(size=(1, 128), dtype=torch.int64)),
-                                ("attention_mask",torch.ones(size=(1, 128), dtype=torch.int64)),
+                                ("input_ids",torch.ones(size=(1, 128), dtype=torch.int32)),
+                                ("attention_mask",torch.ones(size=(1, 128), dtype=torch.int32)),
                         ),
                         input_names=("input_ids", "attention_mask"),
                         output_names=("pred_ids",),
