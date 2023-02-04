@@ -21,7 +21,7 @@ class SimpleModelCheckpoint(Checkpoint):
                  every_n_epochs: Optional[int] = None,
                  skip_n_train_steps :  Optional[int] = None,
                  skip_n_epochs: Optional[int] = None,
-                 monitor='loss',
+                 monitor=None,
                  mode='min',
                  weight_file='./best.pt',
                  **kwargs):
@@ -87,6 +87,11 @@ class SimpleModelCheckpoint(Checkpoint):
                 trainer.save_checkpoint(self.weight_file)
         else:
             warnings.warn('monitor {} is not in metirc !!!'.format(self.monitor))
+
+            logging.info('epoch {} ,step {} save best {}\n'.format(monitor_candidates['epoch'],
+                                                                       monitor_candidates['step'],
+                                                                       self.weight_file))
+            trainer.save_checkpoint(self.weight_file)
 
 
 
