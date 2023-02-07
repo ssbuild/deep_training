@@ -218,7 +218,7 @@ class TrainingArguments:
     def __post_init__(self):
         seed_everything(self.seed)
 
-        assert self.hierarchical_position is None or (self.hierarchical_position >=0 and self.hierarchical_position <=1)
+        assert self.hierarchical_position is None or (self.hierarchical_position >0 and self.hierarchical_position <1)
 
 
 @dataclass

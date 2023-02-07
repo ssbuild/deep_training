@@ -295,7 +295,7 @@ class TransformerLightningModule(MyLightningModule):
 
         self.gradient_clip_val = training_args.max_grad_norm
 
-        if training_args.hierarchical_position:
+        if training_args.hierarchical_position is not None and (training_args.hierarchical_position > 0 and training_args.hierarchical_position < 1):
             #绝对位置编码 分层位置编码
 
             # def forward(self, input: Tensor) -> Tensor:
