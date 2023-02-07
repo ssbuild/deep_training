@@ -295,6 +295,32 @@ class TransformerLightningModule(MyLightningModule):
 
         self.gradient_clip_val = training_args.max_grad_norm
 
+        if training_args.hierarchical_position:
+            #绝对位置编码 分层位置编码
+
+            # def forward(self, input: Tensor) -> Tensor:
+            #     return F.embedding(
+            #         input, self.weight, self.padding_idx, self.max_norm,
+            #         self.norm_type, self.scale_grad_by_freq, self.sparse)
+
+            def forward(self, input: Tensor) -> Tensor:
+                ...
+                # return F.embedding(
+                #     input, self.weight, self.padding_idx, self.max_norm,
+                #     self.norm_type, self.scale_grad_by_freq, self.sparse)
+                position_ids = input
+                alpha = training_args.hierarchical_position
+                embeddings = self.weight - alpha * self.weight[:1]
+                embeddings = embeddings / (1 - alpha)
+                x_idx = position_ids // self.num_embeddings
+                y_idx = position_ids % self.num_embeddings
+                embeddings_x = torch.index_select(embeddings,dim=0,index=x_idx.view(-1)).view(*x_idx.size())
+                embeddings_y = torch.index_select(embeddings,dim=0,index=y_idx.view(-1)).view(*y_idx.size())
+                embeddings = alpha * embeddings_x + (1 - alpha) * embeddings_y
+                return embeddings
+
+            self.model.model.position_embeddings.forward = forward
+
 
     @property
     def backbone(self):

@@ -153,6 +153,10 @@ class TrainingArguments:
         },
         metadata={"help": "对抗训练"},
     )
+    hierarchical_position: float = field(
+        default=None,
+        metadata={"help": "层次分解位置编码，让transformer可以处理超长文本 , 绝对位置编码有效 , None禁用 , 0 - 1 启用 "},
+    )
 
     learning_rate : float = field(
         default=5e-5,
@@ -213,6 +217,8 @@ class TrainingArguments:
 
     def __post_init__(self):
         seed_everything(self.seed)
+
+        assert self.hierarchical_position is None or (self.hierarchical_position >=0 and self.hierarchical_position <=1)
 
 
 @dataclass

@@ -23,7 +23,8 @@ class SimpleModelCheckpoint(Checkpoint):
                  skip_n_epochs: Optional[int] = None,
                  monitor=None,
                  mode='min',
-                 weight_file='./best.pt',
+                 weight_file='./best.pt',#保存权重名字
+                 last_weight_file='./last.pt',#每评估一次保存一次权重
                  **kwargs):
 
         self.__every_n_train_steps = every_n_train_steps
@@ -41,6 +42,7 @@ class SimpleModelCheckpoint(Checkpoint):
         self.skip_n_epochs = skip_n_epochs
 
         self.weight_file = weight_file
+        self.last_weight_file = last_weight_file
         self._external_kwargs = kwargs
 
     @property
@@ -80,15 +82,22 @@ class SimpleModelCheckpoint(Checkpoint):
                 warnings.warn('monitor {} is not tensor'.format(self.monitor))
             if flag:
                 self.best[self.monitor] = val
-                logging.info('epoch {} ,step {} save best {}, {}\n'.format(monitor_candidates['epoch'],
+                logging.info('epoch {} ,step {} , save best {}, {}\n'.format(monitor_candidates['epoch'],
                                                                            monitor_candidates['step'],
                                                                            self.best[self.monitor],
                                                                            self.weight_file))
                 trainer.save_checkpoint(self.weight_file)
+
+            if self.last_weight_file is not None:
+                logging.info('epoch {} ,step {} , save {}\n'.format(monitor_candidates['epoch'],
+                                                                       monitor_candidates['step'],
+                                                                       self.last_weight_file))
+                trainer.save_checkpoint(self.last_weight_file)
+
         else:
             warnings.warn('monitor {} is not in metirc !!!'.format(self.monitor))
 
-            logging.info('epoch {} ,step {} save best {}\n'.format(monitor_candidates['epoch'],
+            logging.info('epoch {} ,step {} , save {}\n'.format(monitor_candidates['epoch'],
                                                                        monitor_candidates['step'],
                                                                        self.weight_file))
             trainer.save_checkpoint(self.weight_file)

@@ -7,7 +7,8 @@
   -  [deep_training-examples](https://github.com/ssbuild/deep_training-example)
 
 ## 更新
-
+- <strong>2023年02月07</strong>
+  - 增加层次分解位置编码选项，让transformer可以处理超长文本
 - <strong>2023年01月20</strong>
   - 增加对抗训练 FGM, FGSM_Local,FreeAT, PGD, FGSM,FreeAT_Local, 其中FreeAT推荐使用FreeAT_Local,FGSM 推荐使用 FGSM_Local
 - <strong>2023年01月19</strong>
