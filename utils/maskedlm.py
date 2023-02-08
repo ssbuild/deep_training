@@ -124,9 +124,6 @@ def make_mlm_wwm_sample(text : str ,tokenizer,max_seq_length, rng, do_whole_word
     input_ids = np.asarray(input_ids, dtype=np.int64)
     attention_mask = np.ones_like(input_ids, dtype=np.int64)
     labels = np.asarray(labels, dtype=np.int64)
-    weight = np.zeros_like(input_ids, dtype=np.float32)
-    for index, _ in masked_lms:
-        weight[index] = 1.0
 
     input_length = np.asarray(len(input_ids), dtype=np.int64)
     pad_len = max_seq_length - input_length
@@ -134,13 +131,11 @@ def make_mlm_wwm_sample(text : str ,tokenizer,max_seq_length, rng, do_whole_word
         pad_val = tokenizer.pad_token_id
         input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
         attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(0, 0))
-        labels = np.pad(labels, (0, pad_len), 'constant', constant_values=(0, 0))
-        weight = np.pad(weight, (0, pad_len), 'constant', constant_values=(0, 0))
+        labels = np.pad(labels, (0, pad_len), 'constant', constant_values=(-100, -100))
     sample = {
         'input_ids': input_ids,
         'attention_mask': attention_mask,
         'labels': labels,
-        'weight': weight,
         'seqlen': input_length
     }
     return sample

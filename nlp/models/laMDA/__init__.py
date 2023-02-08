@@ -53,7 +53,7 @@ class T5RelativePositionBias(nn.Module):
         rp_bucket = self._relative_position_bucket(rel_pos, num_buckets = self.num_buckets, max_distance = self.max_distance)
         values = self.relative_attention_bias(rp_bucket)
 
-        bias =   torch.permute(values,(2,0,1))
+        bias =  torch.permute(values,(2,0,1))
         return qk_dots + (bias * self.scale)
 
 # attention
@@ -77,6 +77,7 @@ class LaMDA_Attention(nn.Module):
         self.scale_attn_weights = config.scale_attn_weights
         self.is_cross_attention = is_cross_attention
         self.layer_idx = layer_idx
+        self.scale_attn_by_inverse_layer_idx = config.scale_attn_by_inverse_layer_idx
 
 
         inner_dim = self.num_heads * self.head_dim
@@ -85,11 +86,12 @@ class LaMDA_Attention(nn.Module):
         self.attn_dropout = nn.Dropout(config.attn_pdrop)
         self.resid_dropout = nn.Dropout(config.resid_pdrop)
 
+        self.split_size = self.embed_dim
         if is_cross_attention:
             self.q_attn = nn.Linear(self.embed_dim, inner_dim, bias = False)
-            self.c_attn = nn.Linear(self.embed_dim, self.head_dim * 2, bias = False)
+            self.c_attn = nn.Linear(self.embed_dim, inner_dim * 2, bias = False)
         else:
-            self.c_attn = nn.Linear(self.embed_dim, self.head_dim * 3, bias=False)
+            self.c_attn = nn.Linear(self.embed_dim, inner_dim * 3, bias=False)
 
         self.c_proj = nn.Linear(inner_dim, self.embed_dim)
 
@@ -107,17 +109,24 @@ class LaMDA_Attention(nn.Module):
         if self.scale_attn_by_inverse_layer_idx:
             attn_weights = attn_weights / float(self.layer_idx + 1)
 
-        if not self.is_cross_attention:
-            # if only "normal" attention layer implements causal mask
-            query_length, key_length = query.size(-2), key.size(-2)
-            causal_mask = self.bias[:, :, key_length - query_length: key_length, :key_length].to(torch.bool)
-            mask_value = torch.finfo(attn_weights.dtype).min
-            # Need to be a tensor, otherwise we get error: `RuntimeError: expected scalar type float but found double`.
-            # Need to be on the same device, otherwise `RuntimeError: ..., x and y to be on the same device`
-            mask_value = torch.full([], mask_value, dtype=attn_weights.dtype).to(attn_weights.device)
-            attn_weights = torch.where(causal_mask, attn_weights.to(attn_weights.dtype), mask_value)
-
         attn_weights = self.rel_pos_bias(attn_weights)
+
+        # if not self.is_cross_attention:
+        #     # if only "normal" attention layer implements causal mask
+        #     query_length, key_length = query.size(-2), key.size(-2)
+        #     causal_mask = self.bias[:, :, key_length - query_length: key_length, :key_length].to(torch.bool)
+        #     mask_value = torch.finfo(attn_weights.dtype).min
+        #     # Need to be a tensor, otherwise we get error: `RuntimeError: expected scalar type float but found double`.
+        #     # Need to be on the same device, otherwise `RuntimeError: ..., x and y to be on the same device`
+        #     mask_value = torch.full([], mask_value, dtype=attn_weights.dtype).to(attn_weights.device)
+        #     attn_weights = torch.where(causal_mask, attn_weights.to(attn_weights.dtype), mask_value)
+
+        if not self.is_cross_attention:
+            # Causal Mask
+            i, j = attn_weights.shape[-2:]
+            causal_mask = torch.ones((i, j), dtype=torch.bool, device=attn_weights.device).triu(j - i + 1)
+            attn_weights = attn_weights.masked_fill(causal_mask, -torch.finfo(attn_weights.dtype).max)
+
         if attention_mask is not None:
             # Apply the attention mask
             attn_weights = attn_weights + attention_mask
@@ -354,11 +363,12 @@ class LaMDAModel(LaMDAPreTrainedModel):
         self.embed_dim = config.hidden_size
         self.wte = nn.Embedding(config.vocab_size, self.embed_dim)
         self.wpe = nn.Embedding(config.max_position_embeddings, self.embed_dim)
-        dim = config.hidden_size
+        self.drop = nn.Dropout(config.embd_pdrop)
+
         self.h = nn.ModuleList([
             LaMDA_Block(config,layer_idx=i) for i in range(config.num_hidden_layers)
         ])
-
+        self.ln_f = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
         # Model parallel
         self.model_parallel = False
         self.device_map = None
@@ -366,6 +376,12 @@ class LaMDAModel(LaMDAPreTrainedModel):
 
         # Initialize weights and apply final processing
         self.post_init()
+
+    def get_input_embeddings(self):
+        return self.wte
+
+    def set_input_embeddings(self, new_embeddings):
+        self.wte = new_embeddings
 
     def forward(
             self,

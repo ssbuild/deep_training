@@ -49,7 +49,7 @@ from transformers import (
 #     def __new__(cls, name, base, attr,*args,**kwargs):
 #         alter = tuple(b for b in base if issubclass(b,TransformerBase))
 #         cls_ = super(TransformerMeta, cls).__new__(cls, name, (TransformerLightningModule,) + tuple(b for b in base if not issubclass(b, TransformerBase)), attr)
-#         cls_.__ALTER_CLASS__ = alter
+#         cls_.__BACKBONE_CLASS__ = alter
 #         return cls_
 
 
@@ -115,13 +115,13 @@ class TransformerFakeMeta(type):
         if name == 'TransformerBase':
             base_new =  base_new + (nn.Module,)
         with_pl = kwargs.get('with_pl',False)
-        alter = None
+        backbone_class = None
         if with_pl:
-            alter = tuple(b for b in base if issubclass(b, TransformerBase))
+            backbone_class = tuple(b for b in base if issubclass(b, TransformerBase))
             base_new = (TransformerLightningModule,) + tuple(b for b in base_new if not issubclass(b, TransformerBase))
         cls_ = super(TransformerFakeMeta, cls).__new__(cls, name, base_new, attr)
-        if alter is not None:
-            cls_.__ALTER_CLASS__ = alter
+        if backbone_class is not None:
+            cls_.__BACKBONE_CLASS__ = backbone_class
         return cls_
 
 
@@ -224,6 +224,7 @@ class TransformerBase(MyLightningModule,metaclass=TransformerFakeMeta):
 
     @property
     def model(self):
+        print('*' * 30,self.base_model_prefix)
         if not self.base_model_prefix:
             return None
         return getattr(self, self.base_model_prefix,None)
@@ -245,6 +246,7 @@ class TransformerBase(MyLightningModule,metaclass=TransformerFakeMeta):
                 continue
             setattr(self,k,o)
 
+        assert self.base_model_prefix is not None, ValueError('base_model_prefix is empty')
         setattr(self, self.base_model_prefix, model)
 
     def get_model_lr(self):
@@ -277,9 +279,9 @@ class TransformerLightningModule(MyLightningModule):
         self.config = config
         self.model_args = model_args
         self.training_args = training_args
-        self.__model : typing.Optional[TransformerBase] = None
-        if hasattr(self,'__ALTER_CLASS__') and len(self.__ALTER_CLASS__) > 0:
-            self.set_model(self.__ALTER_CLASS__[0](*args, **kwargs))
+        self.__backbone : typing.Optional[TransformerBase] = None
+        if hasattr(self,'__BACKBONE_CLASS__') and len(self.__BACKBONE_CLASS__) > 0:
+            self.set_model(self.__BACKBONE_CLASS__[0](*args, **kwargs))
 
 
         self.training_step_fn = self.training_step
@@ -287,7 +289,9 @@ class TransformerLightningModule(MyLightningModule):
 
         #对抗训练
         if training_args.adv['mode'] is not None:
-            self.embeddings_forward_fn = self.model.model.embeddings.forward
+            print(self.backbone)
+            print(self.backbone.model)
+            self.embeddings_forward_fn = self.backbone.model.embeddings.forward
 
             self.training_step = self.adv_training_step
             if training_args.adv['mode'].find('local') != -1:
@@ -327,16 +331,16 @@ class TransformerLightningModule(MyLightningModule):
                 embeddings = alpha * embeddings_x + (1 - alpha) * embeddings_y
                 return embeddings
 
-            self.model.model.position_embeddings.forward = forward
+            self.backbone.model.embeddings.position_embeddings.forward = forward
 
 
     @property
     def backbone(self):
-        return self.__model
+        return self.__backbone
 
     @property
     def model(self):
-        return self.__model
+        return self.__backbone
 
     @model.setter
     def model(self, model):
@@ -344,13 +348,13 @@ class TransformerLightningModule(MyLightningModule):
 
     def set_model(self, model):
         assert model is not None
-        self.__model = model
+        self.__backbone = model
 
         copy_attr = [
             'log','log_dict'
         ]
         for k in copy_attr:
-            setattr(self.__model,k,getattr(self,k))
+            setattr(self.__backbone, k, getattr(self, k))
         # setattr(self.__model, 'estimated_stepping_batches', self.trainer.estimated_stepping_batches)
         # if hasattr(self.__model,'validation_epoch_end'):
         #     cname = self.validation_epoch_end.__qualname__
@@ -375,7 +379,7 @@ class TransformerLightningModule(MyLightningModule):
             'optimizer_zero_grad',
         ]
         for e in event_:
-            a = getattr(self.__model, e,None)
+            a = getattr(self.__backbone, e, None)
             if a is not None:
                 setattr(self,e,a)
 
@@ -395,8 +399,8 @@ class TransformerLightningModule(MyLightningModule):
 
 
     def setup(self, stage: str) -> None:
-        setattr(self.__model, 'trainer', self.trainer)
-        setattr(self.__model, 'estimated_stepping_batches', self.trainer.estimated_stepping_batches)
+        setattr(self.__backbone, 'trainer', self.trainer)
+        setattr(self.__backbone, 'estimated_stepping_batches', self.trainer.estimated_stepping_batches)
 
 
     def configure_optimizers(self):
@@ -437,7 +441,7 @@ class TransformerLightningModule(MyLightningModule):
                 embedding_output = self.embeddings_forward_fn(*args, **kwargs)
                 embedding_output += delta
                 return embedding_output
-            setattr(self.model.model.embeddings, 'forward', forward_fn)
+            setattr(self.backbone.model.embeddings, 'forward', forward_fn)
             delta = self.adversarial.attack(is_first_attack=True, delta=delta,alpha=alpha,epsilon=epsilon)
             loss = self.training_step_fn(batch)
             self.manual_backward(loss)
@@ -451,7 +455,7 @@ class TransformerLightningModule(MyLightningModule):
             opt.step()
             self.model.zero_grad()
 
-            setattr(self.model.model.embeddings, 'forward', self.embeddings_forward_fn)
+            setattr(self.backbone.model.embeddings, 'forward', self.embeddings_forward_fn)
         elif mode == 'fgsm':
             alpha = self.training_args.adv['alpha']
             self.adversarial.attack(is_first_attack=True,alpha=alpha,epsilon=epsilon)
@@ -497,7 +501,7 @@ class TransformerLightningModule(MyLightningModule):
                 embedding_output += delta[:embedding_output.size(0),:embedding_output.size(1)]
                 return embedding_output
 
-            setattr(self.model.model.embeddings, 'forward', forward_fn)
+            setattr(self.backbone.model.embeddings, 'forward', forward_fn)
             for _ in range(self.training_args.adv['minibatch_replays']):
                 delta.retain_grad()
                 loss = self.training_step_fn(batch)
@@ -510,7 +514,7 @@ class TransformerLightningModule(MyLightningModule):
                 # delta.grad.zero_()
                 self.model.zero_grad()
 
-            setattr(self.model.model.embeddings, 'forward', self.embeddings_forward_fn)
+            setattr(self.backbone.model.embeddings, 'forward', self.embeddings_forward_fn)
         elif mode == 'free':
             for _ in range(self.training_args.adv['minibatch_replays']):
                 opt.zero_grad()
@@ -627,7 +631,7 @@ class TransformerLightningModule(MyLightningModule):
 class TransformerModel(TransformerBase):
     def __init__(self, *args,**kwargs):
         super(TransformerModel, self).__init__(*args,**kwargs)
-        self.set_model( self.from_pretrained(AutoModel,*args,**kwargs))
+        self.set_model(self.from_pretrained(AutoModel,*args,**kwargs))
         
 
 
