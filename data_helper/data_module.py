@@ -10,6 +10,7 @@ __all__ = [
 
 def load_tokenizer(tokenizer_name,
                    model_name_or_path=None,
+                   class_name = None,
                    cache_dir="",
                    do_lower_case=True,
                    use_fast_tokenizer=True,
@@ -24,6 +25,8 @@ def load_tokenizer(tokenizer_name,
         "use_auth_token": True if use_auth_token else None,
         **kwargs
     }
+    if class_name is not None:
+        tokenizer = class_name.from_pretrained(tokenizer_name, **tokenizer_kwargs)
     if tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, **tokenizer_kwargs)
     elif model_name_or_path:
@@ -37,6 +40,7 @@ def load_tokenizer(tokenizer_name,
 
 def load_configure(config_name,
                    model_name_or_path=None,
+                   class_name = None,
                    cache_dir="",
                    model_revision="main",
                    use_auth_token=None,
@@ -61,7 +65,10 @@ def load_configure(config_name,
         "task_specific_params": task_specific_params,
         **kwargs
     }
-    if isinstance(config_name,PretrainedConfig):
+
+    if class_name is not None:
+        config = class_name.from_pretrained(config_name, **config_kwargs)
+    elif isinstance(config_name,PretrainedConfig):
         for k,v in config_kwargs.items():
             setattr(config_name,k,v)
         config = config_name
@@ -71,14 +78,14 @@ def load_configure(config_name,
     elif model_name_or_path:
         config = AutoConfig.from_pretrained(model_name_or_path, **config_kwargs)
     elif model_type:
-        config = CONFIG_MAPPING[model_type]()
-        if config_overrides is not None:
-            config.update_from_string(config_overrides)
+        config = CONFIG_MAPPING[model_type].from_pretrained(model_name_or_path, **config_kwargs)
     else:
         raise ValueError(
             "You are instantiating a new config_gpt2 from scratch. This is not supported by this script."
             "You can do it from another script, save it, and load it from here, using --config_name."
         )
+    if config_overrides is not None:
+        config.update_from_string(config_overrides)
     return config
 
 
