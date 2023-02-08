@@ -224,7 +224,6 @@ class TransformerBase(MyLightningModule,metaclass=TransformerFakeMeta):
 
     @property
     def model(self):
-        print('*' * 30,self.base_model_prefix)
         if not self.base_model_prefix:
             return None
         return getattr(self, self.base_model_prefix,None)
@@ -289,8 +288,6 @@ class TransformerLightningModule(MyLightningModule):
 
         #对抗训练
         if training_args.adv['mode'] is not None:
-            print(self.backbone)
-            print(self.backbone.model)
             self.embeddings_forward_fn = self.backbone.model.embeddings.forward
 
             self.training_step = self.adv_training_step
