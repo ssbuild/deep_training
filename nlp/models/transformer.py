@@ -211,8 +211,14 @@ class TransformerBase(MyLightningModule,metaclass=TransformerFakeMeta):
                 config=config,
                 **model_kwargs
             )
-        else:
+        elif hasattr(CLS,'from_config'):
             cls_ = CLS.from_config(config)
+            cls_.post_init()
+        elif hasattr(CLS, '_from_config'):
+            cls_ = CLS._from_config(config)
+            cls_.post_init()
+        else:
+            cls_ = CLS(config)
             cls_.post_init()
         return cls_
 
@@ -278,6 +284,8 @@ class TransformerLightningModule(MyLightningModule):
 
         self.training_step_fn = self.training_step
         self.embeddings_forward_fn = None
+
+        #对抗训练
         if training_args.adv['mode'] is not None:
             self.embeddings_forward_fn = self.model.model.embeddings.forward
 

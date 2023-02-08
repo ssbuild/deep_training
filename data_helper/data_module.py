@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/11/4 13:31
 
-from transformers import AutoTokenizer,AutoConfig,CONFIG_MAPPING
-
+from transformers import AutoTokenizer, AutoConfig, CONFIG_MAPPING, PretrainedConfig
 
 __all__ = [
     'load_tokenizer',
@@ -62,7 +61,12 @@ def load_configure(config_name,
         "task_specific_params": task_specific_params,
         **kwargs
     }
-    if config_name:
+    if isinstance(config_name,PretrainedConfig):
+        for k,v in config_kwargs.items():
+            setattr(config_name,k,v)
+        config = config_name
+
+    elif config_name:
         config = AutoConfig.from_pretrained(config_name, **config_kwargs)
     elif model_name_or_path:
         config = AutoConfig.from_pretrained(model_name_or_path, **config_kwargs)

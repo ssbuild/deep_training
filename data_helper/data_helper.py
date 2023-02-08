@@ -110,8 +110,11 @@ def check_dataset_file(files):
     return files
 
 class DataHelper(DataPreprocessHelper):
-    def __init__(self,backend: typing.Union[E_file_backend, str],*args,**kwargs):
-        DataPreprocessHelper.__init__(self)
+    def __init__(self,backend: typing.Union[E_file_backend, str],
+                model_args: ModelArguments,
+                training_args: TrainingArguments,
+                data_args: DataArguments,**kwargs):
+        super(DataHelper, self).__init__()
 
         self.backend = backend
         self.data_process_fn = self.on_data_process
@@ -130,16 +133,101 @@ class DataHelper(DataPreprocessHelper):
         self.max_seq_length_dict = {}
 
 
-        self._external_args = args
         self._external_kwargs = kwargs
 
-    @property
-    def external_args(self):
-        return self._external_args
+        self.model_args = model_args
+        self.training_args = training_args
+        self.data_args = data_args
+
+        if data_args is not None:
+            label2id, id2label = self.on_get_labels(data_args.label_file)
+            self.label2id = label2id
+            self.id2label = id2label
+
+            self.max_seq_length_dict['train'] = data_args.train_max_seq_length
+            self.max_seq_length_dict['eval'] = data_args.eval_max_seq_length
+            self.max_seq_length_dict['val'] = data_args.eval_max_seq_length
+            self.max_seq_length_dict['test'] = data_args.test_max_seq_length
+            self.max_seq_length_dict['predict'] = data_args.test_max_seq_length
+        else:
+            logging.info('missing data_args!')
+
 
     @property
     def external_kwargs(self):
         return self._external_kwargs
+
+
+    def initial(self,model_args: ModelArguments,
+                   training_args: TrainingArguments,
+                   data_args: DataArguments):
+        self.model_args = model_args
+        self.training_args = training_args
+        self.data_args = data_args
+
+
+
+    def load_tokenizer(self,*args,**kwargs):
+        tokenizer = load_tokenizer(*args,**kwargs)
+        self.tokenizer = tokenizer
+        return tokenizer
+
+
+
+    def load_config(self,model_args: ModelArguments,
+                    training_args: TrainingArguments,
+                    data_args: DataArguments,
+                    task_specific_params=None,
+                    with_labels=True,
+                    with_task_params=True,
+                    return_dict=False,
+                    with_print_labels=True,
+                    with_print_config=True):
+
+
+
+        if with_task_params:
+            task_specific_params = task_specific_params or {}
+            task_params = self.on_task_specific_params()
+            if task_params is not None:
+                task_specific_params.update(task_params)
+
+            task_specific_params['learning_rate'] = training_args.learning_rate
+            task_specific_params['learning_rate_for_task'] = training_args.learning_rate_for_task \
+                if training_args.learning_rate_for_task is not None else training_args.learning_rate
+
+        tokenizer = self.tokenizer
+        kwargs_args = {
+            "bos_token_id": tokenizer.bos_token_id,
+            "pad_token_id": tokenizer.pad_token_id,
+            "eos_token_id": tokenizer.eos_token_id,
+            "sep_token_id": tokenizer.sep_token_id,
+            "return_dict": return_dict,
+            "task_specific_params": task_specific_params,
+        }
+
+        if with_labels and label2id is not None:
+            kwargs_args['label2id'] = label2id
+            kwargs_args['id2label'] = id2label
+            kwargs_args['num_labels'] = len(label2id) if label2id is not None else None
+
+        config = load_configure(config_name=model_args.config_name,
+                                model_name_or_path=model_args.model_name_or_path,
+                                cache_dir=model_args.cache_dir,
+                                model_revision=model_args.model_revision,
+                                use_auth_token=model_args.use_auth_token,
+                                **kwargs_args
+                                )
+        self.config = config
+        if with_print_config:
+            print(config)
+
+        if with_labels and label2id is not None and hasattr(config, 'num_labels'):
+            if with_print_labels:
+                print('*' * 30, 'num_labels = ', config.num_labels)
+                print(label2id)
+                print(id2label)
+        return config
 
     def load_tokenizer_and_config(self,model_args: ModelArguments,
                                 training_args: TrainingArguments,
