@@ -7,8 +7,8 @@
   -  [deep_training-examples](https://github.com/ssbuild/deep_training-example)
 
 ## 更新
-- <strong>2023年02月08</strong>
-  - 增加诗歌t5decoder预训练
+- <strong>2023年02月09</strong>
+  - 增加诗歌t5decoder预训练, 诗歌laMDA预训练模型 , t5encoder 预训练模型
 - <strong>2023年02月07</strong>
   - 增加层次分解位置编码选项，让transformer可以处理超长文本
 - <strong>2023年01月24</strong>
