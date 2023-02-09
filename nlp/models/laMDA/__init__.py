@@ -318,9 +318,9 @@ class LaMDAPreTrainedModel(PreTrainedModel):
 
     config_class = LaMDAConfig
     base_model_prefix = "transformer"
-    is_parallelizable = True
+    is_parallelizable = False
     supports_gradient_checkpointing = True
-    _no_split_modules = ["LaMDABlock"]
+    _no_split_modules = ["LaMDA_Block"]
 
     def __init__(self, *inputs, **kwargs):
         super().__init__(*inputs, **kwargs)
@@ -359,7 +359,7 @@ class LaMDAPreTrainedModel(PreTrainedModel):
 
 class LaMDAModel(LaMDAPreTrainedModel):
     def __init__(self, config: LaMDAConfig):
-        super().__init__(config)
+        super(LaMDAModel, self).__init__(config)
         self.embed_dim = config.hidden_size
         self.wte = nn.Embedding(config.vocab_size, self.embed_dim)
         self.wpe = nn.Embedding(config.max_position_embeddings, self.embed_dim)
@@ -583,13 +583,13 @@ class LaMDALMHeadModel(LaMDAPreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"attn.masked_bias", r"attn.bias", r"lm_head.weight"]
 
     def __init__(self, config):
-        super().__init__(config)
+        super(LaMDALMHeadModel, self).__init__(config)
         self.transformer = LaMDAModel(config)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
-        # Model parallel
         self.model_parallel = False
         self.device_map = None
+
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -703,7 +703,14 @@ class LaMDALMHeadModel(LaMDAPreTrainedModel):
         )
 
 
+
+class TransformerLamdaModel(TransformerBase):
+    def __init__(self, *args,**kwargs):
+        super(TransformerLamdaModel, self).__init__(*args,**kwargs)
+        self.set_model(self.from_pretrained(LaMDAModel, *args, **kwargs))
+
 class TransformerLamdaLMHeadModel(TransformerBase):
     def __init__(self, *args,**kwargs):
         super(TransformerLamdaLMHeadModel, self).__init__(*args,**kwargs)
         self.set_model(self.from_pretrained(LaMDALMHeadModel, *args, **kwargs))
+

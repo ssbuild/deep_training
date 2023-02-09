@@ -6,6 +6,7 @@ import argparse
 import copy
 import sys
 import typing
+from functools import partial
 from typing import Any, Callable, cast, Dict, IO, MutableMapping, Optional, Type, Union
 import torch
 import pytorch_lightning as pl
@@ -245,11 +246,11 @@ class TransformerBase(MyLightningModule,metaclass=TransformerFakeMeta):
                 continue
             setattr(self,k,o)
 
-        assert self.base_model_prefix is not None, ValueError('base_model_prefix is empty')
+        assert self.base_model_prefix is not None, ValueError('base_model_prefix is not allow empty')
         setattr(self, self.base_model_prefix, model)
 
     def get_model_lr(self):
-        return [(self.model, self.config.task_specific_params['learning_rate']), ] if hasattr(self, self.base_model_prefix) else []
+        return [(self.model if self.base_model_prefix is not None else self , self.config.task_specific_params['learning_rate']), ]
 
 
 
@@ -288,7 +289,7 @@ class TransformerLightningModule(MyLightningModule):
 
         #对抗训练
         if training_args.adv['mode'] is not None:
-            self.embeddings_forward_fn = self.backbone.model.embeddings.forward
+            self.embeddings_forward_fn = self.get_embeddings_module().embeddings.forward
 
             self.training_step = self.adv_training_step
             if training_args.adv['mode'].find('local') != -1:
@@ -306,30 +307,36 @@ class TransformerLightningModule(MyLightningModule):
 
         if training_args.hierarchical_position is not None and (training_args.hierarchical_position > 0 and training_args.hierarchical_position < 1):
             #绝对位置编码 分层位置编码
-
-            # def forward(self, input: Tensor) -> Tensor:
-            #     return F.embedding(
-            #         input, self.weight, self.padding_idx, self.max_norm,
-            #         self.norm_type, self.scale_grad_by_freq, self.sparse)
-
-            def forward(self, input: Tensor) -> Tensor:
-                ...
+            def forward(cls,input: Tensor) -> Tensor:
                 # return F.embedding(
                 #     input, self.weight, self.padding_idx, self.max_norm,
                 #     self.norm_type, self.scale_grad_by_freq, self.sparse)
                 position_ids = input
                 alpha = training_args.hierarchical_position
-                embeddings = self.weight - alpha * self.weight[:1]
+                embeddings = cls.weight - alpha * cls.weight[:1]
                 embeddings = embeddings / (1 - alpha)
-                x_idx = position_ids // self.num_embeddings
-                y_idx = position_ids % self.num_embeddings
-                embeddings_x = torch.index_select(embeddings,dim=0,index=x_idx.view(-1)).view(*x_idx.size())
-                embeddings_y = torch.index_select(embeddings,dim=0,index=y_idx.view(-1)).view(*y_idx.size())
+                x_idx = position_ids // cls.num_embeddings
+                y_idx = position_ids % cls.num_embeddings
+
+                embeddings_x = torch.index_select(embeddings,dim=0,index=x_idx.view(-1))
+                embeddings_y = torch.index_select(embeddings,dim=0,index=y_idx.view(-1))
                 embeddings = alpha * embeddings_x + (1 - alpha) * embeddings_y
                 return embeddings
 
-            self.backbone.model.embeddings.position_embeddings.forward = forward
+            position_embeddings = self.get_embeddings_module().embeddings.position_embeddings
+            position_embeddings.forward = partial(forward,position_embeddings)
 
+
+    def get_embeddings_module(self):
+        base_model_prefix = self.backbone.base_model_prefix
+        current_model = self.backbone.model
+        tmp_obj = current_model
+        while tmp_obj is not None:
+            if hasattr(tmp_obj, 'embeddings'):
+                return tmp_obj
+            current_model = tmp_obj
+            tmp_obj = getattr(current_model, base_model_prefix, None)
+        return tmp_obj
 
     @property
     def backbone(self):
@@ -400,8 +407,30 @@ class TransformerLightningModule(MyLightningModule):
         setattr(self.__backbone, 'estimated_stepping_batches', self.trainer.estimated_stepping_batches)
 
 
+    def get_named_parameters(self):
+        training_args = self.training_args
+        model_attrs = self.get_model_lr()
+        no_decay = ["bias", "LayerNorm.weight"]
+        def __get_named_parameters(a : nn.Module):
+            return [
+                {
+                    "params": [p for n, p in a.named_parameters() if not any(nd in n for nd in no_decay)],
+                    "weight_decay": training_args.weight_decay, "lr": lr,
+                },
+                {
+                    "params": [p for n, p in a.named_parameters() if any(nd in n for nd in no_decay)],
+                    "weight_decay": 0.0, "lr": lr,
+                },
+            ]
+
+        opt = []
+        a: nn.Module
+        for a, lr in model_attrs:
+            opt += __get_named_parameters(a)
+        return opt
+
     def configure_optimizers(self):
-        return configure_optimizers(self.get_model_lr(), self.training_args,self.trainer.estimated_stepping_batches)
+        return configure_optimizers(self.get_named_parameters(), self.training_args,self.trainer.estimated_stepping_batches)
 
 
     def manual_backward(self,loss: Tensor, *args: Any, **kwargs: Any):
@@ -438,7 +467,7 @@ class TransformerLightningModule(MyLightningModule):
                 embedding_output = self.embeddings_forward_fn(*args, **kwargs)
                 embedding_output += delta
                 return embedding_output
-            setattr(self.backbone.model.embeddings, 'forward', forward_fn)
+            setattr(self.get_embeddings_module().embeddings, 'forward', forward_fn)
             delta = self.adversarial.attack(is_first_attack=True, delta=delta,alpha=alpha,epsilon=epsilon)
             loss = self.training_step_fn(batch)
             self.manual_backward(loss)
@@ -452,7 +481,7 @@ class TransformerLightningModule(MyLightningModule):
             opt.step()
             self.model.zero_grad()
 
-            setattr(self.backbone.model.embeddings, 'forward', self.embeddings_forward_fn)
+            setattr(self.get_embeddings_module().embeddings, 'forward', self.embeddings_forward_fn)
         elif mode == 'fgsm':
             alpha = self.training_args.adv['alpha']
             self.adversarial.attack(is_first_attack=True,alpha=alpha,epsilon=epsilon)
@@ -498,7 +527,7 @@ class TransformerLightningModule(MyLightningModule):
                 embedding_output += delta[:embedding_output.size(0),:embedding_output.size(1)]
                 return embedding_output
 
-            setattr(self.backbone.model.embeddings, 'forward', forward_fn)
+            setattr(self.get_embeddings_module().embeddings, 'forward', forward_fn)
             for _ in range(self.training_args.adv['minibatch_replays']):
                 delta.retain_grad()
                 loss = self.training_step_fn(batch)
@@ -511,7 +540,7 @@ class TransformerLightningModule(MyLightningModule):
                 # delta.grad.zero_()
                 self.model.zero_grad()
 
-            setattr(self.backbone.model.embeddings, 'forward', self.embeddings_forward_fn)
+            setattr(self.get_embeddings_module().embeddings, 'forward', self.embeddings_forward_fn)
         elif mode == 'free':
             for _ in range(self.training_args.adv['minibatch_replays']):
                 opt.zero_grad()
@@ -670,14 +699,6 @@ class TransformerForCausalLM(TransformerBase):
         self.set_model(self.from_pretrained(AutoModelForCausalLM, *args, **kwargs))
 
 
-    # def compute_loss(self, *args,**batch) -> tuple:
-    #     outputs = super(TransformerForCausalLM, self).compute_loss(*args,**batch)
-    #     if not self.model.training:
-    #         if 'labels' in batch:
-    #             outputs = (*outputs[:2],)
-    #         else:
-    #             outputs = (outputs[0],)
-    #     return outputs
 
 
 class TransformerForMaskLM(TransformerBase):
@@ -685,14 +706,6 @@ class TransformerForMaskLM(TransformerBase):
         super().__init__(*args, **kwargs)
         self.set_model(self.from_pretrained(AutoModelForMaskedLM, *args, **kwargs))
 
-    # def compute_loss(self, *args,**batch) -> tuple:
-    #     outputs = super(TransformerForMaskLM, self).compute_loss(*args,**batch)
-    #     if not self.model.training:
-    #         if 'labels' in batch:
-    #             outputs = (*outputs[:2],)
-    #         else:
-    #             outputs = (outputs[0],)
-    #     return outputs
 
 
 
@@ -710,6 +723,7 @@ class TransformerForSeq2SeqLM(TransformerBase):
             else:
                 outputs = (outputs[0],)
         return outputs
+
 
 
 class TransformerForSequenceClassification(TransformerBase):

@@ -3,7 +3,7 @@
 import random
 import typing
 
-from torch import optim
+from torch import optim, nn
 from torch.optim import AdamW,Adam
 from transformers import get_linear_schedule_with_warmup
 
@@ -11,28 +11,16 @@ from ..scheduler import WarmupCosineSchedule
 from ...data_helper import TrainingArguments
 
 
-def configure_optimizers(model_attrs: typing.Union[typing.List,typing.Tuple],
+def configure_optimizers(named_parameter: typing.Union[typing.List,typing.Tuple],
                          training_args: TrainingArguments,
                          estimated_stepping_batches: int):
 
-    no_decay = ["bias", "LayerNorm.weight"]
-    opt = []
-    for a, lr in model_attrs:
-        opt += [
-            {
-                "params": [p for n, p in a.named_parameters() if not any(nd in n for nd in no_decay)],
-                "weight_decay": training_args.weight_decay, "lr": lr,
-            },
-            {
-                "params": [p for n, p in a.named_parameters() if any(nd in n for nd in no_decay)],
-                "weight_decay": 0.0, "lr": lr,
-            },
-        ]
+
 
     if training_args.optimizer.lower() == 'adamw':
-        optimizer = AdamW(opt, lr=training_args.learning_rate, eps=training_args.adam_epsilon)
+        optimizer = AdamW(named_parameter, lr=training_args.learning_rate, eps=training_args.adam_epsilon)
     else:
-        optimizer = Adam(opt, training_args.learning_rate, eps=training_args.adam_epsilon)
+        optimizer = Adam(named_parameter, training_args.learning_rate, eps=training_args.adam_epsilon)
 
     scheduler = None
     if training_args.scheduler_type.lower() == 'linear'.lower():
