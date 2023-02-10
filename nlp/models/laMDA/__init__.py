@@ -47,7 +47,7 @@ class T5RelativePositionBias(nn.Module):
     def forward(self, qk_dots):
         i, j = qk_dots.size()[-2:]
         device = qk_dots.device
-        q_pos = torch.arange(i, dtype = torch.long, device = device).unsqueeze(0)
+        q_pos = torch.arange(i, dtype = torch.long, device = device).unsqueeze(1)
         k_pos = torch.arange(j, dtype = torch.long, device = device).unsqueeze(0)
         rel_pos = k_pos- q_pos
         rp_bucket = self._relative_position_bucket(rel_pos, num_buckets = self.num_buckets, max_distance = self.max_distance)
