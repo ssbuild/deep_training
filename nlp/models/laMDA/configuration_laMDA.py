@@ -95,8 +95,9 @@ class LaMDAConfig(PretrainedConfig):
             use_cache=True,
             bos_token_id=50256,
             eos_token_id=50256,
-            scale_attn_by_inverse_layer_idx=False,
             reorder_and_upcast_attn=False,
+            relative_attention_num_buckets=32,
+            relative_attention_max_distance=128,
             **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -112,10 +113,11 @@ class LaMDAConfig(PretrainedConfig):
         self.initializer_range = initializer_range
         self.scale_attn_weights = scale_attn_weights
         self.use_cache = use_cache
-        self.scale_attn_by_inverse_layer_idx = scale_attn_by_inverse_layer_idx
         self.reorder_and_upcast_attn = reorder_and_upcast_attn
 
         self.bos_token_id = bos_token_id
         self.eos_token_id = eos_token_id
 
+        self.relative_attention_num_buckets = relative_attention_num_buckets
+        self.relative_attention_max_distance = relative_attention_max_distance
         super().__init__(bos_token_id=bos_token_id, eos_token_id=eos_token_id, **kwargs)

@@ -17,44 +17,74 @@ from ..transformer import TransformerBase
 class T5RelativePositionBias(nn.Module):
     def __init__(
         self,
-        scale,
-        num_buckets = 32,
-        max_distance = 128,
+        relative_attention_num_buckets = 32,
+        relative_attention_max_distance = 128,
         heads = 8
     ):
         super().__init__()
-        self.scale = scale
-        self.num_buckets = num_buckets
-        self.max_distance = max_distance
-        self.relative_attention_bias = nn.Embedding(num_buckets, heads)
+        self.num_buckets = relative_attention_num_buckets
+        self.max_distance = relative_attention_max_distance
+        self.relative_attention_bias = nn.Embedding(relative_attention_num_buckets, heads)
 
     @staticmethod
-    def _relative_position_bucket(
-        relative_position,
-        num_buckets = 32,
-        max_distance = 128
-    ):
-        n = -relative_position
-        n = torch.max(n, torch.zeros_like(n))
+    def _relative_position_bucket(relative_position, bidirectional=True, num_buckets=32, max_distance=128):
+        """
+        Adapted from Mesh Tensorflow:
+        https://github.com/tensorflow/mesh/blob/0cb87fe07da627bf0b7e60475d59f95ed6b5be3d/mesh_tensorflow/transformer/transformer_layers.py#L593
 
+        Translate relative position to a bucket number for relative attention. The relative position is defined as
+        memory_position - query_position, i.e. the distance in tokens from the attending position to the attended-to
+        position. If bidirectional=False, then positive relative positions are invalid. We use smaller buckets for
+        small absolute relative_position and larger buckets for larger absolute relative_positions. All relative
+        positions >=max_distance map to the same bucket. All relative positions <=-max_distance map to the same bucket.
+        This should allow for more graceful generalization to longer sequences than the model has been trained on
+
+        Args:
+            relative_position: an int32 Tensor
+            bidirectional: a boolean - whether the attention is bidirectional
+            num_buckets: an integer
+            max_distance: an integer
+
+        Returns:
+            a Tensor with the same shape as relative_position, containing int32 values in the range [0, num_buckets)
+        """
+        relative_buckets = 0
+        if bidirectional:
+            num_buckets //= 2
+            relative_buckets += (relative_position > 0).to(torch.long) * num_buckets
+            relative_position = torch.abs(relative_position)
+        else:
+            relative_position = -torch.min(relative_position, torch.zeros_like(relative_position))
+        # now relative_position is in the range [0, inf)
+
+        # half of the buckets are for exact increments in positions
         max_exact = num_buckets // 2
-        is_small = n < max_exact
+        is_small = relative_position < max_exact
 
-        val_if_large = max_exact + (torch.log(n.float() / max_exact) / math.log(max_distance / max_exact) * (num_buckets - max_exact)).long()
-        val_if_large = torch.min(val_if_large, torch.full_like(val_if_large, num_buckets - 1))
-        return torch.where(is_small, n, val_if_large)
+        # The other half of the buckets are for logarithmically bigger bins in positions up to max_distance
+        relative_position_if_large = max_exact + (
+                torch.log(relative_position.float() / max_exact)
+                / math.log(max_distance / max_exact)
+                * (num_buckets - max_exact)
+        ).to(torch.long)
+        relative_position_if_large = torch.min(
+            relative_position_if_large, torch.full_like(relative_position_if_large, num_buckets - 1)
+        )
+
+        relative_buckets += torch.where(is_small, relative_position, relative_position_if_large)
+        return relative_buckets
 
     def forward(self, qk_dots):
         i, j = qk_dots.size()[-2:]
         device = qk_dots.device
         q_pos = torch.arange(i, dtype = torch.long, device = device).unsqueeze(1)
         k_pos = torch.arange(j, dtype = torch.long, device = device).unsqueeze(0)
-        rel_pos = k_pos- q_pos
-        rp_bucket = self._relative_position_bucket(rel_pos, num_buckets = self.num_buckets, max_distance = self.max_distance)
+        rel_pos = k_pos - q_pos
+        rp_bucket = self._relative_position_bucket(rel_pos,bidirectional=False, num_buckets = self.num_buckets, max_distance = self.max_distance)
         values = self.relative_attention_bias(rp_bucket)
 
         bias =  torch.permute(values,(2,0,1)).unsqueeze(0)
-        return qk_dots + (bias * self.scale)
+        return bias
 
 # attention
 class LaMDA_Attention(nn.Module):
@@ -77,7 +107,6 @@ class LaMDA_Attention(nn.Module):
         self.scale_attn_weights = config.scale_attn_weights
         self.is_cross_attention = is_cross_attention
         self.layer_idx = layer_idx
-        self.scale_attn_by_inverse_layer_idx = config.scale_attn_by_inverse_layer_idx
 
 
         inner_dim = self.num_heads * self.head_dim
@@ -86,40 +115,32 @@ class LaMDA_Attention(nn.Module):
         self.attn_dropout = nn.Dropout(config.attn_pdrop)
         self.resid_dropout = nn.Dropout(config.resid_pdrop)
 
-        self.split_size = self.embed_dim
-        if is_cross_attention:
-            self.q_attn = nn.Linear(self.embed_dim, inner_dim, bias = False)
-            self.c_attn = nn.Linear(self.embed_dim, inner_dim * 2, bias = False)
-        else:
-            self.c_attn = nn.Linear(self.embed_dim, inner_dim * 3, bias=False)
+        self.split_size = self.head_dim
+        self.q_attn = nn.Linear(self.embed_dim, inner_dim, bias=False)
+        self.c_attn = nn.Linear(self.embed_dim, self.head_dim * 2, bias=False)
 
         self.c_proj = nn.Linear(inner_dim, self.embed_dim)
 
-        self.rel_pos_bias = T5RelativePositionBias(scale=self.head_dim ** 0.5, heads = self.num_heads)
+        self.relative_attention_bias = T5RelativePositionBias(relative_attention_num_buckets=config.relative_attention_num_buckets,
+                                                   relative_attention_max_distance=config.relative_attention_max_distance,
+                                                   heads = self.num_heads)
 
-    def _attn(self, query, key, value, attention_mask=None, head_mask=None):
-        attn_weights = torch.matmul(query, key.transpose(-1, -2))
+    def _attn(self, query, key, value, attention_mask=None, head_mask=None,position_bias=None):
+        attn_weights = torch.einsum('b n i h, b j h -> b n i j', query, key)
+
+        if position_bias is None:
+            position_bias = self.relative_attention_bias(attn_weights)
+
 
         if self.scale_attn_weights:
             attn_weights = attn_weights / torch.full(
                 [], value.size(-1) ** 0.5, dtype=attn_weights.dtype, device=attn_weights.device
             )
+            position_bias = position_bias / torch.full(
+                [], value.size(-1) ** 0.5, dtype=position_bias.dtype, device=position_bias.device
+            )
 
-        # Layer-wise attention scaling
-        if self.scale_attn_by_inverse_layer_idx:
-            attn_weights = attn_weights / float(self.layer_idx + 1)
-
-        attn_weights = self.rel_pos_bias(attn_weights)
-
-        # if not self.is_cross_attention:
-        #     # if only "normal" attention layer implements causal mask
-        #     query_length, key_length = query.size(-2), key.size(-2)
-        #     causal_mask = self.bias[:, :, key_length - query_length: key_length, :key_length].to(torch.bool)
-        #     mask_value = torch.finfo(attn_weights.dtype).min
-        #     # Need to be a tensor, otherwise we get error: `RuntimeError: expected scalar type float but found double`.
-        #     # Need to be on the same device, otherwise `RuntimeError: ..., x and y to be on the same device`
-        #     mask_value = torch.full([], mask_value, dtype=attn_weights.dtype).to(attn_weights.device)
-        #     attn_weights = torch.where(causal_mask, attn_weights.to(attn_weights.dtype), mask_value)
+        attn_weights = attn_weights + position_bias
 
         if not self.is_cross_attention:
             # Causal Mask
@@ -141,7 +162,8 @@ class LaMDA_Attention(nn.Module):
         if head_mask is not None:
             attn_weights = attn_weights * head_mask
 
-        attn_output = torch.matmul(attn_weights, value)
+        attn_output = torch.einsum('b n i j, b j d -> b i n d', attn_weights, value)
+        attn_output = attn_output.view(*attn_output.size()[:2],-1)
 
         return attn_output, attn_weights
 
@@ -152,6 +174,7 @@ class LaMDA_Attention(nn.Module):
             layer_past: Optional[Tuple[torch.Tensor]] = None,
             attention_mask: Optional[torch.FloatTensor] = None,
             head_mask: Optional[torch.FloatTensor] = None,
+            position_bias: Optional[torch.FloatTensor] = None,
             encoder_hidden_states: Optional[torch.Tensor] = None,
             encoder_attention_mask: Optional[torch.FloatTensor] = None,
             use_cache: Optional[bool] = False,
@@ -168,11 +191,13 @@ class LaMDA_Attention(nn.Module):
             key, value = self.c_attn(encoder_hidden_states).split(self.split_size, dim=2)
             attention_mask = encoder_attention_mask
         else:
-            query, key, value = self.c_attn(hidden_states).split(self.split_size, dim=2)
+            query = self.q_attn(hidden_states)
+            key, value = self.c_attn(hidden_states).split(self.split_size, dim=2)
 
+        #b,n,s,h
         query = self._split_heads(query, self.num_heads, self.head_dim)
-        key = self._split_heads(key, self.num_heads, self.head_dim)
-        value = self._split_heads(value, self.num_heads, self.head_dim)
+        #b,s,h
+
 
         if layer_past is not None:
             past_key, past_value = layer_past
@@ -185,9 +210,9 @@ class LaMDA_Attention(nn.Module):
             present = None
 
 
-        attn_output, attn_weights = self._attn(query, key, value, attention_mask, head_mask)
+        attn_output, attn_weights = self._attn(query, key, value, attention_mask, head_mask,position_bias)
 
-        attn_output = self._merge_heads(attn_output, self.num_heads, self.head_dim)
+        # attn_output = self._merge_heads(attn_output, self.num_heads, self.head_dim)
         attn_output = self.c_proj(attn_output)
         attn_output = self.resid_dropout(attn_output)
 
