@@ -238,15 +238,26 @@ class LaMDA_Attention(nn.Module):
         new_shape = tensor.size()[:-2] + (num_heads * attn_head_size,)
         return tensor.view(new_shape)
 
+class GEGLU(nn.Module):
+    def forward(self, x):
+        x, gates = x.chunk(2, dim = -1)
+        return x * F.gelu(gates)
 
 
 class LaMDA_MLP(nn.Module):
-    def __init__(self, intermediate_size, config):
+    def __init__(self, config):
         super().__init__()
-        embed_dim = config.hidden_size
-        self.c_fc = Conv1D(intermediate_size, embed_dim)
-        self.c_proj = Conv1D(embed_dim, intermediate_size)
-        self.act = ACT2FN[config.activation_function]
+        hidden_size = config.hidden_size
+        intermediate_size = config.n_inner if config.n_inner is not None else 4 * hidden_size
+        if config.activation_function == 'geglu':
+            self.act = GEGLU()
+            self.c_fc = nn.Linear(hidden_size, intermediate_size * 2)
+            self.c_proj = nn.Linear(intermediate_size, hidden_size)
+        else:
+            self.act = ACT2FN[config.activation_function]
+            self.c_fc = nn.Linear(hidden_size, intermediate_size )
+            self.c_proj = nn.Linear(intermediate_size, hidden_size)
+
         self.dropout = nn.Dropout(config.resid_pdrop)
 
     def forward(self, hidden_states: Optional[Tuple[torch.FloatTensor]]) -> torch.FloatTensor:
@@ -260,7 +271,7 @@ class LaMDA_Block(nn.Module):
     def __init__(self, config, layer_idx=None):
         super().__init__()
         hidden_size = config.hidden_size
-        inner_dim = config.n_inner if config.n_inner is not None else 4 * hidden_size
+
 
         self.ln_1 = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
         self.attn = LaMDA_Attention(config, layer_idx=layer_idx)
@@ -270,7 +281,7 @@ class LaMDA_Block(nn.Module):
             self.crossattention = LaMDA_Attention(config, is_cross_attention=True, layer_idx=layer_idx)
             self.ln_cross_attn = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
 
-        self.mlp = LaMDA_MLP(inner_dim, config)
+        self.mlp = LaMDA_MLP( config)
 
     def forward(
         self,
