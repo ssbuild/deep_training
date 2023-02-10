@@ -95,7 +95,7 @@ class LaMDA_Attention(nn.Module):
 
         self.c_proj = nn.Linear(inner_dim, self.embed_dim)
 
-        self.rel_pos_bias = T5RelativePositionBias(scale = self.head_dim ** 0.5, heads = self.num_heads)
+        self.rel_pos_bias = T5RelativePositionBias(scale=self.head_dim ** 0.5, heads = self.num_heads)
 
     def _attn(self, query, key, value, attention_mask=None, head_mask=None):
         attn_weights = torch.matmul(query, key.transpose(-1, -2))
@@ -362,7 +362,6 @@ class LaMDAModel(LaMDAPreTrainedModel):
         super(LaMDAModel, self).__init__(config)
         self.embed_dim = config.hidden_size
         self.wte = nn.Embedding(config.vocab_size, self.embed_dim)
-        self.wpe = nn.Embedding(config.max_position_embeddings, self.embed_dim)
         self.drop = nn.Dropout(config.embd_pdrop)
 
         self.h = nn.ModuleList([
@@ -388,8 +387,6 @@ class LaMDAModel(LaMDAPreTrainedModel):
             input_ids: Optional[torch.LongTensor] = None,
             past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
             attention_mask: Optional[torch.FloatTensor] = None,
-            token_type_ids: Optional[torch.LongTensor] = None,
-            position_ids: Optional[torch.LongTensor] = None,
             head_mask: Optional[torch.FloatTensor] = None,
             inputs_embeds: Optional[torch.FloatTensor] = None,
             encoder_hidden_states: Optional[torch.Tensor] = None,
@@ -420,19 +417,13 @@ class LaMDAModel(LaMDAPreTrainedModel):
 
         device = input_ids.device if input_ids is not None else inputs_embeds.device
 
-        if token_type_ids is not None:
-            token_type_ids = token_type_ids.view(-1, input_shape[-1])
-        if position_ids is not None:
-            position_ids = position_ids.view(-1, input_shape[-1])
 
         if past_key_values is None:
             past_length = 0
             past_key_values = tuple([None] * len(self.h))
         else:
             past_length = past_key_values[0][0].size(-2)
-        if position_ids is None:
-            position_ids = torch.arange(past_length, input_shape[-1] + past_length, dtype=torch.long, device=device)
-            position_ids = position_ids.unsqueeze(0).view(-1, input_shape[-1])
+
 
         # LaMDAttention mask.
         if attention_mask is not None:
@@ -473,12 +464,8 @@ class LaMDAModel(LaMDAPreTrainedModel):
 
         if inputs_embeds is None:
             inputs_embeds = self.wte(input_ids)
-        position_embeds = self.wpe(position_ids)
-        hidden_states = inputs_embeds + position_embeds
 
-        if token_type_ids is not None:
-            token_type_embeds = self.wte(token_type_ids)
-            hidden_states = hidden_states + token_type_embeds
+        hidden_states = inputs_embeds
 
         hidden_states = self.drop(hidden_states)
 
@@ -611,21 +598,12 @@ class LaMDALMHeadModel(LaMDAPreTrainedModel):
                 token_type_ids = token_type_ids[:, -1].unsqueeze(-1)
 
         attention_mask = kwargs.get("attention_mask", None)
-        position_ids = kwargs.get("position_ids", None)
 
-        if attention_mask is not None and position_ids is None:
-            # create position_ids on the fly for batch generation
-            position_ids = attention_mask.long().cumsum(-1) - 1
-            position_ids.masked_fill_(attention_mask == 0, 1)
-            if past_key_values:
-                position_ids = position_ids[:, -1].unsqueeze(-1)
-        else:
-            position_ids = None
+
         return {
             "input_ids": input_ids,
             "past_key_values": past_key_values,
             "use_cache": kwargs.get("use_cache"),
-            "position_ids": position_ids,
             "attention_mask": attention_mask,
             "token_type_ids": token_type_ids,
         }
@@ -636,8 +614,6 @@ class LaMDALMHeadModel(LaMDAPreTrainedModel):
         input_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
-        token_type_ids: Optional[torch.LongTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
@@ -660,8 +636,6 @@ class LaMDALMHeadModel(LaMDAPreTrainedModel):
             input_ids,
             past_key_values=past_key_values,
             attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
-            position_ids=position_ids,
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
             encoder_hidden_states=encoder_hidden_states,

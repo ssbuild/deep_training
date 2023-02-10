@@ -35,9 +35,6 @@ class LaMDAConfig(PretrainedConfig):
         vocab_size (`int`, *optional*, defaults to 50257):
             Vocabulary size of the GPT-2 model. Defines the number of different tokens that can be represented by the
             `inputs_ids` passed when calling [`LaMDAConfig`] or [`TFLaMDAModel`].
-        n_positions (`int`, *optional*, defaults to 1024):
-            The maximum sequence length that this model might ever be used with. Typically set this to something large
-            just in case (e.g., 512 or 1024 or 2048).
         n_embd (`int`, *optional*, defaults to 768):
             Dimensionality of the embeddings and hidden states.
         n_layer (`int`, *optional*, defaults to 12):
@@ -77,7 +74,6 @@ class LaMDAConfig(PretrainedConfig):
     keys_to_ignore_at_inference = ["past_key_values"]
     attribute_map = {
         "hidden_size": "n_embd",
-        "max_position_embeddings": "n_positions",
         "num_attention_heads": "n_head",
         "num_hidden_layers": "n_layer",
     }
@@ -85,7 +81,6 @@ class LaMDAConfig(PretrainedConfig):
     def __init__(
             self,
             vocab_size=50257,
-            n_positions=1024,
             n_embd=768,
             n_layer=12,
             n_head=12,
@@ -105,7 +100,6 @@ class LaMDAConfig(PretrainedConfig):
             **kwargs,
     ):
         self.vocab_size = vocab_size
-        self.n_positions = n_positions
         self.n_embd = n_embd
         self.n_layer = n_layer
         self.n_head = n_head
