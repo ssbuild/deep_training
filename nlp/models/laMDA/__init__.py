@@ -53,7 +53,7 @@ class T5RelativePositionBias(nn.Module):
         rp_bucket = self._relative_position_bucket(rel_pos, num_buckets = self.num_buckets, max_distance = self.max_distance)
         values = self.relative_attention_bias(rp_bucket)
 
-        bias =  torch.permute(values,(2,0,1))
+        bias =  torch.permute(values,(2,0,1)).unsqueeze(0)
         return qk_dots + (bias * self.scale)
 
 # attention

@@ -95,7 +95,7 @@ class SimpleModelCheckpoint(Checkpoint):
                 trainer.save_checkpoint(self.last_weight_file)
 
         else:
-            warnings.warn('monitor {} is not in metirc !!!'.format(self.monitor))
+            warnings.warn('monitor {} is not in metirc , save lastest checkpoint!'.format(self.monitor))
 
             logging.info('epoch {} ,step {} , save {}\n'.format(monitor_candidates['epoch'],
                                                                        monitor_candidates['step'],
