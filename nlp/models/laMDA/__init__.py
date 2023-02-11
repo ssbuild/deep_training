@@ -144,17 +144,9 @@ class LaMDA_Attention(nn.Module):
     def _attn(self, query, key, value, attention_mask=None, head_mask=None,position_bias=None):
         attn_weights = torch.einsum('b n i h, b j h -> b n i j', query, key)
 
-        if position_bias is None:
-            real_seq_length, key_length = attn_weights.size()[-2:]
-            if not self.has_relative_attention_bias:
-                position_bias = torch.zeros(
-                    (1, self.num_heads, real_seq_length, key_length), device=attn_weights.device,
-                    dtype=attn_weights.dtype
-                )
-                if self.gradient_checkpointing and self.training:
-                    position_bias.requires_grad = True
-            else:
-                position_bias = self.relative_attention_bias(real_seq_length, key_length, device=attn_weights.device)
+        real_seq_length, key_length = attn_weights.size()[-2:]
+
+        position_bias = self.relative_attention_bias(real_seq_length, key_length, device=attn_weights.device)
 
         if self.scale_attn_weights:
             attn_weights = attn_weights * torch.full(
@@ -164,8 +156,25 @@ class LaMDA_Attention(nn.Module):
                 [], value.size(-1) ** -0.5, dtype=position_bias.dtype, device=position_bias.device
             )
 
+        attn_weights += position_bias
+        # Causal Mask
+        causal_mask = torch.ones((real_seq_length, key_length), dtype=torch.bool, device=attn_weights.device).triu(key_length - real_seq_length + 1)
+        attn_weights = attn_weights.masked_fill(causal_mask, -torch.finfo(attn_weights.dtype).max)
 
-        attn_weights +=  position_bias
+
+        # if position_bias is None:
+        #     real_seq_length, key_length = attn_weights.size()[-2:]
+        #     if not self.has_relative_attention_bias:
+        #         position_bias = torch.zeros(
+        #             (1, self.num_heads, real_seq_length, key_length), device=attn_weights.device,
+        #             dtype=attn_weights.dtype
+        #         )
+        #         if self.gradient_checkpointing and self.training:
+        #             position_bias.requires_grad = True
+        #     else:
+        #         position_bias = self.relative_attention_bias(real_seq_length, key_length, device=attn_weights.device)
+
+
         if attention_mask is not None:
             attn_weights += attention_mask
 
@@ -431,7 +440,8 @@ class LaMDAModel(LaMDAPreTrainedModel):
         self.drop = nn.Dropout(config.embd_pdrop)
 
         self.h = nn.ModuleList([
-            LaMDA_Block(config,layer_idx=i,has_relative_attention_bias= bool(i == 0)) for i in range(config.num_hidden_layers)
+            LaMDA_Block(config, layer_idx=i, has_relative_attention_bias=True)
+            for i in range(config.num_hidden_layers)
         ])
         self.ln_f = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
         # Model parallel
