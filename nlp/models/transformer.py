@@ -403,8 +403,8 @@ class TransformerLightningModule(MyLightningModule):
 
 
     def setup(self, stage: str) -> None:
-        setattr(self.__backbone, 'trainer', self.trainer)
-        setattr(self.__backbone, 'estimated_stepping_batches', self.trainer.estimated_stepping_batches)
+        setattr(self.backbone, 'trainer', self.trainer)
+        setattr(self.backbone, 'estimated_stepping_batches', self.trainer.estimated_stepping_batches)
 
 
     def get_named_parameters(self):
