@@ -22,8 +22,8 @@ class T5RelativePositionBias(nn.Module):
         heads = 8
     ):
         super().__init__()
-        self.num_buckets = relative_attention_num_buckets
-        self.max_distance = relative_attention_max_distance
+        self.relative_attention_num_buckets = relative_attention_num_buckets
+        self.relative_attention_max_distance = relative_attention_max_distance
         self.relative_attention_bias = nn.Embedding(relative_attention_num_buckets, heads)
 
     @staticmethod
@@ -74,23 +74,34 @@ class T5RelativePositionBias(nn.Module):
         relative_buckets += torch.where(is_small, relative_position, relative_position_if_large)
         return relative_buckets
 
-    def forward(self, qk_dots):
-        i, j = qk_dots.size()[-2:]
-        device = qk_dots.device
-        q_pos = torch.arange(i, dtype = torch.long, device = device).unsqueeze(1)
-        k_pos = torch.arange(j, dtype = torch.long, device = device).unsqueeze(0)
-        rel_pos = k_pos - q_pos
-        rp_bucket = self._relative_position_bucket(rel_pos,bidirectional=False, num_buckets = self.num_buckets, max_distance = self.max_distance)
-        values = self.relative_attention_bias(rp_bucket)
+    def compute_bias(self, query_length, key_length, device=None):
+        """Compute binned relative position bias"""
+        if device is None:
+            device = self.relative_attention_bias.weight.device
+        context_position = torch.arange(query_length, dtype=torch.long, device=device)[:, None]
+        memory_position = torch.arange(key_length, dtype=torch.long, device=device)[None, :]
+        relative_position = memory_position - context_position  # shape (query_length, key_length)
+        relative_position_bucket = self._relative_position_bucket(
+            relative_position,  # shape (query_length, key_length)
+            bidirectional=False,
+            num_buckets=self.relative_attention_num_buckets,
+            max_distance=self.relative_attention_max_distance,
+        )
+        values = self.relative_attention_bias(relative_position_bucket)  # shape (query_length, key_length, num_heads)
+        values = values.permute([2, 0, 1]).unsqueeze(0)  # shape (1, num_heads, query_length, key_length)
+        return values
 
-        bias =  torch.permute(values,(2,0,1)).unsqueeze(0)
-        return bias
+    def forward(self, real_seq_length, key_length, device):
+        return self.compute_bias(real_seq_length,key_length,device)
+
+
+
 
 # attention
 class LaMDA_Attention(nn.Module):
     def __init__(
         self,
-        config: LaMDAConfig, is_cross_attention=False, layer_idx=None
+        config: LaMDAConfig, is_cross_attention=False, layer_idx=None,has_relative_attention_bias=False,
     ):
         super().__init__()
 
@@ -116,55 +127,59 @@ class LaMDA_Attention(nn.Module):
         self.resid_dropout = nn.Dropout(config.resid_pdrop)
 
         self.split_size = self.head_dim
-        self.q_attn = nn.Linear(self.embed_dim, inner_dim, bias=False)
-        self.c_attn = nn.Linear(self.embed_dim, self.head_dim * 2, bias=False)
+        self.q_attn = nn.Linear(self.embed_dim, inner_dim,bias=False)
+        self.c_attn = nn.Linear(self.embed_dim, self.head_dim * 2,bias=False)
 
         self.c_proj = nn.Linear(inner_dim, self.embed_dim)
 
-        self.relative_attention_bias = T5RelativePositionBias(relative_attention_num_buckets=config.relative_attention_num_buckets,
+        self.has_relative_attention_bias = has_relative_attention_bias
+        if has_relative_attention_bias:
+            self.relative_attention_bias = T5RelativePositionBias(relative_attention_num_buckets=config.relative_attention_num_buckets,
                                                    relative_attention_max_distance=config.relative_attention_max_distance,
                                                    heads = self.num_heads)
+
+
+        self.gradient_checkpointing = False
 
     def _attn(self, query, key, value, attention_mask=None, head_mask=None,position_bias=None):
         attn_weights = torch.einsum('b n i h, b j h -> b n i j', query, key)
 
         if position_bias is None:
-            position_bias = self.relative_attention_bias(attn_weights)
-
+            real_seq_length, key_length = attn_weights.size()[-2:]
+            if not self.has_relative_attention_bias:
+                position_bias = torch.zeros(
+                    (1, self.num_heads, real_seq_length, key_length), device=attn_weights.device,
+                    dtype=attn_weights.dtype
+                )
+                if self.gradient_checkpointing and self.training:
+                    position_bias.requires_grad = True
+            else:
+                position_bias = self.relative_attention_bias(real_seq_length, key_length, device=attn_weights.device)
 
         if self.scale_attn_weights:
-            attn_weights = attn_weights / torch.full(
-                [], value.size(-1) ** 0.5, dtype=attn_weights.dtype, device=attn_weights.device
+            attn_weights = attn_weights * torch.full(
+                [], value.size(-1) ** -0.5, dtype=attn_weights.dtype, device=attn_weights.device
             )
-            position_bias = position_bias / torch.full(
-                [], value.size(-1) ** 0.5, dtype=position_bias.dtype, device=position_bias.device
+            position_bias = position_bias * torch.full(
+                [], value.size(-1) ** -0.5, dtype=position_bias.dtype, device=position_bias.device
             )
 
-        attn_weights = attn_weights + position_bias
 
-        if not self.is_cross_attention:
-            # Causal Mask
-            i, j = attn_weights.shape[-2:]
-            causal_mask = torch.ones((i, j), dtype=torch.bool, device=attn_weights.device).triu(j - i + 1)
-            attn_weights = attn_weights.masked_fill(causal_mask, -torch.finfo(attn_weights.dtype).max)
-
+        attn_weights +=  position_bias
         if attention_mask is not None:
-            # Apply the attention mask
-            attn_weights = attn_weights + attention_mask
+            attn_weights += attention_mask
 
         attn_weights = nn.functional.softmax(attn_weights, dim=-1)
 
         # Downcast (if necessary) back to V's dtype (if in mixed-precision) -- No-Op otherwise
-        attn_weights = attn_weights.type(value.dtype)
-        attn_weights = self.attn_dropout(attn_weights)
+        attn_weights = self.attn_dropout(attn_weights.type(value.dtype))
 
         # Mask heads if we want to
         if head_mask is not None:
             attn_weights = attn_weights * head_mask
 
         attn_output = torch.einsum('b n i j, b j d -> b i n d', attn_weights, value)
-        attn_output = attn_output.view(*attn_output.size()[:2],-1)
-
+        attn_output = torch.reshape(attn_output,(*attn_output.size()[:2],-1))
         return attn_output, attn_weights
 
 
@@ -184,7 +199,7 @@ class LaMDA_Attention(nn.Module):
             if not hasattr(self, "q_attn"):
                 raise ValueError(
                     "If class is used as cross attention, the weights `q_attn` have to be defined. "
-                    "Please make sure to instantiate class with `GPT2Attention(..., is_cross_attention=True)`."
+                    "Please make sure to instantiate class with `Attention(..., is_cross_attention=True)`."
                 )
 
             query = self.q_attn(hidden_states)
@@ -196,8 +211,6 @@ class LaMDA_Attention(nn.Module):
 
         #b,n,s,h
         query = self._split_heads(query, self.num_heads, self.head_dim)
-        #b,s,h
-
 
         if layer_past is not None:
             past_key, past_value = layer_past
@@ -238,50 +251,67 @@ class LaMDA_Attention(nn.Module):
         new_shape = tensor.size()[:-2] + (num_heads * attn_head_size,)
         return tensor.view(new_shape)
 
-class GEGLU(nn.Module):
-    def forward(self, x):
-        x, gates = x.chunk(2, dim = -1)
-        return x * F.gelu(gates)
-
-
-class LaMDA_MLP(nn.Module):
-    def __init__(self, config):
+class LamdaDenseActDense(nn.Module):
+    def __init__(self, config: LaMDAConfig):
         super().__init__()
         hidden_size = config.hidden_size
         intermediate_size = config.n_inner if config.n_inner is not None else 4 * hidden_size
-        if config.activation_function == 'geglu':
-            self.act = GEGLU()
-            self.c_fc = nn.Linear(hidden_size, intermediate_size * 2)
-            self.c_proj = nn.Linear(intermediate_size, hidden_size)
-        else:
-            self.act = ACT2FN[config.activation_function]
-            self.c_fc = nn.Linear(hidden_size, intermediate_size )
-            self.c_proj = nn.Linear(intermediate_size, hidden_size)
-
+        self.wi = nn.Linear(hidden_size, intermediate_size, bias=False)
+        self.wo = nn.Linear(intermediate_size, hidden_size, bias=False)
         self.dropout = nn.Dropout(config.resid_pdrop)
+        self.act = ACT2FN[config.activation_function]
 
-    def forward(self, hidden_states: Optional[Tuple[torch.FloatTensor]]) -> torch.FloatTensor:
-        hidden_states = self.c_fc(hidden_states)
+    def forward(self, hidden_states):
+        hidden_states = self.wi(hidden_states)
         hidden_states = self.act(hidden_states)
-        hidden_states = self.c_proj(hidden_states)
         hidden_states = self.dropout(hidden_states)
+        hidden_states = self.wo(hidden_states)
+        return hidden_states
+
+
+class LamdaDenseGatedActDense(nn.Module):
+    def __init__(self, config: LaMDAConfig):
+        super().__init__()
+        hidden_size = config.hidden_size
+        intermediate_size = config.n_inner if config.n_inner is not None else 4 * hidden_size
+        self.wi_0 = nn.Linear(hidden_size, intermediate_size, bias=False)
+        self.wi_1 = nn.Linear(hidden_size, intermediate_size, bias=False)
+        self.wo = nn.Linear(intermediate_size, hidden_size, bias=False)
+        self.dropout = nn.Dropout(config.resid_pdrop)
+        self.act = ACT2FN[config.activation_function]
+
+    def forward(self, hidden_states):
+        hidden_gelu = self.act(self.wi_0(hidden_states))
+        hidden_linear = self.wi_1(hidden_states)
+        hidden_states = hidden_gelu * hidden_linear
+        hidden_states = self.dropout(hidden_states)
+
+        # To make 8bit quantization work for google/flan-t5-xxl, self.wo is kept in float32.
+        # See https://github.com/huggingface/transformers/issues/20287
+        if hidden_states.dtype != self.wo.weight.dtype:
+            hidden_states = hidden_states.to(self.wo.weight.dtype)
+
+        hidden_states = self.wo(hidden_states)
         return hidden_states
 
 class LaMDA_Block(nn.Module):
-    def __init__(self, config, layer_idx=None):
+    def __init__(self, config, has_relative_attention_bias,layer_idx=None):
         super().__init__()
         hidden_size = config.hidden_size
 
-
         self.ln_1 = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
-        self.attn = LaMDA_Attention(config, layer_idx=layer_idx)
+        self.attn = LaMDA_Attention(config, layer_idx=layer_idx,has_relative_attention_bias=has_relative_attention_bias)
         self.ln_2 = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
+
 
         if config.add_cross_attention:
             self.crossattention = LaMDA_Attention(config, is_cross_attention=True, layer_idx=layer_idx)
             self.ln_cross_attn = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
 
-        self.mlp = LaMDA_MLP( config)
+        if config.activation_function in [ 'geglu'  ,'gated-gelu','gelu_new']:
+            self.mlp = LamdaDenseGatedActDense(config)
+        else:
+            self.mlp = LamdaDenseActDense(config)
 
     def forward(
         self,
@@ -401,7 +431,7 @@ class LaMDAModel(LaMDAPreTrainedModel):
         self.drop = nn.Dropout(config.embd_pdrop)
 
         self.h = nn.ModuleList([
-            LaMDA_Block(config,layer_idx=i) for i in range(config.num_hidden_layers)
+            LaMDA_Block(config,layer_idx=i,has_relative_attention_bias= bool(i == 0)) for i in range(config.num_hidden_layers)
         ])
         self.ln_f = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
         # Model parallel
@@ -451,6 +481,8 @@ class LaMDAModel(LaMDAPreTrainedModel):
         else:
             raise ValueError("You have to specify either input_ids or inputs_embeds")
 
+
+        batch_size, seq_length = input_shape
         device = input_ids.device if input_ids is not None else inputs_embeds.device
 
 
@@ -460,26 +492,13 @@ class LaMDAModel(LaMDAPreTrainedModel):
         else:
             past_length = past_key_values[0][0].size(-2)
 
+        if attention_mask is None:
+            attention_mask = torch.ones(((batch_size, seq_length + past_length)), device=device)
 
-        # LaMDAttention mask.
-        if attention_mask is not None:
-            if batch_size <= 0:
-                raise ValueError("batch_size has to be defined and > 0")
-            attention_mask = attention_mask.view(batch_size, -1)
-            # We create a 3D attention mask from a 2D tensor mask.
-            # Sizes are [batch_size, 1, 1, to_seq_length]
-            # So we can broadcast to [batch_size, num_heads, from_seq_length, to_seq_length]
-            # this attention mask is more simple than the triangular masking of causal attention
-            # used in OpenAI GPT, we just need to prepare the broadcast dimension here.
-            attention_mask = attention_mask[:, None, None, :]
+        # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
+        # ourselves in which case we just need to make it broadcastable to all heads.
+        attention_mask = self.get_extended_attention_mask(attention_mask, input_shape,device=device)
 
-            # Since attention_mask is 1.0 for positions we want to attend and 0.0 for
-            # masked positions, this operation will create a tensor which is 0.0 for
-            # positions we want to attend and the dtype's smallest value for masked positions.
-            # Since we are adding it to the raw scores before the softmax, this is
-            # effectively the same as removing these entirely.
-            attention_mask = attention_mask.to(dtype=self.dtype)  # fp16 compatibility
-            attention_mask = (1.0 - attention_mask) * torch.finfo(self.dtype).min
 
         # If a 2D or 3D attention mask is provided for the cross-attention
         # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
@@ -500,6 +519,8 @@ class LaMDAModel(LaMDAPreTrainedModel):
 
         if inputs_embeds is None:
             inputs_embeds = self.wte(input_ids)
+
+
 
         hidden_states = inputs_embeds
 
@@ -527,7 +548,7 @@ class LaMDAModel(LaMDAPreTrainedModel):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
-            if self.gradient_checkpointing and self.training:
+            if False and self.gradient_checkpointing and self.training:
 
                 if use_cache:
                     logger.warning(
@@ -600,6 +621,17 @@ class LaMDAModel(LaMDAPreTrainedModel):
             cross_attentions=all_cross_attentions,
         )
 
+    @staticmethod
+    def _reorder_cache(past: Tuple[Tuple[torch.Tensor]], beam_idx: torch.Tensor) -> Tuple[Tuple[torch.Tensor]]:
+        """
+        This function is used to re-order the `past_key_values` cache if [`~PreTrainedModel.beam_search`] or
+        [`~PreTrainedModel.beam_sample`] is called. This is required to match `past_key_values` with the correct
+        beam_idx at every generation step.
+        """
+        return tuple(
+            tuple(past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past)
+            for layer_past in past
+        )
 
 
 class LaMDALMHeadModel(LaMDAPreTrainedModel):
@@ -626,12 +658,11 @@ class LaMDALMHeadModel(LaMDAPreTrainedModel):
         self.lm_head = new_embeddings
 
     def prepare_inputs_for_generation(self, input_ids, past_key_values=None, **kwargs):
-        token_type_ids = kwargs.get("token_type_ids", None)
+
         # only last token for inputs_ids if past is defined in kwargs
         if past_key_values:
             input_ids = input_ids[:, -1].unsqueeze(-1)
-            if token_type_ids is not None:
-                token_type_ids = token_type_ids[:, -1].unsqueeze(-1)
+
 
         attention_mask = kwargs.get("attention_mask", None)
 
@@ -641,7 +672,6 @@ class LaMDALMHeadModel(LaMDAPreTrainedModel):
             "past_key_values": past_key_values,
             "use_cache": kwargs.get("use_cache"),
             "attention_mask": attention_mask,
-            "token_type_ids": token_type_ids,
         }
 
 

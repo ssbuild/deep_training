@@ -85,7 +85,7 @@ class LaMDAConfig(PretrainedConfig):
             n_layer=12,
             n_head=12,
             n_inner=None,
-            activation_function="geglu",
+            activation_function="gelu_new",
             resid_pdrop=0.1,
             embd_pdrop=0.1,
             attn_pdrop=0.1,
@@ -105,7 +105,9 @@ class LaMDAConfig(PretrainedConfig):
         self.n_layer = n_layer
         self.n_head = n_head
         self.n_inner = n_inner
-        self.activation_function = activation_function
+
+        self.is_decoder = True
+
         self.resid_pdrop = resid_pdrop
         self.embd_pdrop = embd_pdrop
         self.attn_pdrop = attn_pdrop
@@ -117,6 +119,11 @@ class LaMDAConfig(PretrainedConfig):
 
         self.bos_token_id = bos_token_id
         self.eos_token_id = eos_token_id
+
+        self.activation_function = activation_function
+
+        if activation_function in ['geglu', 'gated-gelu', 'gelu_new']:
+            self.activation_function = 'gelu_new'
 
         self.relative_attention_num_buckets = relative_attention_num_buckets
         self.relative_attention_max_distance = relative_attention_max_distance
