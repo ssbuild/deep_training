@@ -319,15 +319,23 @@ class DataHelper(DataPreprocessHelper):
            block_length=1,
            backend=None,
            with_record_iterable_dataset: bool=False,
-           with_parse_from_numpy: bool =True):
+           with_parse_from_numpy: bool =True,
+           limit_start: typing.Optional[int] = None,
+           limit_count: typing.Optional[int] = None
+                           ):
 
-        return NumpyReaderAdapter.load(files, backend or self.backend , options,
+        dataset = NumpyReaderAdapter.load(files, backend or self.backend , options,
                                        data_key_prefix_list=data_key_prefix_list,
                                        num_key=num_key,
                                        cycle_length=cycle_length,
                                        block_length=block_length,
                                        with_record_iterable_dataset=with_record_iterable_dataset,
                                        with_parse_from_numpy=with_parse_from_numpy)
+        if limit_start is not None and limit_start >0:
+            dataset = dataset.skip(limit_start)
+        if limit_count is not None and limit_count > 0:
+            dataset = dataset.limit(limit_count)
+        return dataset
 
     """
         cycle_length for IterableDataset
@@ -347,7 +355,9 @@ class DataHelper(DataPreprocessHelper):
                      with_load_memory: bool = False,
                      with_torchdataset: bool = True,
                      transform_fn : typing.Callable = None,
-                     check_dataset_file_fn=None
+                     check_dataset_file_fn=None,
+                     limit_start: typing.Optional[int] = None,
+                     limit_count: typing.Optional[int] = None
                      ) -> typing.Optional[typing.Union[torch.utils.data.Dataset,torch.utils.data.IterableDataset]]:
         assert process_index <= num_processes and num_processes >= 1
         check_dataset_file_fn = check_dataset_file_fn or check_dataset_file
@@ -360,7 +370,9 @@ class DataHelper(DataPreprocessHelper):
                                           block_length=block_length,
                                           with_record_iterable_dataset=with_record_iterable_dataset,
                                           with_parse_from_numpy=not with_load_memory,
-                                          backend=backend)
+                                          backend=backend,
+                                          limit_start=limit_start,
+                                          limit_count=limit_count)
         #加载至内存
         if with_load_memory:
             logging.info('load dataset to memory...')
@@ -420,7 +432,10 @@ class DataHelper(DataPreprocessHelper):
                      with_load_memory: bool = False,
                      with_torchdataset: bool = True,
                      transform_fn : typing.Callable = None,
-                     check_dataset_file_fn=None) -> typing.Optional[typing.Union[DataLoader,torch.utils.data.Dataset,torch.utils.data.IterableDataset,IterableDatasetBase,RandomDatasetBase]]:
+                     check_dataset_file_fn=None,
+                    limit_start: typing.Optional[int] = None,
+                    limit_count: typing.Optional[int] = None
+                    ) -> typing.Optional[typing.Union[DataLoader,torch.utils.data.Dataset,torch.utils.data.IterableDataset,IterableDatasetBase,RandomDatasetBase]]:
 
         dataset = self.load_dataset(
             files,shuffle=shuffle,infinite=infinite,cycle_length=cycle_length,
@@ -428,6 +443,8 @@ class DataHelper(DataPreprocessHelper):
             backend=backend,with_record_iterable_dataset=with_record_iterable_dataset,
             with_load_memory=with_load_memory,with_torchdataset=with_torchdataset,
             transform_fn=transform_fn,check_dataset_file_fn=check_dataset_file_fn,
+            limit_start=limit_start,
+            limit_count=limit_count
         )
         if dataset is None:
             return None
@@ -448,7 +465,10 @@ class DataHelper(DataPreprocessHelper):
                      with_load_memory: bool = False,
                      with_torchdataset: bool = True,
                      transform_fn : typing.Callable = None,
-                     check_dataset_file_fn=None) -> typing.Optional[typing.Union[DataLoader,torch.utils.data.Dataset,torch.utils.data.IterableDataset,IterableDatasetBase,RandomDatasetBase]]:
+                     check_dataset_file_fn=None,
+                    limit_start: typing.Optional[int] = None,
+                    limit_count: typing.Optional[int] = None
+                                ) -> typing.Optional[typing.Union[DataLoader,torch.utils.data.Dataset,torch.utils.data.IterableDataset,IterableDatasetBase,RandomDatasetBase]]:
 
         dataset = self.load_dataset(
             files,shuffle=shuffle,infinite=infinite,cycle_length=cycle_length,
@@ -456,6 +476,8 @@ class DataHelper(DataPreprocessHelper):
             backend=backend,with_record_iterable_dataset=with_record_iterable_dataset,
             with_load_memory=with_load_memory,with_torchdataset=with_torchdataset,
             transform_fn=transform_fn,check_dataset_file_fn=check_dataset_file_fn,
+            limit_start=limit_start,
+            limit_count=limit_count
         )
         if dataset is None:
             return None
