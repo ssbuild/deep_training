@@ -7,6 +7,8 @@
   -  [deep_training-examples](https://github.com/ssbuild/deep_training-example)
 
 ## 更新
+- <strong>2023年02月13</strong>
+  - 增加中文语法纠错模型gector, seq2seq语法纠错模型 
 - <strong>2023年02月09</strong>
   - 增加诗歌t5decoder预训练, 诗歌laMDA预训练模型 , t5encoder 预训练模型
 - <strong>2023年02月07</strong>
