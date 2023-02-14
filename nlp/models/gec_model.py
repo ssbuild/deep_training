@@ -7,7 +7,8 @@ from .transformer import TransformerModel
 __all__ = [
     'TransformerForGec'
 ]
-
+# [ [(action,position,vocab)]]
+#抽取 action,position,vocab
 def extract_gec(outputs,threshold=0):
     logits_action: np.ndarray
     logits_probs: np.ndarray
@@ -21,6 +22,18 @@ def extract_gec(outputs,threshold=0):
                 continue
             if action == 0:
                 continue
+            #add
+            if action == 1:
+                pass
+            #delete
+            elif action == 2:
+                probs = 0
+            #replace
+            elif action == 3:
+                pass
+            else:
+                raise ValueError('invalid action',action)
+
             ops.append((action, ids, probs))
         result.append(ops)
     return result
@@ -36,6 +49,19 @@ def extract_gec_from_labels(outputs):
         for ids,action,probs in zip(range(seqlen),logits_action,logits_probs):
             if action == 0:
                 continue
+            if action == 0:
+                continue
+            #add
+            if action == 1:
+                pass
+            #delete
+            elif action == 2:
+                probs = 0
+            #replace
+            elif action == 3:
+                pass
+            else:
+                raise ValueError('invalid action',action)
             ops.append((action, ids, probs))
         result.append(ops)
     return result
