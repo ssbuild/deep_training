@@ -499,8 +499,8 @@ class DataHelper(DataPreprocessHelper):
         return intermediate_output
 
     def make_dataset_with_args(self, input_files,
-                               shuffle,
                                mode,
+                               shuffle=False,
                                num_process_worker: int=0,
                                overwrite: bool=False,
                                dupe_factor=1):
