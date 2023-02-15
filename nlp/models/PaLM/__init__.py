@@ -712,13 +712,13 @@ class PaLMLMHeadModel(PaLMPreTrainedModel):
 
 
 
-class TransformerLamdaModel(TransformerBase):
+class TransformerPalmModel(TransformerBase):
     def __init__(self, *args,**kwargs):
-        super(TransformerLamdaModel, self).__init__(*args,**kwargs)
+        super(TransformerPalmModel, self).__init__(*args,**kwargs)
         self.set_model(self.from_pretrained(PaLMModel, *args, **kwargs))
 
-class TransformerLamdaLMHeadModel(TransformerBase):
+class TransformerPalmLMHeadModel(TransformerBase):
     def __init__(self, *args,**kwargs):
-        super(TransformerLamdaLMHeadModel, self).__init__(*args,**kwargs)
+        super(TransformerPalmLMHeadModel, self).__init__(*args,**kwargs)
         self.set_model(self.from_pretrained(PaLMLMHeadModel, *args, **kwargs))
 
