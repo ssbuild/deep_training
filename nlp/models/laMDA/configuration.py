@@ -98,6 +98,7 @@ class LaMDAConfig(PretrainedConfig):
             reorder_and_upcast_attn=False,
             relative_attention_num_buckets=32,
             relative_attention_max_distance=128,
+            use_causal_mask=True,
             **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -127,4 +128,5 @@ class LaMDAConfig(PretrainedConfig):
 
         self.relative_attention_num_buckets = relative_attention_num_buckets
         self.relative_attention_max_distance = relative_attention_max_distance
+        self.use_causal_mask = use_causal_mask
         super().__init__(bos_token_id=bos_token_id, eos_token_id=eos_token_id, **kwargs)

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/2/8 11:07
+#reference: https://arxiv.org/pdf/2204.02311.pdf
 import math
 from typing import Optional, Union, Tuple
 import torch
@@ -9,99 +10,48 @@ from torch.nn import CrossEntropyLoss
 from transformers import PreTrainedModel, Conv1D
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
-from .configuration import LaMDAConfig, logger
+from .configuration import PaLMConfig, logger
 from ..transformer import TransformerBase
 
 
-# T5 relative positional bias
-class T5RelativePositionBias(nn.Module):
-    def __init__(
-        self,
-        relative_attention_num_buckets = 32,
-        relative_attention_max_distance = 128,
-        heads = 8
-    ):
+class RotaryEmbedding(nn.Module):
+    def __init__(self, dim, scale_base = 512, use_xpos = True):
         super().__init__()
-        self.relative_attention_num_buckets = relative_attention_num_buckets
-        self.relative_attention_max_distance = relative_attention_max_distance
-        self.relative_attention_bias = nn.Embedding(relative_attention_num_buckets, heads)
+        inv_freq = 1.0 / (10000 ** (torch.arange(0, dim, 2).float() / dim))
+        self.register_buffer("inv_freq", inv_freq)
 
-    @staticmethod
-    def _relative_position_bucket(relative_position, bidirectional=True, num_buckets=32, max_distance=128):
-        """
-        Adapted from Mesh Tensorflow:
-        https://github.com/tensorflow/mesh/blob/0cb87fe07da627bf0b7e60475d59f95ed6b5be3d/mesh_tensorflow/transformer/transformer_layers.py#L593
+        self.use_xpos = use_xpos
+        self.scale_base = scale_base
+        scale = (torch.arange(0, dim, 2) + 0.4 * dim) / (1.4 * dim)
+        self.register_buffer('scale', scale)
 
-        Translate relative position to a bucket number for relative attention. The relative position is defined as
-        memory_position - query_position, i.e. the distance in tokens from the attending position to the attended-to
-        position. If bidirectional=False, then positive relative positions are invalid. We use smaller buckets for
-        small absolute relative_position and larger buckets for larger absolute relative_positions. All relative
-        positions >=max_distance map to the same bucket. All relative positions <=-max_distance map to the same bucket.
-        This should allow for more graceful generalization to longer sequences than the model has been trained on
+    def forward(self, seq_len, device):
+        t = torch.arange(seq_len, device = device).type_as(self.inv_freq)
+        freqs = torch.einsum('i , j -> i j', t, self.inv_freq)
+        freqs = torch.cat((freqs, freqs), dim = -1)
 
-        Args:
-            relative_position: an int32 Tensor
-            bidirectional: a boolean - whether the attention is bidirectional
-            num_buckets: an integer
-            max_distance: an integer
+        if not self.use_xpos:
+            return freqs, torch.ones(1, device = device)
 
-        Returns:
-            a Tensor with the same shape as relative_position, containing int32 values in the range [0, num_buckets)
-        """
-        relative_buckets = 0
-        if bidirectional:
-            num_buckets //= 2
-            relative_buckets += (relative_position > 0).to(torch.long) * num_buckets
-            relative_position = torch.abs(relative_position)
-        else:
-            relative_position = -torch.min(relative_position, torch.zeros_like(relative_position))
-        # now relative_position is in the range [0, inf)
+        power = (t - (seq_len // 2)) / self.scale_base
 
-        # half of the buckets are for exact increments in positions
-        max_exact = num_buckets // 2
-        is_small = relative_position < max_exact
+        scale = self.scale **   power.unsqueeze(dim=1)
+        scale = torch.cat((scale, scale), dim = -1)
 
-        # The other half of the buckets are for logarithmically bigger bins in positions up to max_distance
-        relative_position_if_large = max_exact + (
-                torch.log(relative_position.float() / max_exact)
-                / math.log(max_distance / max_exact)
-                * (num_buckets - max_exact)
-        ).to(torch.long)
-        relative_position_if_large = torch.min(
-            relative_position_if_large, torch.full_like(relative_position_if_large, num_buckets - 1)
-        )
+        return freqs, scale
 
-        relative_buckets += torch.where(is_small, relative_position, relative_position_if_large)
-        return relative_buckets
+def rotate_half(x):
+    x1, x2 = x.chunk(2, dim=-1)
+    return torch.cat((-x2, x1), dim=-1)
 
-    def compute_bias(self, query_length, key_length, device=None):
-        """Compute binned relative position bias"""
-        if device is None:
-            device = self.relative_attention_bias.weight.device
-        context_position = torch.arange(query_length, dtype=torch.long, device=device)[:, None]
-        memory_position = torch.arange(key_length, dtype=torch.long, device=device)[None, :]
-        relative_position = memory_position - context_position  # shape (query_length, key_length)
-        relative_position_bucket = self._relative_position_bucket(
-            relative_position,  # shape (query_length, key_length)
-            bidirectional=False,
-            num_buckets=self.relative_attention_num_buckets,
-            max_distance=self.relative_attention_max_distance,
-        )
-        values = self.relative_attention_bias(relative_position_bucket)  # shape (query_length, key_length, num_heads)
-        values = values.permute([2, 0, 1]).unsqueeze(0)  # shape (1, num_heads, query_length, key_length)
-        return values
-
-    def forward(self, real_seq_length, key_length, device):
-        return self.compute_bias(real_seq_length,key_length,device)
-
-
-
+def apply_rotary_pos_emb(pos, t, scale = 1.):
+    return (t * pos.cos() * scale) + (rotate_half(t) * pos.sin() * scale)
 
 # attention
-class LaMDA_Attention(nn.Module):
+class PaLM_Attention(nn.Module):
     def __init__(
         self,
-        config: LaMDAConfig, is_cross_attention=False, layer_idx=None,has_relative_attention_bias=False,
+        config: PaLMConfig, is_cross_attention=False, layer_idx=None,has_relative_attention_bias=False,
     ):
         super().__init__()
         self.use_causal_mask = config.use_causal_mask
@@ -133,20 +83,43 @@ class LaMDA_Attention(nn.Module):
         self.c_proj = nn.Linear(inner_dim, self.embed_dim)
 
         self.has_relative_attention_bias = has_relative_attention_bias
-        if has_relative_attention_bias:
-            self.relative_attention_bias = T5RelativePositionBias(relative_attention_num_buckets=config.relative_attention_num_buckets,
-                                                   relative_attention_max_distance=config.relative_attention_max_distance,
-                                                   heads = self.num_heads)
+        self.rotary_emb = RotaryEmbedding(self.head_dim, scale_base=config.xpos_scale_base, use_xpos=config.use_xpos and self.use_causal_mask)
+        # for caching causal mask and rotary embeddings
 
+        self.register_buffer("mask", None, persistent=False)
+        self.register_buffer("pos_emb", None, persistent=False)
+        self.register_buffer("pos_emb_scale", None, persistent=False)
 
         self.gradient_checkpointing = False
+
+    def _get_mask(self, n, device):
+        if self.mask is not None and self.mask.shape[-1] >= n:
+            return self.mask[:n, :n]
+
+        mask = torch.ones((n, n), device=device, dtype=torch.bool).triu(1)
+        self.register_buffer("mask", mask, persistent=False)
+        return mask
+
+    def _get_rotary_embedding(self, n, device):
+        if self.pos_emb is not None and self.pos_emb.shape[-2] >= n:
+            return self.pos_emb[:n], self.pos_emb_scale[:n]
+
+        pos_emb, scale = self.rotary_emb(n, device=device)
+        self.register_buffer("pos_emb", pos_emb, persistent=False)
+        self.register_buffer("pos_emb_scale", scale, persistent=False)
+        return pos_emb, scale
 
     def _attn(self, query, key, value, attention_mask=None, head_mask=None,position_bias=None):
         attn_weights = torch.einsum('b n i h, b j h -> b n i j', query, key)
 
         real_seq_length, key_length = attn_weights.size()[-2:]
 
-        position_bias = self.relative_attention_bias(real_seq_length, key_length, device=attn_weights.device)
+        # rotary embeddings with xpos decay for better length extrapolation
+
+        positions, scale = self.get_rotary_embedding(real_seq_length, attn_weights.device)
+
+        q = apply_rotary_pos_emb(positions, q, scale)
+        k = apply_rotary_pos_emb(positions, k, scale ** -1)
 
         if self.scale_attn_weights:
             attn_weights = attn_weights * torch.full(
@@ -163,7 +136,8 @@ class LaMDA_Attention(nn.Module):
 
         if self.use_causal_mask:
             # Causal Mask
-            causal_mask = torch.ones((real_seq_length, key_length), dtype=torch.bool, device=attn_weights.device).triu(key_length - real_seq_length + 1)
+            # Causal Mask
+            causal_mask = self._get_mask(real_seq_length, attn_weights.device)
             attn_weights = attn_weights.masked_fill(causal_mask, -torch.finfo(attn_weights.dtype).max)
 
         attn_weights = nn.functional.softmax(attn_weights, dim=-1)
@@ -249,7 +223,7 @@ class LaMDA_Attention(nn.Module):
         return tensor.view(new_shape)
 
 class LamdaDenseActDense(nn.Module):
-    def __init__(self, config: LaMDAConfig):
+    def __init__(self, config: PaLMConfig):
         super().__init__()
         hidden_size = config.hidden_size
         intermediate_size = config.n_inner if config.n_inner is not None else 4 * hidden_size
@@ -267,7 +241,7 @@ class LamdaDenseActDense(nn.Module):
 
 
 class LamdaDenseGatedActDense(nn.Module):
-    def __init__(self, config: LaMDAConfig):
+    def __init__(self, config: PaLMConfig):
         super().__init__()
         hidden_size = config.hidden_size
         intermediate_size = config.n_inner if config.n_inner is not None else 4 * hidden_size
@@ -291,18 +265,18 @@ class LamdaDenseGatedActDense(nn.Module):
         hidden_states = self.wo(hidden_states)
         return hidden_states
 
-class LaMDA_Block(nn.Module):
+class PaLM_Block(nn.Module):
     def __init__(self, config, has_relative_attention_bias,layer_idx=None):
         super().__init__()
         hidden_size = config.hidden_size
 
         self.ln_1 = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
-        self.attn = LaMDA_Attention(config, layer_idx=layer_idx,has_relative_attention_bias=has_relative_attention_bias)
+        self.attn = PaLM_Attention(config, layer_idx=layer_idx,has_relative_attention_bias=has_relative_attention_bias)
         self.ln_2 = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
 
 
         if config.add_cross_attention:
-            self.crossattention = LaMDA_Attention(config, is_cross_attention=True, layer_idx=layer_idx)
+            self.crossattention = PaLM_Attention(config, is_cross_attention=True, layer_idx=layer_idx)
             self.ln_cross_attn = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
 
         if config.activation_function in [ 'geglu'  ,'gated-gelu','gelu_new']:
@@ -373,17 +347,17 @@ class LaMDA_Block(nn.Module):
 
 
 
-class LaMDAPreTrainedModel(PreTrainedModel):
+class PaLMPreTrainedModel(PreTrainedModel):
     """
     An abstract class to handle weights initialization and a simple interface for downloading and loading pretrained
     models.
     """
 
-    config_class = LaMDAConfig
+    config_class = PaLMConfig
     base_model_prefix = "transformer"
     is_parallelizable = False
     supports_gradient_checkpointing = True
-    _no_split_modules = ["LaMDA_Block"]
+    _no_split_modules = ["PaLM_Block"]
 
     def __init__(self, *inputs, **kwargs):
         super().__init__(*inputs, **kwargs)
@@ -415,20 +389,20 @@ class LaMDAPreTrainedModel(PreTrainedModel):
                 p.data.normal_(mean=0.0, std=(self.config.initializer_range / math.sqrt(2 * self.config.n_layer)))
 
     def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, LaMDAModel):
+        if isinstance(module, PaLMModel):
             module.gradient_checkpointing = value
 
-# LaMDA Model
+# PaLM Model
 
-class LaMDAModel(LaMDAPreTrainedModel):
-    def __init__(self, config: LaMDAConfig):
-        super(LaMDAModel, self).__init__(config)
+class PaLMModel(PaLMPreTrainedModel):
+    def __init__(self, config: PaLMConfig):
+        super(PaLMModel, self).__init__(config)
         self.embed_dim = config.hidden_size
         self.wte = nn.Embedding(config.vocab_size, self.embed_dim)
         self.drop = nn.Dropout(config.embd_pdrop)
 
         self.h = nn.ModuleList([
-            LaMDA_Block(config, layer_idx=i, has_relative_attention_bias=True)
+            PaLM_Block(config, layer_idx=i, has_relative_attention_bias=True)
             for i in range(config.num_hidden_layers)
         ])
         self.ln_f = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
@@ -628,12 +602,12 @@ class LaMDAModel(LaMDAPreTrainedModel):
         )
 
 
-class LaMDALMHeadModel(LaMDAPreTrainedModel):
+class PaLMLMHeadModel(PaLMPreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"attn.masked_bias", r"attn.bias", r"lm_head.weight"]
 
     def __init__(self, config):
-        super(LaMDALMHeadModel, self).__init__(config)
-        self.transformer = LaMDAModel(config)
+        super(PaLMLMHeadModel, self).__init__(config)
+        self.transformer = PaLMModel(config)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
         self.model_parallel = False
@@ -741,10 +715,10 @@ class LaMDALMHeadModel(LaMDAPreTrainedModel):
 class TransformerLamdaModel(TransformerBase):
     def __init__(self, *args,**kwargs):
         super(TransformerLamdaModel, self).__init__(*args,**kwargs)
-        self.set_model(self.from_pretrained(LaMDAModel, *args, **kwargs))
+        self.set_model(self.from_pretrained(PaLMModel, *args, **kwargs))
 
 class TransformerLamdaLMHeadModel(TransformerBase):
     def __init__(self, *args,**kwargs):
         super(TransformerLamdaLMHeadModel, self).__init__(*args,**kwargs)
-        self.set_model(self.from_pretrained(LaMDALMHeadModel, *args, **kwargs))
+        self.set_model(self.from_pretrained(PaLMLMHeadModel, *args, **kwargs))
 
