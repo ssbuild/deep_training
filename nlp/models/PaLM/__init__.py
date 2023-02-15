@@ -44,7 +44,7 @@ def rotate_half(x):
     x1, x2 = x.chunk(2, dim=-1)
     return torch.cat((-x2, x1), dim=-1)
 
-def apply_rotary_pos_emb(pos, t, scale = 1.):
+def apply_rotary_pos_emb(t,pos, scale = 1.):
     return (t * pos.cos() * scale) + (rotate_half(t) * pos.sin() * scale)
 
 # attention
@@ -83,7 +83,7 @@ class PaLM_Attention(nn.Module):
         self.c_proj = nn.Linear(inner_dim, self.embed_dim)
 
         self.has_relative_attention_bias = has_relative_attention_bias
-        self.rotary_emb = RotaryEmbedding(self.head_dim, scale_base=config.xpos_scale_base, use_xpos=config.use_xpos and self.use_causal_mask)
+        self.rotary_emb = RotaryEmbedding(self.head_dim, scale_base=config.rotary_scale_base, use_xpos=config.use_rotary_xpos and self.use_causal_mask)
         # for caching causal mask and rotary embeddings
 
         self.register_buffer("mask", None, persistent=False)
@@ -109,33 +109,28 @@ class PaLM_Attention(nn.Module):
         self.register_buffer("pos_emb_scale", scale, persistent=False)
         return pos_emb, scale
 
-    def _attn(self, query, key, value, attention_mask=None, head_mask=None,position_bias=None):
-        attn_weights = torch.einsum('b n i h, b j h -> b n i j', query, key)
-
-        real_seq_length, key_length = attn_weights.size()[-2:]
+    def _attn(self, query, key, value, attention_mask=None, head_mask=None):
+        real_seq_length = query.size(2)
+        if self.scale_attn_weights:
+            query = query * torch.full(
+                [], value.size(-1) ** -0.5, dtype=query.dtype, device=query.device
+            )
+            key = key * torch.full(
+                [], value.size(-1) ** -0.5, dtype=key.dtype, device=key.device
+            )
 
         # rotary embeddings with xpos decay for better length extrapolation
 
-        positions, scale = self.get_rotary_embedding(real_seq_length, attn_weights.device)
+        positions, scale = self._get_rotary_embedding(real_seq_length, query.device)
+        query = apply_rotary_pos_emb(query,positions, scale)
+        key = apply_rotary_pos_emb(key,positions, scale ** -1)
 
-        q = apply_rotary_pos_emb(positions, q, scale)
-        k = apply_rotary_pos_emb(positions, k, scale ** -1)
-
-        if self.scale_attn_weights:
-            attn_weights = attn_weights * torch.full(
-                [], value.size(-1) ** -0.5, dtype=attn_weights.dtype, device=attn_weights.device
-            )
-            position_bias = position_bias * torch.full(
-                [], value.size(-1) ** -0.5, dtype=position_bias.dtype, device=position_bias.device
-            )
-
-        attn_weights += position_bias
+        attn_weights = torch.einsum('b n i h, b j h -> b n i j', query, key)
 
         if attention_mask is not None:
             attn_weights = attn_weights.masked_fill(~attention_mask, -torch.finfo(attn_weights.dtype).max)
 
         if self.use_causal_mask:
-            # Causal Mask
             # Causal Mask
             causal_mask = self._get_mask(real_seq_length, attn_weights.device)
             attn_weights = attn_weights.masked_fill(causal_mask, -torch.finfo(attn_weights.dtype).max)
@@ -160,7 +155,6 @@ class PaLM_Attention(nn.Module):
             layer_past: Optional[Tuple[torch.Tensor]] = None,
             attention_mask: Optional[torch.FloatTensor] = None,
             head_mask: Optional[torch.FloatTensor] = None,
-            position_bias: Optional[torch.FloatTensor] = None,
             encoder_hidden_states: Optional[torch.Tensor] = None,
             encoder_attention_mask: Optional[torch.FloatTensor] = None,
             use_cache: Optional[bool] = False,
@@ -194,7 +188,7 @@ class PaLM_Attention(nn.Module):
             present = None
 
 
-        attn_output, attn_weights = self._attn(query, key, value, attention_mask, head_mask,position_bias)
+        attn_output, attn_weights = self._attn(query, key, value, attention_mask, head_mask)
 
         # attn_output = self._merge_heads(attn_output, self.num_heads, self.head_dim)
         attn_output = self.c_proj(attn_output)
@@ -222,7 +216,7 @@ class PaLM_Attention(nn.Module):
         new_shape = tensor.size()[:-2] + (num_heads * attn_head_size,)
         return tensor.view(new_shape)
 
-class LamdaDenseActDense(nn.Module):
+class PaLMDenseActDense(nn.Module):
     def __init__(self, config: PaLMConfig):
         super().__init__()
         hidden_size = config.hidden_size
@@ -240,7 +234,7 @@ class LamdaDenseActDense(nn.Module):
         return hidden_states
 
 
-class LamdaDenseGatedActDense(nn.Module):
+class PaLMDenseGatedActDense(nn.Module):
     def __init__(self, config: PaLMConfig):
         super().__init__()
         hidden_size = config.hidden_size
@@ -280,9 +274,9 @@ class PaLM_Block(nn.Module):
             self.ln_cross_attn = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
 
         if config.activation_function in [ 'geglu'  ,'gated-gelu','gelu_new']:
-            self.mlp = LamdaDenseGatedActDense(config)
+            self.mlp = PaLMDenseGatedActDense(config)
         else:
-            self.mlp = LamdaDenseActDense(config)
+            self.mlp = PaLMDenseActDense(config)
 
     def forward(
         self,

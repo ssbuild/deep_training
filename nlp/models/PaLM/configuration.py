@@ -22,7 +22,7 @@ logger = logging.get_logger(__name__)
 
 class PaLMConfig(PretrainedConfig):
     """
-    This is the configuration class to store the configuration of a [`PaLMConfig`] or a [`TFLaMDAModel`]. It is used to
+    This is the configuration class to store the configuration of a [`PaLMConfig`] or a [`TFPaLMModel`]. It is used to
     instantiate a GPT-2 model according to the specified arguments, defining the model architecture. Instantiating a
     configuration with the defaults will yield a similar configuration to that of the GPT-2
     [gpt2](https://huggingface.co/gpt2) architecture.
@@ -34,7 +34,7 @@ class PaLMConfig(PretrainedConfig):
     Args:
         vocab_size (`int`, *optional*, defaults to 50257):
             Vocabulary size of the GPT-2 model. Defines the number of different tokens that can be represented by the
-            `inputs_ids` passed when calling [`PaLMConfig`] or [`TFLaMDAModel`].
+            `inputs_ids` passed when calling [`PaLMConfig`] or [`TFPaLMModel`].
         n_embd (`int`, *optional*, defaults to 768):
             Dimensionality of the embeddings and hidden states.
         n_layer (`int`, *optional*, defaults to 12):
@@ -70,7 +70,7 @@ class PaLMConfig(PretrainedConfig):
 
    """
 
-    model_type = "laMDA"
+    model_type = "PaLM"
     keys_to_ignore_at_inference = ["past_key_values"]
     attribute_map = {
         "hidden_size": "n_embd",
@@ -96,11 +96,9 @@ class PaLMConfig(PretrainedConfig):
             bos_token_id=50256,
             eos_token_id=50256,
             reorder_and_upcast_attn=False,
-            relative_attention_num_buckets=32,
-            relative_attention_max_distance=128,
             use_causal_mask=True,
-            scale_base=512,
-            use_xpos=True,
+            rotary_scale_base=512,
+            use_rotary_xpos=True,
             **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -128,9 +126,7 @@ class PaLMConfig(PretrainedConfig):
         if activation_function in ['geglu', 'gated-gelu', 'gelu_new']:
             self.activation_function = 'gelu_new'
 
-        self.relative_attention_num_buckets = relative_attention_num_buckets
-        self.relative_attention_max_distance = relative_attention_max_distance
         self.use_causal_mask = use_causal_mask
-        self.scale_base = scale_base
-        self.use_xpos = use_xpos
+        self.rotary_scale_base = rotary_scale_base
+        self.use_rotary_xpos = use_rotary_xpos
         super().__init__(bos_token_id=bos_token_id, eos_token_id=eos_token_id, **kwargs)
