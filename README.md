@@ -3,8 +3,9 @@
 - 基于pytorch-lightning 和 transformers实现的上下游训练框架
 - 安装 pip installl -U deep_training
 
-## 例子
+## 完整训练模型
   -  [deep_training-examples](https://github.com/ssbuild/deep_training-example)
+  -  [poetry_training](https://github.com/ssbuild/poetry_training)
 
 ## 更新
 - <strong>2023年02月15</strong>
