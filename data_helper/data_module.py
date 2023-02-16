@@ -27,7 +27,7 @@ def load_tokenizer(tokenizer_name,
     }
     if class_name is not None:
         tokenizer = class_name.from_pretrained(tokenizer_name, **tokenizer_kwargs)
-    if tokenizer_name:
+    elif tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, **tokenizer_kwargs)
     elif model_name_or_path:
         tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, **tokenizer_kwargs)
