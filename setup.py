@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 ignore = ['test','tests']
 setup(
     name='deep_training',
-    version='0.0.13@post6',
+    version='0.0.14',
     description='an easy training architecture',
     long_description='torch_training: https://github.com/ssbuild/deep_training.git',
     license='Apache License 2.0',
@@ -13,7 +13,7 @@ setup(
     author='ssbuild',
     author_email='9727464@qq.com',
     install_requires=['pytorch-lightning>=1.7,<1.10',
-                      'fastdatasets>=0.9.4 , <= 1',
+                      'fastdatasets>=0.9.6 , <= 1',
                       'tfrecords >= 0.2.4 , <=3',
                       'numpy',
                       'transformers','seqmetric','sklearn','scipy','scikit-learn','tqdm','six','jieba'],
