@@ -512,7 +512,7 @@ class DataHelper(DataPreprocessHelper):
                                shuffle=False,
                                num_process_worker: int=0,
                                overwrite: bool=False,
-                               mixed_data=False,
+                               mixed_data=True,
                                dupe_factor=1):
         '''
             mode: one of [ train , eval , test]
@@ -521,7 +521,7 @@ class DataHelper(DataPreprocessHelper):
             overwrite: whether overwrite data
             mixed_data: Whether the mixed data
         '''
-
+        logging.info('make_dataset {} {}...'.format(','.join(input_files),mode))
         if mode == 'train':
             contain_objs = self.train_files
         elif mode == 'eval' or mode == 'val':
@@ -550,7 +550,7 @@ class DataHelper(DataPreprocessHelper):
                                           mode,
                                           num_process_worker=num_process_worker,
                                           shuffle=shuffle)
-                        contain_objs.append(intermediate_output)
+                    contain_objs.append(intermediate_output)
                 else:
                     for fid,input_item in enumerate(input_files):
                         intermediate_name = data_args.intermediate_name + '_file_{}_dupe_factor_{}'.format(fid,i)
@@ -563,7 +563,7 @@ class DataHelper(DataPreprocessHelper):
                                               mode,
                                               num_process_worker=num_process_worker,
                                               shuffle=shuffle)
-                            contain_objs.append(intermediate_output)
+                        contain_objs.append(intermediate_output)
 
             else:
                 for input_item in input_files:
