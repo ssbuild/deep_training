@@ -51,7 +51,7 @@ class DataPreprocessHelper(object):
 
     # 下游任务继承
     def on_data_process(self, data: typing.Any, user_data: tuple):
-        return make_gpt2_sample(data, user_data)
+        raise NotImplemented
 
     def on_task_specific_params(self) -> typing.Dict:
         return {}
@@ -74,6 +74,7 @@ class DataPreprocessHelper(object):
         label2id = {label: i for i, label in enumerate(D)}
         id2label = {i: label for i, label in enumerate(D)}
         return label2id, id2label
+
 
     # 读取文件
     def on_get_corpus(self, files: typing.List[str], mode: str):
@@ -498,43 +499,76 @@ class DataHelper(DataPreprocessHelper):
             logging.info('make data {}...'.format(intermediate_output))
         return intermediate_output
 
+    '''
+        mode: one of [ train , eval , test]
+        shuffle: whether shuffle data
+        num_process_worker: the number of mutiprocess
+        overwrite: whether overwrite data
+        mixed_data: Whether the mixed data
+
+    '''
     def make_dataset_with_args(self, input_files,
                                mode,
                                shuffle=False,
                                num_process_worker: int=0,
                                overwrite: bool=False,
+                               mixed_data=False,
                                dupe_factor=1):
         '''
-            save_fn_args: tuple param for DataHelper.on_data_process
-            training_args: args
-            intermediate_name: str
-            allow_train_shuffle: bool， read data is allow shuffle ， but write are in order
-            num_process_worker: int , num of process data
+            mode: one of [ train , eval , test]
+            shuffle: whether shuffle data
+            num_process_worker: the number of mutiprocess
+            overwrite: whether overwrite data
+            mixed_data: Whether the mixed data
         '''
+
+        if mode == 'train':
+            contain_objs = self.train_files
+        elif mode == 'eval' or mode == 'val':
+            contain_objs = self.eval_files
+        elif mode == 'test' or mode == 'predict':
+            contain_objs = self.test_files
+        else:
+            raise ValueError('{} invalid ', mode)
+
+        if not input_files:
+            logging.info('input_files empty!')
+            return
 
         data_args: DataArguments = self.data_args
         for i in range(dupe_factor):
-            intermediate_name = data_args.intermediate_name + '_{}'.format(i)
-            if data_args.convert_file:
-                intermediate_output = self.get_intermediate_file(intermediate_name, mode)
-                if isinstance(intermediate_output, list) or not os.path.exists(intermediate_output) or overwrite:
-                    data = self.on_get_corpus(input_files, mode)
-                    self.make_dataset(intermediate_output,
-                                      data,
-                                      mode,
-                                      num_process_worker=num_process_worker,
-                                      shuffle=shuffle)
-            else:
-                intermediate_output = input_files[0]
 
-            if mode == 'train':
-                self.train_files.append(intermediate_output)
-            elif mode == 'eval' or mode == 'val':
-                self.eval_files.append(intermediate_output)
-            elif mode == 'test' or mode == 'predict':
-                self.test_files.append(intermediate_output)
+            if data_args.convert_file:
+                if mixed_data:
+                    intermediate_name = data_args.intermediate_name + '_dupe_factor_{}'.format(i)
+                    intermediate_output = self.get_intermediate_file(intermediate_name, mode)
+
+                    if isinstance(intermediate_output, list) or not os.path.exists(intermediate_output) or overwrite:
+                        data = self.on_get_corpus(input_files, mode)
+                        self.make_dataset(intermediate_output,
+                                          data,
+                                          mode,
+                                          num_process_worker=num_process_worker,
+                                          shuffle=shuffle)
+                        contain_objs.append(intermediate_output)
+                else:
+                    for fid,input_item in enumerate(input_files):
+                        intermediate_name = data_args.intermediate_name + '_file_{}_dupe_factor_{}'.format(fid,i)
+                        intermediate_output = self.get_intermediate_file(intermediate_name, mode)
+
+                        if isinstance(intermediate_output, list) or not os.path.exists(intermediate_output) or overwrite:
+                            data = self.on_get_corpus([input_item], mode)
+                            self.make_dataset(intermediate_output,
+                                              data,
+                                              mode,
+                                              num_process_worker=num_process_worker,
+                                              shuffle=shuffle)
+                            contain_objs.append(intermediate_output)
+
             else:
-                raise ValueError('{} invalid ',mode)
+                for input_item in input_files:
+                    contain_objs.append(input_item)
+
 
 
 
