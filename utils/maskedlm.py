@@ -1,88 +1,37 @@
 # @Time    : 2022/11/9 22:29
 # @Author  : tk
-# @FileName: maskedlm.py
 import numpy as np
 import logging
 import typing
 from transformers import BertTokenizerFast
 from .func import is_chinese_char
 import copy
-import jieba
-jieba.setLogLevel(log_level=logging.WARNING)
-
-#tokens does not contail [CLS] [SEP]
-def get_wwm_cand_indexes(text:str,tokens:typing.List[str],offset_mapping:typing.List[tuple]):
-    arr_fenci = jieba.lcut(text)
-    offsets_fenci = []
-    pos = 0
-    for fenci in arr_fenci:
-        ll = len(fenci)
-        offsets_fenci.append((pos, pos + ll))
-        pos += ll
-    offsets_fenci= sorted(offsets_fenci)
-    offset_mapping = sorted(offset_mapping)
-    cand_ids = []
-    pos_i = 0
-    while len(offsets_fenci):
-        offset = offsets_fenci.pop(0)
-        index_flag = None
-        for i in range(pos_i,len(offset_mapping)):
-            offset2 = offset_mapping[i]
-            if offset2[0] >= offset[1]:
-                index_flag = i
-                pos_i = i + 1
-                break
-        if index_flag is not None:
-            cand_ids.append(index_flag)
-    cand_indexes = []
-    pos = 0
-    for i in range(len(cand_ids)):
-        cand_indexes.append(list(range(pos,cand_ids[i])))
-        pos = cand_ids[i]
-    tmp = []
-    for pos in cand_indexes:
-        tmp.extend(pos)
-    tmp = set(tmp)
-    for i,(token,offset) in enumerate(zip(tokens,offset_mapping)):
-        if i in tmp:
-            continue
-        if token.startswith('##') :
-            if len(token[2:]) == 1 and is_chinese_char(ord(token[2])):
-                cand_indexes.append([i])
-            else:
-                cand_indexes[-1].append(i)
-        else:
-            cand_indexes.append([i])
-    # tmp = set()
-    # length = 0
-    # for idexes in cand_indexes:
-    #     length += len(idexes)
-    #     for index in idexes:
-    #         tmp.add(index)
-    # assert len(tmp) == length
-    return cand_indexes
-
 
 def make_mlm_wwm_sample(text : str ,tokenizer,max_seq_length, rng, do_whole_word_mask, max_predictions_per_seq, masked_lm_prob):
     tokenizer: BertTokenizerFast
     # tokenizer, max_seq_length, rng, do_whole_word_mask, max_predictions_per_seq, masked_lm_prob = user_data
     vocab_words = tokenizer.get_vocab()
 
-    o = tokenizer(text, add_special_tokens=False, truncation=True, max_length=max_seq_length - 2,
-                  return_offsets_mapping=True)
-    input_ids = o['input_ids']
-    offset_mapping = o['offset_mapping']
-    if do_whole_word_mask:
-        tokens = tokenizer.convert_ids_to_tokens(input_ids)
-        cand_indexes = get_wwm_cand_indexes(text, tokens, offset_mapping)
-    else:
-        cand_indexes = [(i, i + 1) for i in input_ids]
+    o = tokenizer(text, add_special_tokens=True, truncation=True,
+                  max_length=max_seq_length,
+                  return_token_type_ids=False,
+                  return_attention_mask=False)
 
-    input_ids = [tokenizer.cls_token_id] + input_ids + [tokenizer.sep_token_id]
-    cand_indexes = [[index + 1 for index in indexes] for indexes in cand_indexes]
+    input_ids = o['input_ids']
+    tokens = tokenizer.convert_ids_to_tokens(input_ids)
+
+    cand_indexes = []
+    for (i, token) in enumerate(tokens):
+        if token == "[CLS]" or token == "[SEP]":
+            continue
+        if (do_whole_word_mask and len(cand_indexes) >= 1 and token.startswith("##")):
+            cand_indexes[-1].append(i)
+        else:
+            cand_indexes.append([i])
+
+
     rng.shuffle(cand_indexes)
     num_to_predict = min(max_predictions_per_seq, max(1, int(round(len(input_ids) * masked_lm_prob))))
-    labels = copy.deepcopy(input_ids)
 
     masked_lms = []
     covered_indexes = set()
@@ -115,15 +64,24 @@ def make_mlm_wwm_sample(text : str ,tokenizer,max_seq_length, rng, do_whole_word
                 else:
                     masked_id = rng.randint(0, len(vocab_words) - 1)
 
+            masked_lms.append((index, input_ids[index]))
+
             input_ids[index] = masked_id
 
-            masked_lms.append((index, masked_id))
     assert len(masked_lms) <= num_to_predict
     masked_lms = sorted(masked_lms, key=lambda x: x[0])
 
+    masked_lm_positions = np.zeros(shape=(max_predictions_per_seq,),dtype=np.int64)
+    masked_lm_ids = np.zeros(shape=(max_predictions_per_seq,),dtype=np.int64)
+    masked_lm_weights = np.zeros(shape=(max_predictions_per_seq,),dtype=np.float32)
+    for i,(idx,masked_id) in enumerate(masked_lms):
+        masked_lm_positions[i] = idx
+        masked_lm_ids[i] = masked_id
+        masked_lm_weights[i] = 1
+
     input_ids = np.asarray(input_ids, dtype=np.int64)
     attention_mask = np.ones_like(input_ids, dtype=np.int64)
-    labels = np.asarray(labels, dtype=np.int64)
+
 
     input_length = np.asarray(len(input_ids), dtype=np.int64)
     pad_len = max_seq_length - input_length
@@ -131,11 +89,13 @@ def make_mlm_wwm_sample(text : str ,tokenizer,max_seq_length, rng, do_whole_word
         pad_val = tokenizer.pad_token_id
         input_ids = np.pad(input_ids, (0, pad_len), 'constant', constant_values=(pad_val, pad_val))
         attention_mask = np.pad(attention_mask, (0, pad_len), 'constant', constant_values=(0, 0))
-        labels = np.pad(labels, (0, pad_len), 'constant', constant_values=(-100, -100))
+
     sample = {
         'input_ids': input_ids,
         'attention_mask': attention_mask,
-        'labels': labels,
+        'masked_lm_positions': masked_lm_positions,
+        'masked_lm_ids': masked_lm_ids,
+        'masked_lm_weights': masked_lm_weights,
         'seqlen': input_length
     }
     return sample
