@@ -9,18 +9,22 @@ from transformers import get_linear_schedule_with_warmup
 
 from ..scheduler import WarmupCosineSchedule
 from ...data_helper import TrainingArguments
+from ..optimizer.lion import Lion
 
 
 def configure_optimizers(named_parameter: typing.Union[typing.List,typing.Tuple],
                          training_args: TrainingArguments,
                          estimated_stepping_batches: int):
-
-
-
-    if training_args.optimizer.lower() == 'adamw':
+    optimizer_name = training_args.optimizer.lower()
+    if optimizer_name== 'adamw':
         optimizer = AdamW(named_parameter, lr=training_args.learning_rate, eps=training_args.adam_epsilon)
-    else:
+    elif optimizer_name == 'adam':
         optimizer = Adam(named_parameter, training_args.learning_rate, eps=training_args.adam_epsilon)
+    elif optimizer_name == 'lion':
+        optimizer = Lion(named_parameter, training_args.learning_rate)
+    else:
+        raise ValueError('optimizer must one of adamw,adam,lion')
+
 
     scheduler = None
     if training_args.scheduler_type.lower() == 'linear'.lower():
