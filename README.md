@@ -8,6 +8,8 @@
   -  [poetry_training](https://github.com/ssbuild/poetry_training)
 
 ## 更新
+- <strong>2023年03月02</strong>
+  - 增加loRA 训练 , lion优化器 , 完整训练参考 [chatyuan_finetuning](https://github.com/ssbuild/chatyuan_finetuning)
 - <strong>2023年02月15</strong>
   - 增加诗歌PaLM预训练模型 
 - <strong>2023年02月13</strong>

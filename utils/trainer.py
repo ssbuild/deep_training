@@ -62,6 +62,22 @@ class SimpleModelCheckpoint(Checkpoint):
     def on_get_metric( self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"):
         return {}
 
+    def update_best(self,val):
+        flag = False
+        if isinstance(val, torch.Tensor):
+            if self.monitor not in self.best:
+                flag = True
+                self.best[self.monitor] = val
+            else:
+                monitor_op = torch.le if self.mode.lower() == 'min' else torch.ge
+                if monitor_op(val, self.best[self.monitor]).bool().cpu().item():
+                    flag = True
+        else:
+            warnings.warn('monitor {} is not tensor'.format(self.monitor))
+
+        if flag:
+            self.best[self.monitor] = val
+        return flag
 
     def on_save_model(
         self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
@@ -71,17 +87,8 @@ class SimpleModelCheckpoint(Checkpoint):
         monitor_candidates.update(self.on_get_metric(trainer,pl_module))
         val = monitor_candidates.get(self.monitor,None)
         if val is not None:
-            flag = False
-            if isinstance(val,torch.Tensor):
-                if self.monitor not in self.best:
-                    self.best[self.monitor] = val
-                monitor_op = torch.le if self.mode.lower() == 'min' else torch.ge
-                if monitor_op(val ,self.best[self.monitor]).bool().cpu().item():
-                    flag = True
-            else:
-                warnings.warn('monitor {} is not tensor'.format(self.monitor))
+            flag = self.update_best(val)
             if flag:
-                self.best[self.monitor] = val
                 logging.info('epoch {} ,step {} , save best {}, {}\n'.format(monitor_candidates['epoch'],
                                                                            monitor_candidates['step'],
                                                                            self.best[self.monitor],
@@ -90,16 +97,16 @@ class SimpleModelCheckpoint(Checkpoint):
 
             if self.last_weight_file is not None:
                 logging.info('epoch {} ,step {} , save {}\n'.format(monitor_candidates['epoch'],
-                                                                       monitor_candidates['step'],
-                                                                       self.last_weight_file))
+                                                                    monitor_candidates['step'],
+                                                                    self.last_weight_file))
                 trainer.save_checkpoint(self.last_weight_file)
 
         else:
             warnings.warn('monitor {} is not in metirc , save lastest checkpoint!'.format(self.monitor))
 
             logging.info('epoch {} ,step {} , save {}\n'.format(monitor_candidates['epoch'],
-                                                                       monitor_candidates['step'],
-                                                                       self.weight_file))
+                                                                monitor_candidates['step'],
+                                                                self.weight_file))
             trainer.save_checkpoint(self.weight_file)
 
 

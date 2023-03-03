@@ -233,18 +233,14 @@ class TransformerBase(MyLightningModule,metaclass=TransformerFakeMeta):
     def model(self, model):
         self.set_model(model)
 
-    def set_model(self, model):
-        # keep_keys = [
-        #     'config_class','load_tf_weights','base_model_prefix','supports_gradient_checkpointing','_init_weights','_set_gradient_checkpointing',
-        #     '_keys_to_ignore_on_load_missing','_keys_to_ignore_on_load_unexpected','_no_split_modules','is_parallelizable','_shift_right','main_input_name',
-        #     '_get_feat_extract_output_lengths','_get_feature_vector_attention_mask',#dummy_inputs
-        # ]
-        keep_keys = ['config_class','base_model_prefix']
-        for k in keep_keys:
-            o = getattr(model,k,None)
-            if o is None:
-                continue
-            setattr(self,k,o)
+    def set_model(self, model , copy_attr=True):
+        if copy_attr:
+            keep_keys = ['config_class','base_model_prefix']
+            for k in keep_keys:
+                o = getattr(model,k,None)
+                if o is None:
+                    continue
+                setattr(self,k,o)
 
         assert self.base_model_prefix is not None, ValueError('base_model_prefix is not allow empty')
         setattr(self, self.base_model_prefix, model)
@@ -350,9 +346,11 @@ class TransformerLightningModule(MyLightningModule):
     def model(self, model):
         self.set_model(model)
 
-    def set_model(self, model):
+    def set_model(self, model , copy_attr=True):
         assert model is not None
         self.__backbone = model
+        if not copy_attr:
+            return
 
         copy_attr = [
             'log','log_dict'

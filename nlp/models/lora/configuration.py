@@ -12,7 +12,7 @@ WEIGHTS_NAME = "adapter_model.bin"
 CONFIG_NAME = "adapter_config.json"
 
 @dataclass
-class PeftConfigMixin(PushToHubMixin):
+class LoraConfigMixin(PushToHubMixin):
     r"""
     This is the base configuration class for PEFT adapter models. It contains all the methods that are common to all
     PEFT adapter models. This class inherits from `transformers.utils.PushToHubMixin` which contains the methods to
@@ -67,11 +67,7 @@ class PeftConfigMixin(PushToHubMixin):
         if os.path.isfile(os.path.join(pretrained_model_name_or_path, CONFIG_NAME)):
             config_file = os.path.join(pretrained_model_name_or_path, CONFIG_NAME)
         else:
-            try:
-                ...
-                # config_file = hf_hub_download(pretrained_model_name_or_path, CONFIG_NAME)
-            except:
-                raise ValueError(f"Can't find config.json at '{pretrained_model_name_or_path}'")
+            raise ValueError(f"Can't find config.json at '{pretrained_model_name_or_path}'")
 
         loaded_attributes = cls.from_json_file(config_file)
 
@@ -98,27 +94,16 @@ class PeftConfigMixin(PushToHubMixin):
         return json_object
 
 
-@dataclass
-class PeftConfig(PeftConfigMixin):
-    """
-    This is the base configuration class to store the configuration of a :class:`~peft.PeftModel`.
 
-    Args:
-        peft_type (Union[[`~peft.utils.config.PeftType`], `str`]): The type of Peft method to use.
-        task_type (Union[[`~peft.utils.config.TaskType`], `str`]): The type of task to perform.
-        inference_mode (`bool`, defaults to `False`): Whether to use the Peft model in inference mode.
-    """
-
-    base_model_name_or_path: str = field(default=None, metadata={"help": "The name of the base model to use."})
-    inference_mode: bool = field(default=False, metadata={"help": "Whether to use inference mode"})
 
 
 @dataclass
-class LoraConfig(PeftConfig):
+class LoraArguments(LoraConfigMixin):
     """
     This is the configuration class to store the configuration of a [`~peft.Lora`].
 
     Args:
+        inference_mode (`bool`, defaults to `False`): Whether to use the Peft model in inference mode.
         r (`int`): Lora attention dimension
         target_modules (`Union[List[str],str]`): The names of the modules to apply Lora to.
         lora_alpha (`float`): The alpha parameter for Lora scaling.
@@ -131,7 +116,10 @@ class LoraConfig(PeftConfig):
         modules_to_save (`List[str]`):List of modules apart from LoRA layers to be set as trainable
             and saved in the final checkpoint.
     """
+    lora_model_name_or_path: str = field(default=None, metadata={"help": "The name of the base model to use."})
+    inference_mode: bool = field(default=False, metadata={"help": "Whether to use inference mode"})
 
+    with_lora: bool = field(default=False, metadata={"help": "whether use lora"})
     r: int = field(default=8, metadata={"help": "Lora attention dimension"})
     target_modules: Optional[Union[List[str], str]] = field(
         default=None,
@@ -160,4 +148,10 @@ class LoraConfig(PeftConfig):
         },
     )
 
-    def __post_init__(self): ...
+    def __post_init__(self):
+        if self.inference_mode:
+            self.merge_weights = True
+
+        if self.target_modules is not None and len(self.target_modules) == 1:
+            self.fan_in_fan_out = True
+            self.enable_lora = [True, False, True]
