@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/11/10 13:46
+
+import numpy as np
+
 __all__ = [
   'is_chinese_char'
 ]
 
-import numpy as np
+
 
 
 def is_chinese_char(cp):

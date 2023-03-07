@@ -4,8 +4,9 @@
 - 安装 pip installl -U deep_training
 
 ## 完整训练模型
-  -  [deep_training-examples](https://github.com/ssbuild/deep_training-example)
-  -  [poetry_training](https://github.com/ssbuild/poetry_training)
+  - [deep_training-pytorch-example](https://github.com/ssbuild/deep_training-pytorch-example)
+  - [deep_training-tf-example](https://github.com/ssbuild/deep_training-tf-example)
+  - [poetry_training](https://github.com/ssbuild/poetry_training)
 
 ## 更新
 - <strong>2023年03月02</strong>
