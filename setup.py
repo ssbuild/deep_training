@@ -17,6 +17,7 @@ setup(
                       'tfrecords >= 0.2.4 , <=3',
                       'sentencepiece',
                       'numpy',
-                      'transformers','seqmetric','sklearn','scipy','scikit-learn','tqdm','six'],
+                      'transformers >= 4.16',
+                      'seqmetric','sklearn','scipy','scikit-learn','tqdm','six'],
     packages=[p for p in find_packages() if p not in ignore]
 )
