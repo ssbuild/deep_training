@@ -117,7 +117,7 @@ class PrefixModelArguments:
 class TrainingArguments:
     optimizer: str = field(
         default='adamw',
-        metadata={"help": "one of [adamw,adam]"},
+        metadata={"help": "one of [adamw,adam,lamb,lion]"},
     )
     scheduler_type: str = field(
         default='linear',

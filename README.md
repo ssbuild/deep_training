@@ -8,6 +8,9 @@
   - [deep_training-tf-example](https://github.com/ssbuild/deep_training-tf-example)
   - [poetry_training](https://github.com/ssbuild/poetry_training)
 
+## 优化器
+  adamw,adam,lamb,lion
+
 ## 更新
 - <strong>2023年03月02</strong>
   - 增加loRA 训练 , lion,lamb优化器 , 完整训练参考 [chatyuan_finetuning](https://github.com/ssbuild/chatyuan_finetuning)
