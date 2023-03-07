@@ -10,18 +10,36 @@ from transformers import get_linear_schedule_with_warmup
 from ..scheduler import WarmupCosineSchedule
 from ...data_helper import TrainingArguments
 from ..optimizer.lion import Lion
+from ..optimizer.lamb import Lamb
 
 
 def configure_optimizers(named_parameter: typing.Union[typing.List,typing.Tuple],
                          training_args: TrainingArguments,
                          estimated_stepping_batches: int):
     optimizer_name = training_args.optimizer.lower()
-    if optimizer_name== 'adamw':
-        optimizer = AdamW(named_parameter, lr=training_args.learning_rate, eps=training_args.adam_epsilon)
+    if optimizer_name == 'adamw':
+        optimizer = AdamW(named_parameter, lr=training_args.learning_rate,
+                          eps=training_args.adam_epsilon,
+                          betas=training_args.optimizer_betas,
+                          weight_decay=training_args.weight_decay
+                          )
     elif optimizer_name == 'adam':
-        optimizer = Adam(named_parameter, training_args.learning_rate, eps=training_args.adam_epsilon)
+        optimizer = Adam(named_parameter, training_args.learning_rate,
+                         eps=training_args.adam_epsilon,
+                         betas=training_args.optimizer_betas,
+                         weight_decay=training_args.weight_decay
+                         )
+    elif optimizer_name == 'lamb':
+        optimizer = Lamb(named_parameter, training_args.learning_rate,
+                         eps=training_args.adam_epsilon,
+                         betas=training_args.optimizer_betas,
+                         weight_decay=training_args.weight_decay
+                         )
     elif optimizer_name == 'lion':
-        optimizer = Lion(named_parameter, training_args.learning_rate)
+        optimizer = Lion(named_parameter, training_args.learning_rate,
+                         betas=training_args.optimizer_betas,
+                         weight_decay=training_args.weight_decay
+                         )
     else:
         raise ValueError('optimizer must one of adamw,adam,lion')
 
@@ -43,8 +61,7 @@ def configure_optimizers(named_parameter: typing.Union[typing.List,typing.Tuple]
         T_0 = max(T_0,1)
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_0,
                                                          eta_min=eta_min,
-                                                         last_epoch=last_epoch,
-                                                         verbose=verbose)
+                                                         last_epoch=last_epoch,verbose=verbose)
     elif training_args.scheduler_type.lower() == 'CAWR'.lower():
         T_mult = training_args.scheduler["T_mult"]
         rewarm_epoch_num = training_args.scheduler["rewarm_epoch_num"]

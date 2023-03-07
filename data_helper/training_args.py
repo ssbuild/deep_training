@@ -174,6 +174,10 @@ class TrainingArguments:
         default=-1,
         metadata={"help": "max_steps"},
     )
+    optimizer_betas : tuple = field (
+        default=(0.9, 0.999),
+        metadata={"help": "优化器的betas值"},
+    )
     adam_epsilon: float = field(
         default=1e-8,
         metadata={"help": "Adam优化器的epsilon值"},
