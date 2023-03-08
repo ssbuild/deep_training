@@ -16,7 +16,7 @@
 
 ## 更新
 - <strong>2023年03月08</strong>
-  - 增加LLaMA 模型(非模型并行版) 完整训练参考 [chinese-poetry](https://github.com/ssbuild/chinese-poetry)
+  - 增加LLaMA 模型(非模型并行版) 完整训练参考 [chinese-poetry](https://github.com/ssbuild/poetry_training)
 - <strong>2023年03月02</strong>
   - 增加loRA 训练 , lion,lamb优化器 , 完整训练参考 [chatyuan_finetuning](https://github.com/ssbuild/chatyuan_finetuning)
 - <strong>2023年02月15</strong>
