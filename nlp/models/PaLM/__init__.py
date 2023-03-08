@@ -628,7 +628,6 @@ class PaLMLMHeadModel(PaLMPreTrainedModel):
 
         attention_mask = kwargs.get("attention_mask", None)
 
-
         return {
             "input_ids": input_ids,
             "past_key_values": past_key_values,
