@@ -163,7 +163,7 @@ class TrainingArguments:
         metadata={"help": "模型任务层训练时的学习率"},
     )
     learning_rate_for_task: float = field(
-        default=5e-5,
+        default=None,
         metadata={"help": "模型任务层训练时的学习率"},
     )
     max_epochs: int = field(
@@ -220,6 +220,9 @@ class TrainingArguments:
     )
 
     def __post_init__(self):
+        if self.learning_rate_for_task is None:
+            self.learning_rate_for_task = self.learning_rate
+
         seed_everything(self.seed)
 
         assert self.hierarchical_position is None or (self.hierarchical_position >0 and self.hierarchical_position <1)

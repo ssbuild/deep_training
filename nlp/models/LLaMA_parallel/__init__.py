@@ -1,7 +1,10 @@
 # @Time    : 2023/3/8 0:04
 # @Author  : tk
 # @FileName: __init__.py
-
+import os
+import time
+import re
+from collections import OrderedDict
 from typing import Optional, Tuple, Union
 from torch.nn import CrossEntropyLoss
 from transformers import Conv1D, PreTrainedModel
@@ -11,13 +14,37 @@ import math
 import torch
 from torch import nn
 import torch.nn.functional as F
+import fairscale.nn.model_parallel.initialize as fs_init
+from fairscale.nn.model_parallel.layers import (
+    ParallelEmbedding,
+    RowParallelLinear,
+    ColumnParallelLinear,
+)
+
 from ..transformer import TransformerBase
 
 __all__ = [
     'LLaMAConfig',
     'TransformerLLaMAModel',
-    'TransformerLLaMALMHeadModel'
+    'setup_model_parallel',
 ]
+
+MODEL_LOCAL_RANK = -1
+MODEL_WORLD_SIZE = -1
+
+def setup_model_parallel() -> Tuple[int, int]:
+    global MODEL_LOCAL_RANK,MODEL_WORLD_SIZE
+    MODEL_LOCAL_RANK = int(os.environ.get("LOCAL_RANK", -1))
+    MODEL_WORLD_SIZE = int(os.environ.get("WORLD_SIZE", -1))
+
+    print('MODEL_WORLD_SIZE',MODEL_WORLD_SIZE,'MODEL_LOCAL_RANK',MODEL_LOCAL_RANK)
+
+    torch.distributed.init_process_group("nccl")
+    fs_init.initialize_model_parallel(MODEL_WORLD_SIZE)
+
+    return MODEL_LOCAL_RANK, MODEL_WORLD_SIZE
+
+
 
 
 class RMSNorm(torch.nn.Module):
@@ -51,9 +78,9 @@ def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
 
 
 def apply_rotary_emb(
-    xq: torch.Tensor,
-    xk: torch.Tensor,
-    freqs_cis: torch.Tensor,
+        xq: torch.Tensor,
+        xk: torch.Tensor,
+        freqs_cis: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
     xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
@@ -67,28 +94,36 @@ class Attention(nn.Module):
     def __init__(self, config: LLaMAConfig):
         super().__init__()
 
-        self.n_local_heads = config.n_head
+        self.n_local_heads = config.n_head // fs_init.get_model_parallel_world_size()
         self.head_dim = config.hidden_size // config.n_head
 
-        self.wq = nn.Linear(
+        self.wq = ColumnParallelLinear(
             config.hidden_size,
             config.n_head * self.head_dim,
             bias=False,
+            gather_output=False,
+            init_method=lambda x: x,
         )
-        self.wk = nn.Linear(
+        self.wk = ColumnParallelLinear(
             config.hidden_size,
             config.n_head * self.head_dim,
             bias=False,
+            gather_output=False,
+            init_method=lambda x: x,
         )
-        self.wv = nn.Linear(
+        self.wv = ColumnParallelLinear(
             config.hidden_size,
             config.n_head * self.head_dim,
             bias=False,
+            gather_output=False,
+            init_method=lambda x: x,
         )
-        self.wo = nn.Linear(
+        self.wo = RowParallelLinear(
             config.n_head * self.head_dim,
             config.hidden_size,
             bias=False,
+            input_is_parallel=True,
+            init_method=lambda x: x,
         )
         self.inference = config.inference
         if self.inference:
@@ -139,23 +174,23 @@ class Attention(nn.Module):
 
 class FeedForward(nn.Module):
     def __init__(
-        self,
-        dim: int,
-        hidden_dim: int,
-        multiple_of: int,
+            self,
+            dim: int,
+            hidden_dim: int,
+            multiple_of: int,
     ):
         super().__init__()
         hidden_dim = int(2 * hidden_dim / 3)
         hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
 
-        self.w1 = nn.Linear(
-            dim, hidden_dim, bias=False,
+        self.w1 = ColumnParallelLinear(
+            dim, hidden_dim, bias=False, gather_output=False, init_method=lambda x: x
         )
-        self.w2 = nn.Linear(
-            hidden_dim, dim, bias=False,
+        self.w2 = RowParallelLinear(
+            hidden_dim, dim, bias=False, input_is_parallel=True, init_method=lambda x: x
         )
-        self.w3 = nn.Linear(
-            dim, hidden_dim, bias=False,
+        self.w3 = ColumnParallelLinear(
+            dim, hidden_dim, bias=False, gather_output=False, init_method=lambda x: x
         )
 
     def forward(self, x):
@@ -180,7 +215,6 @@ class LLaMABlock(nn.Module):
         h = x + self.attention.forward(self.attention_norm(x), start_pos, freqs_cis, mask)
         out = h + self.feed_forward.forward(self.ffn_norm(h))
         return out
-
 
 
 class LLaMAPreTrainedModel(PreTrainedModel):
@@ -228,6 +262,92 @@ class LLaMAPreTrainedModel(PreTrainedModel):
         if isinstance(module, LLaMAModel):
             module.gradient_checkpointing = value
 
+    @classmethod
+    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], *model_args, **kwargs):
+
+        config = kwargs.pop("config", None)
+        state_dict = kwargs.pop("state_dict", None)
+        cache_dir = kwargs.pop("cache_dir", None)
+        from_tf = kwargs.pop("from_tf", False)
+        from_flax = kwargs.pop("from_flax", False)
+        ignore_mismatched_sizes = kwargs.pop("ignore_mismatched_sizes", False)
+        force_download = kwargs.pop("force_download", False)
+        resume_download = kwargs.pop("resume_download", False)
+        proxies = kwargs.pop("proxies", None)
+        output_loading_info = kwargs.pop("output_loading_info", False)
+        local_files_only = kwargs.pop("local_files_only", False)
+        use_auth_token = kwargs.pop("use_auth_token", None)
+        revision = kwargs.pop("revision", None)
+        mirror = kwargs.pop("mirror", None)
+        from_pipeline = kwargs.pop("_from_pipeline", None)
+        from_auto_class = kwargs.pop("_from_auto", False)
+        _fast_init = kwargs.pop("_fast_init", True)
+        torch_dtype = kwargs.pop("torch_dtype", None)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", None)
+        device_map = kwargs.pop("device_map", None)
+        max_memory = kwargs.pop("max_memory", None)
+        offload_folder = kwargs.pop("offload_folder", None)
+        offload_state_dict = kwargs.pop("offload_state_dict", False)
+
+        #
+        local_rank = MODEL_LOCAL_RANK
+        world_size = MODEL_WORLD_SIZE
+
+        if local_rank < 0:
+            local_rank = 0
+        
+        start_time = time.time()
+
+        if pretrained_model_name_or_path is not None:
+            def filter_ckpt(checkpoint,n_layer):
+                checkpoint_new = OrderedDict()
+                patten = r'\.layers\.(\d+)\.'
+                name: str
+                for name in checkpoint:
+                    w = checkpoint[name]
+                    # print(name,w.size())
+                    bk = name
+                    name = name.replace('embed_tokens','tok_embeddings')
+                    if name.startswith('model.decoder.'):
+                        name = name.replace('model.decoder.','transformer.')
+                    result = re.search(patten, name)
+                    layer = -1
+                    if result:
+                        layer = int(result.groups(1)[0])
+                    if layer < n_layer:
+                        checkpoint_new[name] = w
+
+                return checkpoint_new
+
+            checkpoints = sorted(pretrained_model_name_or_path.split(','))
+            assert world_size == len(
+                checkpoints
+            ), f"Loading a checkpoint for MP={len(checkpoints)} but world size is {world_size}"
+            ckpt_path = checkpoints[local_rank]
+
+            print("Loading")
+            checkpoint = torch.load(ckpt_path, map_location="cpu")
+            config: LLaMAConfig
+            checkpoint = filter_ckpt(checkpoint, config.n_layer)
+
+            if config.inference:
+                torch.set_default_tensor_type(torch.cuda.HalfTensor)
+                model = LLaMAModel(config)
+                torch.set_default_tensor_type(torch.FloatTensor)
+            else:
+                model = LLaMAModel(config)
+            model.load_state_dict(checkpoint, strict=False)
+
+            # for k in model.named_parameters():
+            #     print(k[0],k[1].size())
+        else:
+            model = LLaMAModel(config)
+
+        print(f"Loaded in {time.time() - start_time:.2f} seconds")
+        return model
+
+
+
 class LLaMAModel(LLaMAPreTrainedModel):
     def __init__(self, config: LLaMAConfig):
         super().__init__(config)
@@ -235,23 +355,26 @@ class LLaMAModel(LLaMAPreTrainedModel):
         self.vocab_size = config.vocab_size
         self.n_layer = config.n_layer
 
-        self.tok_embeddings = nn.Embedding(
-            config.vocab_size, config.hidden_size,
+        self.tok_embeddings = ParallelEmbedding(
+            config.vocab_size, config.hidden_size,init_method=lambda x: x
         )
+
+
 
         self.layers = torch.nn.ModuleList()
         for layer_id in range(config.n_layer):
             self.layers.append(LLaMABlock(layer_id, config))
 
         self.norm = RMSNorm(config.hidden_size, eps=config.layer_norm_epsilon)
-        # self.output = nn.Linear(
-        #     config.hidden_size, config.vocab_size, bias=False,
-        # )
+
+        self.output = ColumnParallelLinear(
+            config.n_embd, config.vocab_size, bias=False, init_method=lambda x: x
+        )
 
         self.freqs_cis = precompute_freqs_cis(
             self.config.hidden_size // self.config.n_head, self.config.max_seq_len * 2
         )
-        
+
         self.post_init()
 
     def get_input_embeddings(self):
@@ -260,42 +383,12 @@ class LLaMAModel(LLaMAPreTrainedModel):
     def set_input_embeddings(self, value):
         self.tok_embeddings = value
 
-    def forward(self, input_ids: torch.Tensor, start_pos: int=0):
-        _bsz, seqlen = input_ids.shape
-        h = self.tok_embeddings(input_ids)
-        self.freqs_cis = self.freqs_cis.to(h.device)
-        freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
-
-        mask = None
-        if seqlen > 1:
-            mask = torch.full((1, 1, seqlen, seqlen), float("-inf"), device=input_ids.device)
-            mask = torch.triu(mask, diagonal=start_pos + 1).type_as(h)
-
-        for layer in self.layers:
-            h = layer(h, start_pos, freqs_cis, mask)
-        h = self.norm(h)
-        # output = self.output(h[:, -1, :])  # only compute last logits
-        return h
-
-
-class LLaMALMHeadModel(LLaMAPreTrainedModel):
-    _keys_to_ignore_on_load_missing = [r"attn.masked_bias", r"attn.bias", r"lm_head.weight"]
-
-    def __init__(self, config):
-        super(LLaMALMHeadModel, self).__init__(config)
-        self.transformer = LLaMAModel(config)
-        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-
-        self.model_parallel = False
-        self.device_map = None
-        # Initialize weights and apply final processing
-        self.post_init()
 
     def get_output_embeddings(self):
-        return self.lm_head
+        return self.output
 
     def set_output_embeddings(self, new_embeddings):
-        self.lm_head = new_embeddings
+        self.output = new_embeddings
 
     def prepare_inputs_for_generation(self, input_ids, past_key_values=None, **kwargs):
         # only last token for inputs_ids if past is defined in kwargs
@@ -307,31 +400,23 @@ class LLaMALMHeadModel(LLaMAPreTrainedModel):
             "use_cache": kwargs.get("use_cache"),
         }
 
+    def forward(self, input_ids: torch.Tensor,labels : torch.Tensor = None, start_pos: int = 0):
+        _bsz, seqlen = input_ids.shape
+        h = self.tok_embeddings(input_ids)
+        self.freqs_cis = self.freqs_cis.to(h.device)
+        freqs_cis = self.freqs_cis[start_pos: start_pos + seqlen]
 
-    def forward(
-        self,
-        input_ids: Optional[torch.LongTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        start_pos: int = 0,
-    ) -> Union[Tuple, CausalLMOutputWithCrossAttentions]:
-        r"""
-        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
-            Labels for language modeling. Note that the labels **are shifted** inside the model, i.e. you can set
-            `labels = input_ids` Indices are selected in `[-100, 0, ..., config.vocab_size]` All labels set to `-100`
-            are ignored (masked), the loss is only computed for labels in `[0, ..., config.vocab_size]`
-        """
+        mask = None
+        if seqlen > 1:
+            mask = torch.full((1, 1, seqlen, seqlen), float("-inf"), device=input_ids.device)
+            mask = torch.triu(mask, diagonal=start_pos + 1).type_as(h)
 
-        transformer_outputs = self.transformer(
-            input_ids,start_pos=start_pos
-        )
-        hidden_states = transformer_outputs
+        for layer in self.layers:
+            h = layer(h, start_pos, freqs_cis, mask)
+        h = self.norm(h)
+        lm_logits = self.output(h[:, -1, :])  # only compute last logits
 
-        # Set device for model parallelism
-        if self.model_parallel:
-            torch.cuda.set_device(self.transformer.first_device)
-            hidden_states = hidden_states.to(self.lm_head.weight.device)
-
-        lm_logits = self.lm_head(hidden_states)
+        # lm_logits = self.lm_head(hidden_states[:, -1])
 
         loss = None
         if labels is not None:
@@ -345,12 +430,12 @@ class LLaMALMHeadModel(LLaMAPreTrainedModel):
         output = (lm_logits,)
         return ((loss,) + output) if loss is not None else output
 
+
+
+
+
 class TransformerLLaMAModel(TransformerBase):
-    def __init__(self, *args,**kwargs):
-        super(TransformerLLaMAModel, self).__init__(*args,**kwargs)
+    def __init__(self, *args, **kwargs):
+        super(TransformerLLaMAModel, self).__init__(*args, **kwargs)
         self.set_model(self.from_pretrained(LLaMAModel, *args, **kwargs))
 
-class TransformerLLaMALMHeadModel(TransformerBase):
-    def __init__(self, *args,**kwargs):
-        super(TransformerLLaMALMHeadModel, self).__init__(*args,**kwargs)
-        self.set_model(self.from_pretrained(LLaMALMHeadModel, *args, **kwargs))
