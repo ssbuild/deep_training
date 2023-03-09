@@ -60,6 +60,9 @@ def extract_gec_from_labels(outputs):
             #replace
             elif action == 3:
                 pass
+            # 填充
+            elif action == -100:
+                pass
             else:
                 raise ValueError('invalid action',action)
             ops.append((action, ids, probs))
