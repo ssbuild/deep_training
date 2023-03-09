@@ -72,7 +72,7 @@ class TransformerForGec(TransformerModel):
         config = self.config
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier1 = nn.Linear(config.hidden_size, 4)
-        self.classifier2 = nn.Linear(config.hidden_size, config.num_labels)
+        self.classifier2 = nn.Linear(config.hidden_size, config.num_labels,bias=False)
         self.loss_fn = nn.CrossEntropyLoss()
 
 
@@ -98,8 +98,9 @@ class TransformerForGec(TransformerModel):
         seqlens = torch.sum(attention_mask,dim=-1)
         if labels_action is not None:
             loss_action = self.loss_fn(logits1.view(-1,4),labels_action.view(-1))
-            loss_probs = self.loss_fn(logits1.view(-1, self.config.num_labels),labels_probs.view(-1))
+            loss_probs = self.loss_fn(logits2.view(-1, self.config.num_labels),labels_probs.view(-1))
             loss = {
+                'loss' : (loss_action + loss_probs) / 2,
                 'loss_action': loss_action,
                 'loss_probs': loss_probs
             }
