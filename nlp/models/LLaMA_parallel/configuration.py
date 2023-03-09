@@ -72,7 +72,6 @@ class LLaMAConfig(PretrainedConfig):
             n_layer=12,
             n_head=12,
             n_inner=None,
-            activation_function="gelu_new",
             resid_pdrop=0.1,
             embd_pdrop=0.1,
             attn_pdrop=0.1,
@@ -107,10 +106,7 @@ class LLaMAConfig(PretrainedConfig):
         self.bos_token_id = bos_token_id
         self.eos_token_id = eos_token_id
 
-        self.activation_function = activation_function
 
-        if activation_function in ['geglu', 'gated-gelu', 'gelu_new']:
-            self.activation_function = 'gelu_new'
 
         self.max_seq_len = max_seq_len
         self.inference = inference

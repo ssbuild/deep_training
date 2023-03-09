@@ -26,11 +26,62 @@ from ..transformer import TransformerBase
 __all__ = [
     'LLaMAConfig',
     'TransformerLLaMAModel',
+    'TransformerLLaMALMHeadModel',
     'setup_model_parallel',
 ]
 
 MODEL_LOCAL_RANK = -1
 MODEL_WORLD_SIZE = -1
+
+
+def load_pretrain_checkpoint(pretrained_model_name_or_path,config):
+    global MODEL_LOCAL_RANK,MODEL_WORLD_SIZE
+    local_rank = MODEL_LOCAL_RANK
+    world_size = MODEL_WORLD_SIZE
+    if local_rank < 0:
+        local_rank = 0
+    start_time = time.time()
+
+    def filter_checkpoint(checkpoint, n_layer):
+        checkpoint_ = OrderedDict()
+        patten = r'\.layers\.(\d+)\.'
+        name: str
+        for name in checkpoint:
+            w = checkpoint[name]
+            name = name.replace('embed_tokens', 'tok_embeddings')
+            if name.startswith('model.decoder.'):
+                name = name.replace('model.decoder.', 'transformer.')
+            result = re.search(patten, name)
+            layer = -1
+            if result:
+                layer = int(result.groups(1)[0])
+            if layer < n_layer:
+                checkpoint_[name] = w
+        return checkpoint_
+
+    if pretrained_model_name_or_path is not None:
+        checkpoints = sorted(pretrained_model_name_or_path.split(','))
+        assert world_size == len(
+            checkpoints
+        ), f"Loading a checkpoint for MP={len(checkpoints)} but world size is {world_size}"
+        ckpt_path = checkpoints[local_rank]
+
+        print("Loading")
+        checkpoint = torch.load(ckpt_path, map_location="cpu")
+        config: LLaMAConfig
+        checkpoint = filter_checkpoint(checkpoint, config.n_layer)
+
+        if config.inference:
+            torch.set_default_tensor_type(torch.cuda.HalfTensor)
+            model = LLaMALMHeadModel(config)
+            torch.set_default_tensor_type(torch.FloatTensor)
+        else:
+            model = LLaMALMHeadModel(config)
+        model.load_state_dict(checkpoint, strict=False)
+    else:
+        model = LLaMALMHeadModel(config)
+    print(f"Loaded in {time.time() - start_time:.2f} seconds")
+    return model
 
 def setup_model_parallel() -> Tuple[int, int]:
     global MODEL_LOCAL_RANK,MODEL_WORLD_SIZE
@@ -38,7 +89,6 @@ def setup_model_parallel() -> Tuple[int, int]:
     MODEL_WORLD_SIZE = int(os.environ.get("WORLD_SIZE", -1))
 
     print('MODEL_WORLD_SIZE',MODEL_WORLD_SIZE,'MODEL_LOCAL_RANK',MODEL_LOCAL_RANK)
-
     torch.distributed.init_process_group("nccl")
     fs_init.initialize_model_parallel(MODEL_WORLD_SIZE)
 
@@ -259,7 +309,7 @@ class LLaMAPreTrainedModel(PreTrainedModel):
                 p.data.normal_(mean=0.0, std=(self.config.initializer_range / math.sqrt(2 * self.config.n_layer)))
 
     def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, LLaMAModel):
+        if isinstance(module, LLaMALMHeadModel):
             module.gradient_checkpointing = value
 
     @classmethod
@@ -289,61 +339,7 @@ class LLaMAPreTrainedModel(PreTrainedModel):
         offload_folder = kwargs.pop("offload_folder", None)
         offload_state_dict = kwargs.pop("offload_state_dict", False)
 
-        #
-        local_rank = MODEL_LOCAL_RANK
-        world_size = MODEL_WORLD_SIZE
-
-        if local_rank < 0:
-            local_rank = 0
-        
-        start_time = time.time()
-
-        if pretrained_model_name_or_path is not None:
-            def filter_ckpt(checkpoint,n_layer):
-                checkpoint_new = OrderedDict()
-                patten = r'\.layers\.(\d+)\.'
-                name: str
-                for name in checkpoint:
-                    w = checkpoint[name]
-                    # print(name,w.size())
-                    bk = name
-                    name = name.replace('embed_tokens','tok_embeddings')
-                    if name.startswith('model.decoder.'):
-                        name = name.replace('model.decoder.','transformer.')
-                    result = re.search(patten, name)
-                    layer = -1
-                    if result:
-                        layer = int(result.groups(1)[0])
-                    if layer < n_layer:
-                        checkpoint_new[name] = w
-
-                return checkpoint_new
-
-            checkpoints = sorted(pretrained_model_name_or_path.split(','))
-            assert world_size == len(
-                checkpoints
-            ), f"Loading a checkpoint for MP={len(checkpoints)} but world size is {world_size}"
-            ckpt_path = checkpoints[local_rank]
-
-            print("Loading")
-            checkpoint = torch.load(ckpt_path, map_location="cpu")
-            config: LLaMAConfig
-            checkpoint = filter_ckpt(checkpoint, config.n_layer)
-
-            if config.inference:
-                torch.set_default_tensor_type(torch.cuda.HalfTensor)
-                model = LLaMAModel(config)
-                torch.set_default_tensor_type(torch.FloatTensor)
-            else:
-                model = LLaMAModel(config)
-            model.load_state_dict(checkpoint, strict=False)
-
-            # for k in model.named_parameters():
-            #     print(k[0],k[1].size())
-        else:
-            model = LLaMAModel(config)
-
-        print(f"Loaded in {time.time() - start_time:.2f} seconds")
+        model = load_pretrain_checkpoint(pretrained_model_name_or_path,config)
         return model
 
 
@@ -359,20 +355,20 @@ class LLaMAModel(LLaMAPreTrainedModel):
             config.vocab_size, config.hidden_size,init_method=lambda x: x
         )
 
-
-
         self.layers = torch.nn.ModuleList()
         for layer_id in range(config.n_layer):
             self.layers.append(LLaMABlock(layer_id, config))
 
         self.norm = RMSNorm(config.hidden_size, eps=config.layer_norm_epsilon)
 
-        self.output = ColumnParallelLinear(
-            config.n_embd, config.vocab_size, bias=False, init_method=lambda x: x
-        )
+
 
         self.freqs_cis = precompute_freqs_cis(
             self.config.hidden_size // self.config.n_head, self.config.max_seq_len * 2
+        )
+
+        self.lm_head = ColumnParallelLinear(
+            config.n_embd, config.vocab_size, bias=False, init_method=lambda x: x
         )
 
         self.post_init()
@@ -383,12 +379,6 @@ class LLaMAModel(LLaMAPreTrainedModel):
     def set_input_embeddings(self, value):
         self.tok_embeddings = value
 
-
-    def get_output_embeddings(self):
-        return self.output
-
-    def set_output_embeddings(self, new_embeddings):
-        self.output = new_embeddings
 
     def prepare_inputs_for_generation(self, input_ids, past_key_values=None, **kwargs):
         # only last token for inputs_ids if past is defined in kwargs
@@ -414,12 +404,71 @@ class LLaMAModel(LLaMAPreTrainedModel):
         for layer in self.layers:
             h = layer(h, start_pos, freqs_cis, mask)
         h = self.norm(h)
-        lm_logits = self.output(h[:, -1, :])  # only compute last logits
 
-        # lm_logits = self.lm_head(hidden_states[:, -1])
+        if self.config.inference:
+            h = self.lm_head(h[:,-1])
+        else:
+            h = self.lm_head(h)
+        return (h,)
 
+
+
+
+class LLaMALMHeadModel(LLaMAPreTrainedModel):
+    _keys_to_ignore_on_load_missing = [r"attn.masked_bias", r"attn.bias", r"lm_head.weight"]
+
+    def __init__(self, config):
+        super(LLaMALMHeadModel, self).__init__(config)
+        self.transformer = LLaMAModel(config)
+
+        self.model_parallel = False
+        self.device_map = None
+        # Initialize weights and apply final processing
+        self.post_init()
+
+    # def get_output_embeddings(self):
+    #     return self.lm_head
+    #
+    # def set_output_embeddings(self, new_embeddings):
+    #     self.lm_head = new_embeddings
+
+    def prepare_inputs_for_generation(self, input_ids, past_key_values=None, **kwargs):
+        # only last token for inputs_ids if past is defined in kwargs
+        if past_key_values:
+            input_ids = input_ids[:, -1].unsqueeze(-1)
+        return {
+            "input_ids": input_ids,
+            "past_key_values": past_key_values,
+            "use_cache": kwargs.get("use_cache"),
+        }
+
+
+    def forward(
+        self,
+        input_ids: Optional[torch.LongTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        start_pos: int = 0,
+    ) -> Union[Tuple, CausalLMOutputWithCrossAttentions]:
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Labels for language modeling. Note that the labels **are shifted** inside the model, i.e. you can set
+            `labels = input_ids` Indices are selected in `[-100, 0, ..., config.vocab_size]` All labels set to `-100`
+            are ignored (masked), the loss is only computed for labels in `[0, ..., config.vocab_size]`
+        """
+
+        transformer_outputs = self.transformer(
+            input_ids,start_pos=start_pos
+        )
+        hidden_states = transformer_outputs[0]
+
+        # Set device for model parallelism
+        if self.model_parallel:
+            torch.cuda.set_device(self.transformer.first_device)
+            hidden_states = hidden_states.to(self.lm_head.weight.device)
+        lm_logits = hidden_states
         loss = None
         if labels is not None:
+
             # Shift so that tokens < n predict n
             shift_logits = lm_logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
@@ -430,12 +479,13 @@ class LLaMAModel(LLaMAPreTrainedModel):
         output = (lm_logits,)
         return ((loss,) + output) if loss is not None else output
 
-
-
-
-
 class TransformerLLaMAModel(TransformerBase):
-    def __init__(self, *args, **kwargs):
-        super(TransformerLLaMAModel, self).__init__(*args, **kwargs)
+    def __init__(self, *args,**kwargs):
+        super(TransformerLLaMAModel, self).__init__(*args,**kwargs)
         self.set_model(self.from_pretrained(LLaMAModel, *args, **kwargs))
+
+class TransformerLLaMALMHeadModel(TransformerBase):
+    def __init__(self, *args,**kwargs):
+        super(TransformerLLaMALMHeadModel, self).__init__(*args,**kwargs)
+        self.set_model(self.from_pretrained(LLaMALMHeadModel, *args, **kwargs))
 
