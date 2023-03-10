@@ -1,7 +1,8 @@
 # @Time    : 2023/3/8 0:04
 # @Author  : tk
 # @FileName: __init__.py
-
+import os
+import time
 from typing import Optional, Tuple, Union
 from torch.nn import CrossEntropyLoss
 from transformers import Conv1D, PreTrainedModel
@@ -18,6 +19,40 @@ __all__ = [
     'TransformerLLaMAModel',
     'TransformerLLaMALMHeadModel'
 ]
+
+MODEL_LOCAL_RANK = 0
+MODEL_WORLD_SIZE = 1
+
+def load_pretrain_checkpoint(pretrained_model_name_or_path,config):
+    global MODEL_LOCAL_RANK,MODEL_WORLD_SIZE
+    local_rank = MODEL_LOCAL_RANK
+    world_size = MODEL_WORLD_SIZE
+    if local_rank < 0:
+        local_rank = 0
+    start_time = time.time()
+
+    if pretrained_model_name_or_path is not None:
+        checkpoints = sorted(pretrained_model_name_or_path.split(','))
+        assert world_size == len(
+            checkpoints
+        ), f"Loading a checkpoint for MP={len(checkpoints)} but world size is {world_size}"
+        ckpt_path = checkpoints[local_rank]
+
+        print("Loading")
+        checkpoint = torch.load(ckpt_path, map_location="cpu")
+        # third_flag = any([n.find('model.decoder.')!= -1 for n in checkpoint ])
+        config: LLaMAConfig
+        if config.inference:
+            torch.set_default_tensor_type(torch.cuda.HalfTensor)
+            model = LLaMALMHeadModel(config)
+            torch.set_default_tensor_type(torch.FloatTensor)
+        else:
+            model = LLaMALMHeadModel(config)
+        model.transformer.load_state_dict(checkpoint, strict=False)
+    else:
+        model = LLaMALMHeadModel(config)
+    print(f"Loaded in {time.time() - start_time:.2f} seconds")
+    return model
 
 
 class RMSNorm(torch.nn.Module):
@@ -228,6 +263,36 @@ class LLaMAPreTrainedModel(PreTrainedModel):
         if isinstance(module, LLaMAModel):
             module.gradient_checkpointing = value
 
+    @classmethod
+    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], *model_args, **kwargs):
+
+        config = kwargs.pop("config", None)
+        state_dict = kwargs.pop("state_dict", None)
+        cache_dir = kwargs.pop("cache_dir", None)
+        from_tf = kwargs.pop("from_tf", False)
+        from_flax = kwargs.pop("from_flax", False)
+        ignore_mismatched_sizes = kwargs.pop("ignore_mismatched_sizes", False)
+        force_download = kwargs.pop("force_download", False)
+        resume_download = kwargs.pop("resume_download", False)
+        proxies = kwargs.pop("proxies", None)
+        output_loading_info = kwargs.pop("output_loading_info", False)
+        local_files_only = kwargs.pop("local_files_only", False)
+        use_auth_token = kwargs.pop("use_auth_token", None)
+        revision = kwargs.pop("revision", None)
+        mirror = kwargs.pop("mirror", None)
+        from_pipeline = kwargs.pop("_from_pipeline", None)
+        from_auto_class = kwargs.pop("_from_auto", False)
+        _fast_init = kwargs.pop("_fast_init", True)
+        torch_dtype = kwargs.pop("torch_dtype", None)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", None)
+        device_map = kwargs.pop("device_map", None)
+        max_memory = kwargs.pop("max_memory", None)
+        offload_folder = kwargs.pop("offload_folder", None)
+        offload_state_dict = kwargs.pop("offload_state_dict", False)
+
+        model = load_pretrain_checkpoint(pretrained_model_name_or_path, config)
+        return model
+
 class LLaMAModel(LLaMAPreTrainedModel):
     def __init__(self, config: LLaMAConfig):
         super().__init__(config)
@@ -244,9 +309,9 @@ class LLaMAModel(LLaMAPreTrainedModel):
             self.layers.append(LLaMABlock(layer_id, config))
 
         self.norm = RMSNorm(config.hidden_size, eps=config.layer_norm_epsilon)
-        # self.output = nn.Linear(
-        #     config.hidden_size, config.vocab_size, bias=False,
-        # )
+        self.output = nn.Linear(
+            config.hidden_size, config.vocab_size, bias=False,
+        )
 
         self.freqs_cis = precompute_freqs_cis(
             self.config.hidden_size // self.config.n_head, self.config.max_seq_len * 2
@@ -274,8 +339,12 @@ class LLaMAModel(LLaMAPreTrainedModel):
         for layer in self.layers:
             h = layer(h, start_pos, freqs_cis, mask)
         h = self.norm(h)
-        # output = self.output(h[:, -1, :])  # only compute last logits
-        return h
+
+        if self.config.inference:
+            h = self.output(h[:, -1]).float()
+        else:
+            h = self.output(h)
+        return (h,)
 
 
 class LLaMALMHeadModel(LLaMAPreTrainedModel):
@@ -284,18 +353,17 @@ class LLaMALMHeadModel(LLaMAPreTrainedModel):
     def __init__(self, config):
         super(LLaMALMHeadModel, self).__init__(config)
         self.transformer = LLaMAModel(config)
-        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
         self.model_parallel = False
         self.device_map = None
         # Initialize weights and apply final processing
         self.post_init()
 
-    def get_output_embeddings(self):
-        return self.lm_head
-
-    def set_output_embeddings(self, new_embeddings):
-        self.lm_head = new_embeddings
+    # def get_output_embeddings(self):
+    #     return self.lm_head
+    #
+    # def set_output_embeddings(self, new_embeddings):
+    #     self.lm_head = new_embeddings
 
     def prepare_inputs_for_generation(self, input_ids, past_key_values=None, **kwargs):
         # only last token for inputs_ids if past is defined in kwargs

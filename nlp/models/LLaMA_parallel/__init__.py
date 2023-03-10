@@ -34,6 +34,28 @@ MODEL_LOCAL_RANK = -1
 MODEL_WORLD_SIZE = -1
 
 
+# def filter_checkpoint(checkpoint, n_layer, third_flag):
+#     checkpoint_ = OrderedDict()
+#     patten = r'layers\.(\d+)\.'
+#     name: str
+#     for name in checkpoint:
+#         bk = name
+#         w = checkpoint[name]
+#         if third_flag:
+#             name = name.replace('embed_tokens', 'tok_embeddings')
+#             if name.startswith('model.decoder.'):
+#                 name = name.replace('model.decoder.', 'transformer.')
+#         else:
+#             if name == 'output.weight':
+#                 name = 'lm_head.weight'
+#         result = re.search(patten, name)
+#         layer = -1
+#         if result:
+#             layer = int(result.groups(1)[0])
+#         if layer < n_layer:
+#             checkpoint_[name] = w
+#     return checkpoint_
+
 def load_pretrain_checkpoint(pretrained_model_name_or_path,config):
     global MODEL_LOCAL_RANK,MODEL_WORLD_SIZE
     local_rank = MODEL_LOCAL_RANK
@@ -41,36 +63,6 @@ def load_pretrain_checkpoint(pretrained_model_name_or_path,config):
     if local_rank < 0:
         local_rank = 0
     start_time = time.time()
-
-    def filter_checkpoint(checkpoint, n_layer):
-        checkpoint_ = OrderedDict()
-        patten = r'\.layers\.(\d+)\.'
-        name: str
-        flag = False
-        for name in checkpoint:
-            print(name)
-            w = checkpoint[name]
-            name = name.replace('embed_tokens', 'tok_embeddings')
-            if name.startswith('model.decoder.'):
-                flag = True
-                name = name.replace('model.decoder.', 'transformer.')
-
-            if name == ' output.weight':
-                name = ''
-            if name == 'norm.weight':
-
-
-
-
-            result = re.search(patten, name)
-            layer = -1
-            if result:
-                layer = int(result.groups(1)[0])
-            if layer < n_layer:
-                checkpoint_[name] = w
-        if not flag:
-
-        return checkpoint_
 
     if pretrained_model_name_or_path is not None:
         checkpoints = sorted(pretrained_model_name_or_path.split(','))
@@ -81,30 +73,30 @@ def load_pretrain_checkpoint(pretrained_model_name_or_path,config):
 
         print("Loading")
         checkpoint = torch.load(ckpt_path, map_location="cpu")
+        # third_flag = any([n.find('model.decoder.')!= -1 for n in checkpoint ])
         config: LLaMAConfig
-        checkpoint = filter_checkpoint(checkpoint, config.n_layer)
-
         if config.inference:
             torch.set_default_tensor_type(torch.cuda.HalfTensor)
             model = LLaMALMHeadModel(config)
             torch.set_default_tensor_type(torch.FloatTensor)
         else:
             model = LLaMALMHeadModel(config)
-        model.load_state_dict(checkpoint, strict=False)
+        model.transformer.load_state_dict(checkpoint, strict=False)
     else:
         model = LLaMALMHeadModel(config)
     print(f"Loaded in {time.time() - start_time:.2f} seconds")
     return model
 
-def setup_model_parallel() -> Tuple[int, int]:
+def setup_model_parallel(model_parallel_size=-1) -> Tuple[int, int]:
     global MODEL_LOCAL_RANK,MODEL_WORLD_SIZE
     MODEL_LOCAL_RANK = int(os.environ.get("LOCAL_RANK", -1))
     MODEL_WORLD_SIZE = int(os.environ.get("WORLD_SIZE", -1))
+    if model_parallel_size != -1:
+        MODEL_WORLD_SIZE = model_parallel_size
 
     print('MODEL_WORLD_SIZE',MODEL_WORLD_SIZE,'MODEL_LOCAL_RANK',MODEL_LOCAL_RANK)
     torch.distributed.init_process_group("nccl")
     fs_init.initialize_model_parallel(MODEL_WORLD_SIZE)
-
     return MODEL_LOCAL_RANK, MODEL_WORLD_SIZE
 
 
@@ -374,15 +366,14 @@ class LLaMAModel(LLaMAPreTrainedModel):
 
         self.norm = RMSNorm(config.hidden_size, eps=config.layer_norm_epsilon)
 
-
+        self.output = ColumnParallelLinear(
+            config.n_embd, config.vocab_size, bias=False, init_method=lambda x: x
+        )
 
         self.freqs_cis = precompute_freqs_cis(
             self.config.hidden_size // self.config.n_head, self.config.max_seq_len * 2
         )
 
-        self.lm_head = ColumnParallelLinear(
-            config.n_embd, config.vocab_size, bias=False, init_method=lambda x: x
-        )
 
         self.post_init()
 
@@ -419,9 +410,9 @@ class LLaMAModel(LLaMAPreTrainedModel):
         h = self.norm(h)
 
         if self.config.inference:
-            h = self.lm_head(h[:,-1])
+            h = self.output(h[:,-1]).float()
         else:
-            h = self.lm_head(h)
+            h = self.output(h)
         return (h,)
 
 
