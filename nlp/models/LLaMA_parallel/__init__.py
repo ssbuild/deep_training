@@ -46,17 +46,30 @@ def load_pretrain_checkpoint(pretrained_model_name_or_path,config):
         checkpoint_ = OrderedDict()
         patten = r'\.layers\.(\d+)\.'
         name: str
+        flag = False
         for name in checkpoint:
+            print(name)
             w = checkpoint[name]
             name = name.replace('embed_tokens', 'tok_embeddings')
             if name.startswith('model.decoder.'):
+                flag = True
                 name = name.replace('model.decoder.', 'transformer.')
+
+            if name == ' output.weight':
+                name = ''
+            if name == 'norm.weight':
+
+
+
+
             result = re.search(patten, name)
             layer = -1
             if result:
                 layer = int(result.groups(1)[0])
             if layer < n_layer:
                 checkpoint_[name] = w
+        if not flag:
+
         return checkpoint_
 
     if pretrained_model_name_or_path is not None:
@@ -390,7 +403,7 @@ class LLaMAModel(LLaMAPreTrainedModel):
             "use_cache": kwargs.get("use_cache"),
         }
 
-    def forward(self, input_ids: torch.Tensor,labels : torch.Tensor = None, start_pos: int = 0):
+    def forward(self, input_ids: torch.Tensor, start_pos: int = 0):
         _bsz, seqlen = input_ids.shape
         h = self.tok_embeddings(input_ids)
         self.freqs_cis = self.freqs_cis.to(h.device)
