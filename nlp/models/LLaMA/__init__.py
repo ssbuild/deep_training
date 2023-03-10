@@ -399,8 +399,7 @@ class LLaMALMHeadModel(LLaMAPreTrainedModel):
             torch.cuda.set_device(self.transformer.first_device)
             hidden_states = hidden_states.to(self.lm_head.weight.device)
 
-        lm_logits = self.lm_head(hidden_states)
-
+        lm_logits = hidden_states
         loss = None
         if labels is not None:
             # Shift so that tokens < n predict n
