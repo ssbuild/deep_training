@@ -12,6 +12,7 @@ from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 from .configuration import PaLMConfig, logger
 from ..transformer import TransformerBase
+from ...layers.activate import SwiGLU
 
 
 class RotaryEmbedding(nn.Module):
@@ -259,6 +260,23 @@ class PaLMDenseGatedActDense(nn.Module):
         hidden_states = self.wo(hidden_states)
         return hidden_states
 
+
+class PaLMDenseSwiGLUDense(nn.Module):
+    def __init__(self, config: PaLMConfig):
+        super().__init__()
+        hidden_size = config.hidden_size
+        intermediate_size = config.n_inner // 2 if config.n_inner is not None else 4 * hidden_size
+        self.net = nn.Sequential(
+            nn.Linear(hidden_size, intermediate_size * 2),
+            SwiGLU(),
+            nn.Dropout(config.resid_pdrop), # optional dropout
+            nn.Linear(intermediate_size, hidden_size)
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
 class PaLM_Block(nn.Module):
     def __init__(self, config, has_relative_attention_bias,layer_idx=None):
         super().__init__()
@@ -273,7 +291,9 @@ class PaLM_Block(nn.Module):
             self.crossattention = PaLM_Attention(config, is_cross_attention=True, layer_idx=layer_idx)
             self.ln_cross_attn = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
 
-        if config.activation_function in [ 'geglu'  ,'gated-gelu','gelu_new']:
+        if config.activation_function == 'swiglu':
+            self.mlp = PaLMDenseSwiGLUDense(config)
+        elif config.activation_function in [ 'geglu'  ,'gated-gelu','gelu_new']:
             self.mlp = PaLMDenseGatedActDense(config)
         else:
             self.mlp = PaLMDenseActDense(config)

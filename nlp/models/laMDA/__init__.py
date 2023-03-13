@@ -14,6 +14,9 @@ from ..transformer import TransformerBase
 
 
 # T5 relative positional bias
+from ...layers.activate import SwiGLU
+
+
 class T5RelativePositionBias(nn.Module):
     def __init__(
         self,
@@ -291,6 +294,21 @@ class LamdaDenseGatedActDense(nn.Module):
         hidden_states = self.wo(hidden_states)
         return hidden_states
 
+class LamdaDenseSwiGLUDense(nn.Module):
+    def __init__(self, config: LaMDAConfig):
+        super().__init__()
+        hidden_size = config.hidden_size
+        intermediate_size = config.n_inner // 2 if config.n_inner is not None else 4 * hidden_size
+        self.net = nn.Sequential(
+            nn.Linear(hidden_size, intermediate_size * 2),
+            SwiGLU(),
+            nn.Dropout(config.resid_pdrop), # optional dropout
+            nn.Linear(intermediate_size, hidden_size)
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
 class LaMDA_Block(nn.Module):
     def __init__(self, config, has_relative_attention_bias,layer_idx=None):
         super().__init__()
@@ -305,7 +323,9 @@ class LaMDA_Block(nn.Module):
             self.crossattention = LaMDA_Attention(config, is_cross_attention=True, layer_idx=layer_idx)
             self.ln_cross_attn = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
 
-        if config.activation_function in [ 'geglu'  ,'gated-gelu','gelu_new']:
+        if config.activation_function == 'swiglu':
+            self.mlp = LamdaDenseSwiGLUDense(config)
+        elif config.activation_function in ['geglu', 'gated-gelu', 'gelu_new']:
             self.mlp = LamdaDenseGatedActDense(config)
         else:
             self.mlp = LamdaDenseActDense(config)
