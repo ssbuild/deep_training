@@ -10,8 +10,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import torch
 import torch.nn.functional as F
-from deep_training.nlp.metrics.pointer import metric_for_pointer
-from deep_training.nlp.models.transformer import TransformerModel
+from .transformer import TransformerModel
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence

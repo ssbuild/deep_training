@@ -3,7 +3,7 @@
 # @FileName: loss_mutiheadlinker.py
 
 import torch
-from deep_training.nlp.losses.loss_globalpointer import multilabel_categorical_crossentropy
+from .loss_globalpointer import multilabel_categorical_crossentropy
 from torch import nn
 
 class MutiheadlinkerLoss(nn.Module):

@@ -173,7 +173,8 @@ class DataHelper(DataPreprocessHelper):
                     with_task_params=True,
                     return_dict=False,
                     with_print_labels=True,
-                    with_print_config=True):
+                    with_print_config=True,
+                    **kwargs):
 
         model_args = self.model_args
         training_args = self.training_args
@@ -201,6 +202,8 @@ class DataHelper(DataPreprocessHelper):
             }
         else:
             kwargs_args = {}
+
+        kwargs_args.update(kwargs)
 
         if with_labels and self.label2id is not None:
             kwargs_args['label2id'] = self.label2id
@@ -237,7 +240,14 @@ class DataHelper(DataPreprocessHelper):
                                   with_task_params=True,
                                   return_dict=False,
                                   with_print_labels=True,
-                                  with_print_config=True):
+                                  with_print_config=True,
+                                  tokenizer_kwargs=None,
+                                  config_kwargs=None):
+
+        if config_kwargs is None:
+            config_kwargs =  {}
+        if tokenizer_kwargs is None:
+            tokenizer_kwargs = {}
 
         model_args: ModelArguments = self.model_args
         training_args: TrainingArguments = self.training_args
@@ -253,6 +263,7 @@ class DataHelper(DataPreprocessHelper):
                                    use_fast_tokenizer=model_args.use_fast_tokenizer,
                                    model_revision=model_args.model_revision,
                                    use_auth_token=model_args.use_auth_token,
+                                   **config_kwargs,
                                    )
         self.tokenizer = tokenizer
 
@@ -281,6 +292,8 @@ class DataHelper(DataPreprocessHelper):
             "return_dict": return_dict,
             "task_specific_params": task_specific_params,
         }
+        kwargs_args.update(tokenizer_kwargs)
+
 
         if with_labels and self.label2id is not None:
             kwargs_args['label2id'] = self.label2id
