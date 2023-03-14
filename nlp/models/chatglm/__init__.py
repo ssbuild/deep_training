@@ -4,34 +4,30 @@
 #reference https://github.com/THUDM/ChatGLM-6B
 
 import math
-import copy
 import os
+from typing import Optional, Tuple, Union, List
 
 import torch
-import torch.utils.checkpoint
 import torch.nn.functional as F
-from ..transformer import TransformerBase
+import torch.utils.checkpoint
 from torch import nn
 from torch.nn import CrossEntropyLoss, LayerNorm
 from torch.nn.utils import skip_init
-from typing import Optional, Tuple, Union, List
-
-from transformers.utils import (
-    add_code_sample_docstrings,
-    add_start_docstrings,
-    add_start_docstrings_to_model_forward,
-)
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     CausalLMOutputWithPast,
     BaseModelOutputWithPastAndCrossAttentions,
 )
 from transformers.modeling_utils import PreTrainedModel
-
+from transformers.utils import (
+    add_code_sample_docstrings,
+    add_start_docstrings,
+    add_start_docstrings_to_model_forward,
+)
 from transformers.utils import logging
+
 from .configuration import ChatGLMConfig
-
-
+from ..transformer import TransformerBase
 
 logger = logging.get_logger(__name__)
 
@@ -195,6 +191,8 @@ def rotate_half(x):
 @torch.jit.script
 def apply_rotary_pos_emb_index(q, k, cos, sin, position_id):
     # position_id: [sq, b], q, k: [sq, b, np, hn], cos: [sq, 1, hn] -> [sq, b, 1, hn]
+
+
     cos, sin = F.embedding(position_id, cos.squeeze(1)).unsqueeze(2), \
         F.embedding(position_id, sin.squeeze(1)).unsqueeze(2)
     q = (q * cos) + (rotate_half(q) * sin)
@@ -411,7 +409,6 @@ class SelfAttention(torch.nn.Module):
 
         # [seq_len, batch, num_attention_heads, hidden_size_per_attention_head]
         (query_layer, key_layer, value_layer) = self.split_tensor_along_last_dim(mixed_raw_layer, 3)
-
         if self.position_encoding_2d:
             q1, q2 = query_layer.chunk(2, dim=(query_layer.ndim - 1))
             k1, k2 = key_layer.chunk(2, dim=(key_layer.ndim - 1))
@@ -835,6 +832,7 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         else:
             raise ValueError("You have to specify either input_ids or inputs_embeds")
 
+
         if past_key_values is None:
             past_key_values = tuple([None] * len(self.layers))
 
@@ -863,7 +861,6 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
             inputs_embeds = self.word_embeddings(input_ids)
 
 
-        # [seq_len, batch, hidden_size]
         hidden_states = inputs_embeds.transpose(0, 1)
 
 
