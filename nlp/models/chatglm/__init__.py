@@ -1126,8 +1126,10 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
         )
 
     @torch.no_grad()
-    def chat(self, tokenizer, query: str, history: List[Tuple[str, str]] = [], max_length: int = 2048, num_beams=1,
+    def chat(self, tokenizer, query: str, history: List[Tuple[str, str]] = None, max_length: int = 2048, num_beams=1,
              do_sample=True, top_p=0.7, temperature=0.95, **kwargs):
+        if history is None:
+            history = []
         gen_kwargs = {"max_length": max_length, "num_beams": num_beams, "do_sample": do_sample, "top_p": top_p,
                       "temperature": temperature, **kwargs}
         if not history:
@@ -1137,14 +1139,14 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
             for i, (old_query, response) in enumerate(history):
                 prompt += "[Round {}]\n问：{}\n答：{}\n".format(i, old_query, response)
             prompt += "[Round {}]\n问：{}\n答：".format(len(history), query)
-        input_ids = tokenizer([prompt], return_tensors="pt", padding=True,max_length=max_length)
+        input_ids = tokenizer([prompt], return_tensors="pt", padding=True)
         input_ids = input_ids.to(self.device)
         outputs = self.generate(**input_ids, **gen_kwargs)
         outputs = outputs.tolist()[0][len(input_ids["input_ids"][0]) - 2:]
-        response = tokenizer.decode(outputs,skip_special_tokens = True)
+        response = tokenizer.decode(outputs)
         response = response.strip()
         response = response.replace("[[训练时间]]", "2023年")
-        history.append((query, response))
+        history = history + [(query, response)]
         return response, history
 
     @torch.no_grad()
