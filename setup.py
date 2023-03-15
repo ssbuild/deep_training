@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 ignore = ['test','tests']
 setup(
     name='deep_training',
-    version='0.0.18@post3',
+    version='0.0.18@post4',
     description='an easy training architecture',
     long_description='torch_training: https://github.com/ssbuild/deep_training.git',
     license='Apache License 2.0',

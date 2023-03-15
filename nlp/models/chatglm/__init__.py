@@ -777,7 +777,7 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         attention_masks = (attention_masks < 0.5).bool()
         return attention_masks
 
-    def get_position_ids(self, input_ids, gmask=False):
+    def get_position_ids(self, input_ids):
         MASK, gMASK = 150000, 150001
         device = input_ids.device
         position_ids_list = []
@@ -791,9 +791,10 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
                 cond1 = torch.where(seq == MASK)[0]
                 cond2 = torch.where(seq == gMASK)[0]
                 if len(cond2) == 0 and len(cond1) == 0:
-                    raise ValueError('mask not in seq')
+                    raise ValueError('You have to add either [MASK] or [gMASK] in your input')
                 else:
-                    position_ids[seq_length:] = cond1[0] if len(cond2) == 0 else cond2[0]
+                    if len(cond2) == 0:
+                        position_ids[seq_length:] = cond1[0]
 
 
                 block_position_ids = torch.cat((
@@ -805,16 +806,17 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         else:
             for seq in input_ids:
                 conds = torch.where(seq == 150004)[0]
-                # context_length = conds[0] + 1
                 context_length = seq.size(0)
                 position_ids = torch.arange(context_length, dtype=torch.long, device=device)
 
                 cond1 = torch.where(seq == MASK)
                 cond2 = torch.where(seq == gMASK)
                 if len(cond2) == 0 and len(cond1) == 0:
-                    raise ValueError('mask not in seq')
-                elif len(cond2) == 0:
-                    position_ids[context_length:] = cond1[0]
+                    raise ValueError('You have to add either [MASK] or [gMASK] in your input')
+                else:
+                    if len(cond2) == 0:
+                        position_ids[context_length:] = cond1[0]
+
                 position_ids_list.append(position_ids)
         position_ids = torch.stack(position_ids_list,dim=0)
         return position_ids
@@ -1157,7 +1159,6 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
         return_seqs = []
         while True:
             output_ids = super().generate(**kwargs)
-
             return_seqs = []
             max_length = 0
 
@@ -1186,9 +1187,7 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
 
             for return_seq in return_seqs:
                 return_seq += [bos]
-
             kwargs['input_ids'] = torch.tensor(return_seqs, dtype=torch.long, device=kwargs['input_ids'].device)
-
         return torch.tensor(return_seqs, dtype=torch.long, device=kwargs['input_ids'].device)
 
     def quantize(self, bits: int):
