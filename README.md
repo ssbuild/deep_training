@@ -15,6 +15,8 @@
   - 2023年3月8日 keras 模块封装 
 
 ## 更新
+- <strong>2023年03月15</strong>
+  - 增加ChatGLM 模型 完整训练参考 [chatglm_finetuning](https://github.com/ssbuild/chatglm_finetuning)
 - <strong>2023年03月09</strong>
   - 增加LLaMA 模型(并行版) 完整训练参考 [llama_finetuning](https://github.com/ssbuild/llama_finetuning)
 - <strong>2023年03月08</strong>

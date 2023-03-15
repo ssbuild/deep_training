@@ -191,8 +191,6 @@ def rotate_half(x):
 @torch.jit.script
 def apply_rotary_pos_emb_index(q, k, cos, sin, position_id):
     # position_id: [sq, b], q, k: [sq, b, np, hn], cos: [sq, 1, hn] -> [sq, b, 1, hn]
-
-
     cos, sin = F.embedding(position_id, cos.squeeze(1)).unsqueeze(2), \
         F.embedding(position_id, sin.squeeze(1)).unsqueeze(2)
     q = (q * cos) + (rotate_half(q) * sin)
@@ -765,37 +763,81 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         self.word_embeddings = new_embeddings
 
     @staticmethod
-    def get_masks(seq, device):
-        context_length = seq.index(150004) + 1
+    def get_masks(input_ids):
+        shape = (input_ids.size(0),input_ids.size(1),input_ids.size(1))
+        attention_masks = torch.ones(shape, device=input_ids.device)
+        for seq,attention_mask in zip(input_ids,attention_masks):
+            conds = torch.where(seq == 150004)[0]
+            assert len(conds) > 0, ValueError('bos not in seq')
+            context_length = conds[0] + 1
+            attention_mask.tril_()
+            attention_mask[..., :context_length - 1] = 1
 
-        attention_mask = torch.ones((1, len(seq), len(seq)), device=device)
-        attention_mask.tril_()
-        attention_mask[..., :context_length - 1] = 1
-        attention_mask.unsqueeze_(1)
-        attention_mask = (attention_mask < 0.5).bool()
+        attention_masks.unsqueeze_(1)
+        attention_masks = (attention_masks < 0.5).bool()
+        return attention_masks
 
-        return attention_mask
-
-    def get_position_ids(self, seq, mask_position, device, gmask=False):
-        context_length = seq.index(150004) + 1
+    def get_position_ids(self, input_ids, gmask=False):
+        MASK, gMASK = 150000, 150001
+        device = input_ids.device
+        position_ids_list = []
         if self.position_encoding_2d:
-            seq_length = seq.index(150004)
-            position_ids = torch.arange(context_length, dtype=torch.long, device=device)
-            if not gmask:
-                position_ids[seq_length:] = mask_position
-            block_position_ids = torch.cat((
-                torch.zeros(seq_length, dtype=torch.long, device=device),
-                torch.arange(context_length - seq_length, dtype=torch.long, device=device) + 1
-            ))
-            position_ids = torch.stack((position_ids, block_position_ids), dim=0)
+            for seq in input_ids:
+                conds = torch.where(seq == 150004)[0]
+                context_length = seq.size(0)
+                seq_length = conds[0]
+                position_ids = torch.arange(context_length, dtype=torch.long, device=device)
+
+                cond1 = torch.where(seq == MASK)[0]
+                cond2 = torch.where(seq == gMASK)[0]
+                if len(cond2) == 0 and len(cond1) == 0:
+                    raise ValueError('mask not in seq')
+                else:
+                    position_ids[seq_length:] = cond1[0] if len(cond2) == 0 else cond2[0]
+
+
+                block_position_ids = torch.cat((
+                    torch.zeros(seq_length, dtype=torch.long, device=device),
+                    torch.arange(context_length - seq_length, dtype=torch.long, device=device) + 1
+                ))
+                position_ids = torch.stack((position_ids, block_position_ids), dim=0)
+                position_ids_list.append(position_ids)
         else:
-            position_ids = torch.arange(context_length, dtype=torch.long, device=device)
-            if not gmask:
-                position_ids[context_length - 1:] = mask_position
+            for seq in input_ids:
+                conds = torch.where(seq == 150004)[0]
+                # context_length = conds[0] + 1
+                context_length = seq.size(0)
+                position_ids = torch.arange(context_length, dtype=torch.long, device=device)
 
-        position_ids = position_ids.unsqueeze(0)
-
+                cond1 = torch.where(seq == MASK)
+                cond2 = torch.where(seq == gMASK)
+                if len(cond2) == 0 and len(cond1) == 0:
+                    raise ValueError('mask not in seq')
+                elif len(cond2) == 0:
+                    position_ids[context_length:] = cond1[0]
+                position_ids_list.append(position_ids)
+        position_ids = torch.stack(position_ids_list,dim=0)
         return position_ids
+
+        # context_length = seq.index(150004) + 1
+        # if self.position_encoding_2d:
+        #     seq_length = seq.index(150004)
+        #     position_ids = torch.arange(context_length, dtype=torch.long, device=device)
+        #     if not gmask:
+        #         position_ids[seq_length:] = mask_position
+        #     block_position_ids = torch.cat((
+        #         torch.zeros(seq_length, dtype=torch.long, device=device),
+        #         torch.arange(context_length - seq_length, dtype=torch.long, device=device) + 1
+        #     ))
+        #     position_ids = torch.stack((position_ids, block_position_ids), dim=0)
+        # else:
+        #     position_ids = torch.arange(context_length, dtype=torch.long, device=device)
+        #     if not gmask:
+        #         position_ids[context_length - 1:] = mask_position
+        #
+        # position_ids = position_ids.unsqueeze(0)
+        #
+        # return position_ids
 
     @add_start_docstrings_to_model_forward(CHATGLM_6B_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @add_code_sample_docstrings(
@@ -836,33 +878,18 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         if past_key_values is None:
             past_key_values = tuple([None] * len(self.layers))
 
-            MASK, gMASK = 150000, 150001
-            mask_token = MASK if MASK in input_ids else gMASK
-            use_gmask = False if MASK in input_ids else gMASK
-            seq = input_ids[0].tolist()
-
-            mask_position = seq.index(mask_token)
 
             if attention_mask is None:
-                attention_mask = self.get_masks(
-                    seq=seq,
-                    device=input_ids.device
-                )
+                attention_mask = self.get_masks(input_ids=input_ids)
 
             if position_ids is None:
-                position_ids = self.get_position_ids(
-                    seq=seq,
-                    mask_position=mask_position,
-                    device=input_ids.device,
-                    gmask=use_gmask
-                )
+                position_ids = self.get_position_ids(input_ids=input_ids)
 
         if inputs_embeds is None:
             inputs_embeds = self.word_embeddings(input_ids)
 
 
         hidden_states = inputs_embeds.transpose(0, 1)
-
 
         presents = () if use_cache else None
         all_self_attentions = () if output_attentions else None
@@ -1110,9 +1137,7 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
             prompt += "[Round {}]\n问：{}\n答：".format(len(history), query)
         input_ids = tokenizer([prompt], return_tensors="pt", padding=True,max_length=max_length)
         input_ids = input_ids.to(self.device)
-        print(input_ids)
         outputs = self.generate(**input_ids, **gen_kwargs)
-        print(outputs)
         outputs = outputs.tolist()[0][len(input_ids["input_ids"][0]) - 2:]
         response = tokenizer.decode(outputs,skip_special_tokens = True)
         response = response.strip()
@@ -1146,8 +1171,8 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
                 else:
                     eos_position = len(output_seq)
 
-                return_seq = output_seq[:mask_position] + output_seq[bos_position + 1:eos_position] + output_seq[
-                                                                                                      mask_position + 1:bos_position]
+                return_seq = output_seq[:mask_position] + output_seq[bos_position + 1:eos_position] + \
+                             output_seq[mask_position + 1:bos_position]
                 max_length = max(max_length, len(return_seq))
                 return_seqs.append(return_seq)
 
