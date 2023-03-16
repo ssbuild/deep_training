@@ -2,7 +2,7 @@
 # @Time    : 2023/3/14 10:32
 """ PyTorch ChatGLM model. """
 #reference https://github.com/THUDM/ChatGLM-6B
-
+import inspect
 import math
 import os
 from typing import Optional, Tuple, Union, List
@@ -38,6 +38,17 @@ CHATGLM_6B_PRETRAINED_MODEL_ARCHIVE_LIST = [
     "THUDM/chatglm-6b",
     # See all ChatGLM-6B models at https://huggingface.co/models?filter=chatglm
 ]
+
+MASK, gMASK = 150000, 150001
+BOS_ID, EOS_ID = 150004, 150005
+
+
+def setup_model_ids(mask_token_id,gmask_token_id,bos_token_id,eos_token_id):
+    global MASK,gMASK,BOS_ID, EOS_ID
+    MASK = mask_token_id
+    gMASK = gmask_token_id
+    BOS_ID = bos_token_id
+    EOS_ID = eos_token_id
 
 
 def setup_model_profile():
@@ -619,9 +630,22 @@ class ChatGLMPreTrainedModel(PreTrainedModel):
     def __init__(self, *inputs, **kwargs):
         super().__init__(*inputs, **kwargs)
 
-    def _init_weights(self, module: nn.Module):
-        """Initialize the weights."""
-        return
+    def _init_weights(self, module):
+        """Initialize the weights"""
+        if self.config.initializer_weight:
+            if isinstance(module, nn.Linear):
+                # Slightly different from the TF version which uses truncated_normal for initialization
+                # cf https://github.com/pytorch/pytorch/pull/5617
+                module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
+                if module.bias is not None:
+                    module.bias.data.zero_()
+            elif isinstance(module, nn.Embedding):
+                module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
+                if module.padding_idx is not None:
+                    module.weight.data[module.padding_idx].zero_()
+            elif isinstance(module, nn.LayerNorm):
+                module.bias.data.zero_()
+                module.weight.data.fill_(1.0)
 
 
 CHATGLM_6B_START_DOCSTRING = r"""
@@ -762,39 +786,42 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
     def set_input_embeddings(self, new_embeddings: torch.Tensor):
         self.word_embeddings = new_embeddings
 
-    @staticmethod
-    def get_masks(input_ids):
+
+    def get_masks(self,input_ids):
         shape = (input_ids.size(0),input_ids.size(1),input_ids.size(1))
         attention_masks = torch.ones(shape, device=input_ids.device)
+        attention_masks.tril_()
         for seq,attention_mask in zip(input_ids,attention_masks):
-            conds = torch.where(seq == 150004)[0]
-            assert len(conds) > 0, ValueError('bos not in seq')
-            context_length = conds[0] + 1
-            attention_mask.tril_()
+            conds = torch.where(seq == 20003)[0]
+            if len(conds) > 0:
+                context_length = conds[0]
+            else:
+                context_length = seq.size(0)
             attention_mask[..., :context_length - 1] = 1
-
         attention_masks.unsqueeze_(1)
         attention_masks = (attention_masks < 0.5).bool()
+
+
         return attention_masks
 
     def get_position_ids(self, input_ids):
-        MASK, gMASK = 150000, 150001
+
         device = input_ids.device
         position_ids_list = []
         if self.position_encoding_2d:
             for seq in input_ids:
-                conds = torch.where(seq == 150004)[0]
+                conds = torch.where(seq == BOS_ID)[0]
                 context_length = seq.size(0)
-                seq_length = conds[0]
+                seq_length = conds[0] if len(conds) > 0 else 0
                 position_ids = torch.arange(context_length, dtype=torch.long, device=device)
-
                 cond1 = torch.where(seq == MASK)[0]
                 cond2 = torch.where(seq == gMASK)[0]
                 if len(cond2) == 0 and len(cond1) == 0:
-                    raise ValueError('You have to add either [MASK] or [gMASK] in your input')
+                    ...
+                    #raise ValueError('You have to add either [MASK] or [gMASK] in your input')
                 else:
                     if len(cond1) != 0:
-                        position_ids[seq_length:] = cond1[0]
+                        position_ids[seq_length:] = cond2[0]
 
 
                 block_position_ids = torch.cat((
@@ -805,10 +832,8 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
                 position_ids_list.append(position_ids)
         else:
             for seq in input_ids:
-                conds = torch.where(seq == 150004)[0]
                 context_length = seq.size(0)
                 position_ids = torch.arange(context_length, dtype=torch.long, device=device)
-
                 cond1 = torch.where(seq == MASK)
                 cond2 = torch.where(seq == gMASK)
                 if len(cond2) == 0 and len(cond1) == 0:
@@ -821,25 +846,6 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         position_ids = torch.stack(position_ids_list,dim=0)
         return position_ids
 
-        # context_length = seq.index(150004) + 1
-        # if self.position_encoding_2d:
-        #     seq_length = seq.index(150004)
-        #     position_ids = torch.arange(context_length, dtype=torch.long, device=device)
-        #     if not gmask:
-        #         position_ids[seq_length:] = mask_position
-        #     block_position_ids = torch.cat((
-        #         torch.zeros(seq_length, dtype=torch.long, device=device),
-        #         torch.arange(context_length - seq_length, dtype=torch.long, device=device) + 1
-        #     ))
-        #     position_ids = torch.stack((position_ids, block_position_ids), dim=0)
-        # else:
-        #     position_ids = torch.arange(context_length, dtype=torch.long, device=device)
-        #     if not gmask:
-        #         position_ids[context_length - 1:] = mask_position
-        #
-        # position_ids = position_ids.unsqueeze(0)
-        #
-        # return position_ids
 
     @add_start_docstrings_to_model_forward(CHATGLM_6B_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @add_code_sample_docstrings(
@@ -979,7 +985,7 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
         attention_mask = (attention_mask < 0.5).bool()
 
         if self.position_encoding_2d:
-            seq_length = seq.index(150004)
+            seq_length = seq.index(BOS_ID)
             position_ids = torch.arange(context_length, dtype=torch.long, device=device)
             if not gmask:
                 position_ids[seq_length:] = mask_position
@@ -1006,7 +1012,6 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
             **kwargs
     ) -> dict:
 
-        MASK, gMASK = 150000, 150001
         mask_token = MASK if MASK in input_ids else gMASK
         use_gmask = False if MASK in input_ids else gMASK
         seq = input_ids[0].tolist()
@@ -1017,7 +1022,7 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
 
         # only last token for input_ids if past is not None
         if past is not None or past_key_values is not None:
-            context_length = seq.index(150004)
+            context_length = seq.index(BOS_ID)
             last_token = input_ids[:, -1].unsqueeze(-1)
             if self.position_encoding_2d:
                 position_ids = torch.tensor([[[mask_position], [len(seq) - context_length]]], dtype=torch.long,
@@ -1151,11 +1156,9 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
 
     @torch.no_grad()
     def generate(self, **kwargs,):
-        MASK, gMASK = 150000, 150001
-        bos, eos = 150004, 150005
 
         if "eos_token_id" not in kwargs:
-            kwargs["eos_token_id"] = eos
+            kwargs["eos_token_id"] = EOS_ID
 
         stop = False
         return_seqs = []
@@ -1168,9 +1171,9 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
                 output_seq = output_ids[i].tolist()
                 mask_token = MASK if MASK in output_seq else gMASK
                 mask_position = output_seq.index(mask_token)
-                bos_position = output_seq.index(bos)
-                if eos in output_seq:
-                    eos_position = output_seq.index(eos)
+                bos_position = output_seq.index(BOS_ID)
+                if EOS_ID in output_seq:
+                    eos_position = output_seq.index(EOS_ID)
                 else:
                     eos_position = len(output_seq)
 
@@ -1188,7 +1191,7 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
                 break
 
             for return_seq in return_seqs:
-                return_seq += [bos]
+                return_seq += [BOS_ID]
             kwargs['input_ids'] = torch.tensor(return_seqs, dtype=torch.long, device=kwargs['input_ids'].device)
         return torch.tensor(return_seqs, dtype=torch.long, device=kwargs['input_ids'].device)
 
