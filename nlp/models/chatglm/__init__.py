@@ -793,7 +793,7 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
                 if len(cond2) == 0 and len(cond1) == 0:
                     raise ValueError('You have to add either [MASK] or [gMASK] in your input')
                 else:
-                    if len(cond1) == 0:
+                    if len(cond1) != 0:
                         position_ids[seq_length:] = cond1[0]
 
 
