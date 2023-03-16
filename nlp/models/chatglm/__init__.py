@@ -793,8 +793,8 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
                 if len(cond2) == 0 and len(cond1) == 0:
                     raise ValueError('You have to add either [MASK] or [gMASK] in your input')
                 else:
-                    if len(cond2) == 0:
-                        position_ids[seq_length:] = cond1[0]
+                    if len(cond1) == 0:
+                        position_ids[seq_length:] = cond2[0]
 
 
                 block_position_ids = torch.cat((
@@ -814,8 +814,8 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
                 if len(cond2) == 0 and len(cond1) == 0:
                     raise ValueError('You have to add either [MASK] or [gMASK] in your input')
                 else:
-                    if len(cond2) == 0:
-                        position_ids[context_length:] = cond1[0]
+                    if len(cond1) == 0:
+                        position_ids[seq_length:] = cond2[0]
 
                 position_ids_list.append(position_ids)
         position_ids = torch.stack(position_ids_list,dim=0)
