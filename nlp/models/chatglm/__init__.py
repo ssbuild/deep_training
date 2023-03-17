@@ -27,6 +27,7 @@ from transformers.utils import (
 )
 from transformers.utils import logging
 
+
 from .configuration import ChatGLMConfig
 from ..transformer import TransformerBase
 
@@ -39,6 +40,7 @@ CHATGLM_6B_PRETRAINED_MODEL_ARCHIVE_LIST = [
     "THUDM/chatglm-6b",
     # See all ChatGLM-6B models at https://huggingface.co/models?filter=chatglm
 ]
+
 
 
 
@@ -794,61 +796,99 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
 
 
     def get_masks(self,input_ids):
-        shape = (input_ids.size(0),input_ids.size(1),input_ids.size(1))
-        attention_masks = torch.ones(shape, device=input_ids.device)
-        attention_masks.tril_()
-        for seq,attention_mask in zip(input_ids,attention_masks):
-            conds = torch.where(seq == SPTokens.BOS_ID)[0]
-            if len(conds) > 0:
-                context_length = conds[0] + 1
-            else:
-                context_length = seq.size(0)
-            attention_mask[..., :context_length - 1] = 1
-        attention_masks.unsqueeze_(1)
-        attention_masks = (attention_masks < 0.5).bool()
-        return attention_masks
+        seq = input_ids[0].tolist()
+        context_length = seq.index(SPTokens.BOS_ID) + 1
+
+        attention_mask = torch.ones((1, len(seq), len(seq)), device=input_ids.device)
+        attention_mask.tril_()
+        attention_mask[..., :context_length - 1] = 1
+        attention_mask.unsqueeze_(1)
+        attention_mask = (attention_mask < 0.5).bool()
+
+        return attention_mask
+        # shape = (input_ids.size(0),input_ids.size(1),input_ids.size(1))
+        # attention_masks = torch.ones(shape, device=input_ids.device)
+        # attention_masks.tril_()
+        # for seq,attention_mask in zip(input_ids,attention_masks):
+        #     conds = torch.where(seq == SPTokens.BOS_ID)[0]
+        #     if len(conds) > 0:
+        #         context_length = conds[0] + 1
+        #     else:
+        #         context_length = seq.size(0)
+        #     attention_mask[..., :context_length - 1] = 1
+        # attention_masks.unsqueeze_(1)
+        # attention_masks = (attention_masks < 0.5).bool()
+        # return attention_masks
 
     def get_position_ids(self, input_ids):
+        seq = input_ids[0].tolist()
+        context_length = seq.index(SPTokens.BOS_ID) + 1
 
-        device = input_ids.device
-        position_ids_list = []
+        cond1 = torch.where(input_ids[0] == SPTokens.MASK)[0]
+        cond2 = torch.where(input_ids[0] == SPTokens.gMASK)[0]
+
+        assert len(cond1) > 0 or len(cond2) > 0 , ValueError('ou have to add either [MASK] or [gMASK] in your input')
+        gmask = False if len(cond1) > 0 else cond2[0]
+        mask_position = cond1[0] if len(cond1) > 0 else cond2[0]
+
         if self.position_encoding_2d:
-            for seq in input_ids:
-                conds = torch.where(seq == SPTokens.BOS_ID)[0]
-                context_length = seq.size(0)
-                seq_length = conds[0] if len(conds) > 0 else 0
-                position_ids = torch.arange(context_length, dtype=torch.long, device=device)
-                cond1 = torch.where(seq == SPTokens.MASK)[0]
-                cond2 = torch.where(seq == SPTokens.gMASK)[0]
-                if len(cond2) == 0 and len(cond1) == 0:
-                    ...
-                    #raise ValueError('You have to add either [SPTokens.MASK] or [SPTokens.gMASK] in your input')
-                else:
-                    if len(cond1) != 0:
-                        position_ids[seq_length:] = cond2[0]
-
-
-                block_position_ids = torch.cat((
-                    torch.zeros(seq_length, dtype=torch.long, device=device),
-                    torch.arange(context_length - seq_length, dtype=torch.long, device=device) + 1
-                ))
-                position_ids = torch.stack((position_ids, block_position_ids), dim=0)
-                position_ids_list.append(position_ids)
+            seq_length = seq.index(SPTokens.BOS_ID)
+            position_ids = torch.arange(context_length, dtype=torch.long, device=input_ids.device)
+            if not gmask:
+                position_ids[seq_length:] = mask_position
+            block_position_ids = torch.cat((
+                torch.zeros(seq_length, dtype=torch.long, device=input_ids.device),
+                torch.arange(context_length - seq_length, dtype=torch.long, device=input_ids.device) + 1
+            ))
+            position_ids = torch.stack((position_ids, block_position_ids), dim=0)
         else:
-            for seq in input_ids:
-                context_length = seq.size(0)
-                position_ids = torch.arange(context_length, dtype=torch.long, device=device)
-                cond1 = torch.where(seq == SPTokens.MASK)
-                cond2 = torch.where(seq == SPTokens.gMASK)
-                if len(cond2) == 0 and len(cond1) == 0:
-                    raise ValueError('You have to add either [SPTokens.MASK] or [SPTokens.gMASK] in your input')
-                else:
-                    if len(cond1) != 0:
-                        position_ids[context_length:] = cond1[0]
+            position_ids = torch.arange(context_length, dtype=torch.long, device=input_ids.device)
+            if not gmask:
+                position_ids[context_length - 1:] = mask_position
 
-                position_ids_list.append(position_ids)
-        position_ids = torch.stack(position_ids_list,dim=0)
+        position_ids = position_ids.unsqueeze(0)
+
         return position_ids
+
+        # device = input_ids.device
+        # position_ids_list = []
+        # if self.position_encoding_2d:
+        #     for seq in input_ids:
+        #         conds = torch.where(seq == SPTokens.BOS_ID)[0]
+        #         context_length = seq.size(0)
+        #         seq_length = conds[0] if len(conds) > 0 else 0
+        #         position_ids = torch.arange(context_length, dtype=torch.long, device=device)
+        #         cond1 = torch.where(seq == SPTokens.MASK)[0]
+        #         cond2 = torch.where(seq == SPTokens.gMASK)[0]
+        #         if len(cond2) == 0 and len(cond1) == 0:
+        #             ...
+        #             #raise ValueError('You have to add either [SPTokens.MASK] or [SPTokens.gMASK] in your input')
+        #         else:
+        #             if len(cond1) != 0:
+        #                 position_ids[seq_length:] = cond2[0]
+        #
+        #
+        #         block_position_ids = torch.cat((
+        #             torch.zeros(seq_length, dtype=torch.long, device=device),
+        #             torch.arange(context_length - seq_length, dtype=torch.long, device=device) + 1
+        #         ))
+        #         position_ids = torch.stack((position_ids, block_position_ids), dim=0)
+        #         position_ids_list.append(position_ids)
+        # else:
+        #     for seq in input_ids:
+        #         context_length = seq.size(0)
+        #         position_ids = torch.arange(context_length, dtype=torch.long, device=device)
+        #         cond1 = torch.where(seq == SPTokens.MASK)
+        #         cond2 = torch.where(seq == SPTokens.gMASK)
+        #         if len(cond2) == 0 and len(cond1) == 0:
+        #             raise ValueError('You have to add either [SPTokens.MASK] or [SPTokens.gMASK] in your input')
+        #         else:
+        #             if len(cond1) != 0:
+        #                 position_ids[context_length:] = cond1[0]
+        #
+        #         position_ids_list.append(position_ids)
+        # position_ids = torch.stack(position_ids_list,dim=0)
+        # return position_ids
 
 
     @add_start_docstrings_to_model_forward(CHATGLM_6B_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
