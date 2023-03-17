@@ -1076,7 +1076,7 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
 
             if past is None:
                 past = past_key_values
-            return {
+            output = {
                 "input_ids": last_token,
                 "past_key_values": past,
                 "position_ids": position_ids,
@@ -1090,12 +1090,13 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
                 gmask=use_gmask
             )
 
-            return {
+            output = {
                 "input_ids": input_ids,
                 "past_key_values": past,
                 "position_ids": position_ids,
                 "attention_mask": attention_mask
             }
+        return output
 
     def forward(
             self,
