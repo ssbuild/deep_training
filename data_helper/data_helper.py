@@ -20,7 +20,6 @@ from .data_module import load_tokenizer, load_configure
 from .data_writer import DataWriteHelper
 from .training_args import ModelArguments, DataArguments, TrainingArguments
 from ..utils.func import is_chinese_char
-from ..utils.maskedlm import make_gpt2_sample
 
 __all__ = [
     'DataHelper',
@@ -335,7 +334,8 @@ class DataHelper(DataPreprocessHelper):
            with_record_iterable_dataset: bool=False,
            with_parse_from_numpy: bool =True,
            limit_start: typing.Optional[int] = None,
-           limit_count: typing.Optional[int] = None
+           limit_count: typing.Optional[int] = None,
+           dataset_loader_filter_fn: typing.Callable = None,
                            ):
 
         dataset = NumpyReaderAdapter.load(files, backend or self.backend , options,
@@ -349,6 +349,8 @@ class DataHelper(DataPreprocessHelper):
             dataset = dataset.skip(limit_start)
         if limit_count is not None and limit_count > 0:
             dataset = dataset.limit(limit_count)
+        if dataset_loader_filter_fn is not None:
+            dataset = dataset_loader_filter_fn(dataset)
         return dataset
 
     """
@@ -371,7 +373,8 @@ class DataHelper(DataPreprocessHelper):
                      transform_fn : typing.Callable = None,
                      check_dataset_file_fn=None,
                      limit_start: typing.Optional[int] = None,
-                     limit_count: typing.Optional[int] = None
+                     limit_count: typing.Optional[int] = None,
+                     dataset_loader_filter_fn: typing.Callable = None,
                      ) -> typing.Optional[typing.Union[torch.utils.data.Dataset,torch.utils.data.IterableDataset]]:
         assert process_index <= num_processes and num_processes >= 1
         check_dataset_file_fn = check_dataset_file_fn or check_dataset_file
@@ -386,7 +389,8 @@ class DataHelper(DataPreprocessHelper):
                                           with_parse_from_numpy=not with_load_memory,
                                           backend=backend,
                                           limit_start=limit_start,
-                                          limit_count=limit_count)
+                                          limit_count=limit_count,
+                                          dataset_loader_filter_fn=dataset_loader_filter_fn)
         #加载至内存
         if with_load_memory:
             logging.info('load dataset to memory...')
@@ -449,6 +453,7 @@ class DataHelper(DataPreprocessHelper):
                      check_dataset_file_fn=None,
                     limit_start: typing.Optional[int] = None,
                     limit_count: typing.Optional[int] = None,
+                    dataset_loader_filter_fn: typing.Callable = None,
                     **kwargs
                     ) -> typing.Optional[typing.Union[DataLoader,torch.utils.data.Dataset,torch.utils.data.IterableDataset,IterableDatasetBase,RandomDatasetBase]]:
 
@@ -459,7 +464,8 @@ class DataHelper(DataPreprocessHelper):
             with_load_memory=with_load_memory,with_torchdataset=with_torchdataset,
             transform_fn=transform_fn,check_dataset_file_fn=check_dataset_file_fn,
             limit_start=limit_start,
-            limit_count=limit_count
+            limit_count=limit_count,
+            dataset_loader_filter_fn=dataset_loader_filter_fn,
         )
         if dataset is None:
             return None
@@ -486,6 +492,7 @@ class DataHelper(DataPreprocessHelper):
                      check_dataset_file_fn=None,
                     limit_start: typing.Optional[int] = None,
                     limit_count: typing.Optional[int] = None,
+                    dataset_loader_filter_fn: typing.Callable = None,
                     **kwargs
                                 ) -> typing.Optional[typing.Union[DataLoader,torch.utils.data.Dataset,torch.utils.data.IterableDataset,IterableDatasetBase,RandomDatasetBase]]:
 
@@ -496,7 +503,8 @@ class DataHelper(DataPreprocessHelper):
             with_load_memory=with_load_memory,with_torchdataset=with_torchdataset,
             transform_fn=transform_fn,check_dataset_file_fn=check_dataset_file_fn,
             limit_start=limit_start,
-            limit_count=limit_count
+            limit_count=limit_count,
+            dataset_loader_filter_fn=dataset_loader_filter_fn,
         )
         if dataset is None:
             return None
