@@ -5,10 +5,11 @@ import logging
 import warnings
 from typing import Optional, Any, Dict
 import torch
+import pytorch_lightning as pl
 from pytorch_lightning import Callback
 from pytorch_lightning.callbacks import ModelCheckpoint,Checkpoint
 from pytorch_lightning.utilities.types import STEP_OUTPUT
-from pytorch_lightning import Trainer
+
 from torch import Tensor
 __all__ = [
     'SimpleModelCheckpoint'
@@ -23,6 +24,7 @@ class SimpleModelCheckpoint(Checkpoint):
                  skip_n_epochs: Optional[int] = None,
                  monitor=None,
                  mode='min',
+                 save_weights_only=False,
                  weight_file='./best.pt',#保存权重名字
                  last_weight_file='./last.pt',#每评估一次保存一次权重
                  **kwargs):
@@ -34,6 +36,7 @@ class SimpleModelCheckpoint(Checkpoint):
         self.monitor = monitor
         self.mode = mode # min max
 
+        self.save_weights_only = save_weights_only
         self.rank = rank
 
         self.last_eval_step = -1
@@ -93,13 +96,13 @@ class SimpleModelCheckpoint(Checkpoint):
                                                                            monitor_candidates['step'],
                                                                            self.best[self.monitor],
                                                                            self.weight_file))
-                trainer.save_checkpoint(self.weight_file)
+                self._save_checkpoint(trainer,self.weight_file)
 
             if self.last_weight_file is not None:
                 logging.info('epoch {} ,step {} , save {}\n'.format(monitor_candidates['epoch'],
                                                                     monitor_candidates['step'],
                                                                     self.last_weight_file))
-                trainer.save_checkpoint(self.last_weight_file)
+                self._save_checkpoint(trainer,self.weight_file)
 
         else:
             warnings.warn('monitor {} is not in metirc , save lastest checkpoint!'.format(self.monitor))
@@ -107,8 +110,10 @@ class SimpleModelCheckpoint(Checkpoint):
             logging.info('epoch {} ,step {} , save {}\n'.format(monitor_candidates['epoch'],
                                                                 monitor_candidates['step'],
                                                                 self.weight_file))
-            trainer.save_checkpoint(self.weight_file)
+            self._save_checkpoint(trainer,self.weight_file)
 
+    def _save_checkpoint(self, trainer: "pl.Trainer", filepath: str) -> None:
+        trainer.save_checkpoint(filepath, self.save_weights_only)
 
 
 

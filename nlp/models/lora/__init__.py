@@ -110,6 +110,19 @@ class LoraModel(torch.nn.Module,PushToHubMixin):
             "fan_in_fan_out": self.lora_config.fan_in_fan_out,
             "merge_weights": self.lora_config.merge_weights or self.lora_config.inference_mode,
         }
+
+        if self.lora_config.target_dtype is not None:
+            if self.lora_config.target_dtype == 16 or self.lora_config.target_dtype == '16':
+                kwargs['dtype'] = torch.float16
+            elif self.lora_config.target_dtype == 32 or self.lora_config.target_dtype == '32':
+                kwargs['dtype'] = torch.float32
+            elif self.lora_config.target_dtype == 64 or self.lora_config.target_dtype == '64':
+                kwargs['dtype'] = torch.float64
+            elif self.lora_config.target_dtype == 'bf16':
+                kwargs['dtype'] = torch.bfloat16
+            elif isinstance(self.lora_config.target_dtype,torch.dtype):
+                kwargs['dtype'] = self.lora_config.target_dtype
+
         key_list = [key for key, _ in self.model.named_modules()]
         for key in key_list:
             if isinstance(self.lora_config.target_modules, str):

@@ -4,12 +4,16 @@
 import json
 import os
 from dataclasses import dataclass, field, asdict
-from typing import Union, Optional, List
+from typing import Union, Optional, List, Literal, AnyStr
 
 from transformers.utils import PushToHubMixin
 
 WEIGHTS_NAME = "adapter_model.bin"
 CONFIG_NAME = "adapter_config.json"
+
+_PRECISION_INPUT_INT = Literal[64, 32, 16]
+_PRECISION_INPUT_STR = Literal["64", "32", "16", "bf16"]
+_PRECISION_INPUT = Union[_PRECISION_INPUT_INT, _PRECISION_INPUT_STR]
 
 @dataclass
 class LoraConfigMixin(PushToHubMixin):
@@ -126,6 +130,12 @@ class LoraArguments(LoraConfigMixin):
         metadata={
             "help": "List of module names or regex expression of the module names to replace with Lora."
                     "For example, ['q', 'v'] or '.*decoder.*(SelfAttention|EncDecAttention).*(q|v)$' "
+        },
+    )
+    target_dtype: Optional[Union[int,str]]= field(
+        default=None,
+        metadata={
+            "help": "target_modules dtype , one of [\"64\", \"32\", \"16\", \"bf16\"]  or one of [16,32,64]"
         },
     )
     lora_alpha: int = field(default=None, metadata={"help": "Lora alpha"})

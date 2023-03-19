@@ -448,7 +448,8 @@ class DataHelper(DataPreprocessHelper):
                      transform_fn : typing.Callable = None,
                      check_dataset_file_fn=None,
                     limit_start: typing.Optional[int] = None,
-                    limit_count: typing.Optional[int] = None
+                    limit_count: typing.Optional[int] = None,
+                    **kwargs
                     ) -> typing.Optional[typing.Union[DataLoader,torch.utils.data.Dataset,torch.utils.data.IterableDataset,IterableDatasetBase,RandomDatasetBase]]:
 
         dataset = self.load_dataset(
@@ -462,7 +463,10 @@ class DataHelper(DataPreprocessHelper):
         )
         if dataset is None:
             return None
-        return DataLoader(dataset,batch_size=batch_size,shuffle=False if isinstance(dataset, IterableDataset) else shuffle,collate_fn=collate_fn,pin_memory=pin_memory)
+        return DataLoader(dataset,batch_size=batch_size,
+                          shuffle=False if isinstance(dataset, IterableDataset) else shuffle,
+                          collate_fn=collate_fn,
+                          pin_memory=pin_memory,**kwargs)
 
     def load_sequential_sampler(self,files: typing.Union[typing.List, str],
                      batch_size,
@@ -481,7 +485,8 @@ class DataHelper(DataPreprocessHelper):
                      transform_fn : typing.Callable = None,
                      check_dataset_file_fn=None,
                     limit_start: typing.Optional[int] = None,
-                    limit_count: typing.Optional[int] = None
+                    limit_count: typing.Optional[int] = None,
+                    **kwargs
                                 ) -> typing.Optional[typing.Union[DataLoader,torch.utils.data.Dataset,torch.utils.data.IterableDataset,IterableDatasetBase,RandomDatasetBase]]:
 
         dataset = self.load_dataset(
@@ -495,7 +500,11 @@ class DataHelper(DataPreprocessHelper):
         )
         if dataset is None:
             return None
-        return DataLoader(dataset,batch_size=batch_size,shuffle=shuffle,collate_fn=collate_fn,pin_memory=pin_memory)
+        return DataLoader(dataset,
+                          batch_size=batch_size,
+                          shuffle=shuffle,
+                          collate_fn=collate_fn,
+                          pin_memory=pin_memory,**kwargs)
 
     # 返回制作特征数据的中间文件
     def get_intermediate_file(self, intermediate_name, mode):
