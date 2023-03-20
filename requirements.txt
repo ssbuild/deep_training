@@ -1,8 +1,9 @@
 transformers >=4.16
-pytorch_lightning >= 1.8
-fastdatasets >= 0.9.6
+pytorch_lightning >= 1.8,<1.10
+fastdatasets >= 0.9.6 , <= 1
 seqmetric >= 0.1.2
-sklearn
 scipy
 scikit-learn
-jieba
+sentencepiece
+tqdm
+six
