@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/3/14 10:32
-""" PyTorch ChatGLM model. """
 #reference https://github.com/THUDM/ChatGLM-6B
 import copy
 import inspect
@@ -162,10 +161,10 @@ def gelu(x):
 
 
 class RotaryEmbedding(torch.nn.Module):
-    def __init__(self, dim, base=10000,
-                 precision=torch.float, #=torch.half
-                 learnable=False):
+    def __init__(self, dim, base=10000,precision=torch.float,learnable=False):
         super().__init__()
+        self.precision = precision or torch.half
+         
         inv_freq = 1. / (base ** (torch.arange(0, dim, 2).float() / dim))
 
         if precision == torch.half:
@@ -179,7 +178,7 @@ class RotaryEmbedding(torch.nn.Module):
             self.max_seq_len_cached = None
             self.cos_cached = None
             self.sin_cached = None
-        self.precision = precision
+       
 
     def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys,
                               error_msgs):
@@ -195,9 +194,8 @@ class RotaryEmbedding(torch.nn.Module):
             # Different from paper, but it uses a different permutation in order to obtain the same calculation
             emb = torch.cat((freqs, freqs), dim=-1).to(x.device)
             if self.precision == torch.bfloat16:
-                emb = emb.half()
-            else:
-                emb = emb.float()
+                emb = emb.bfloat16()
+
 
             # [sx, 1 (b * np), hn]
             cos_cached = emb.cos()[:, None, :]
@@ -221,8 +219,8 @@ def apply_rotary_pos_emb_index(q, k, cos, sin, position_id):
     # position_id: [sq, b], q, k: [sq, b, np, hn], cos: [sq, 1, hn] -> [sq, b, 1, hn]
     cos, sin = F.embedding(position_id, cos.squeeze(1)).unsqueeze(2), \
         F.embedding(position_id, sin.squeeze(1)).unsqueeze(2)
-    q = (q * cos) + (rotate_half(q) * sin)
-    k = (k * cos) + (rotate_half(k) * sin)
+    q, k = (q * cos) + (rotate_half(q) * sin), (k * cos) + (rotate_half(k) * sin)
+    
     return q, k
 
 
@@ -294,12 +292,12 @@ def attention_fn(
             # if auto-regressive, skip
             attention_scores.masked_fill_(attention_mask, -10000.0)
 
-
+        dtype = attention_scores.type()
         attention_scores = attention_scores.float()
         attention_scores = attention_scores * query_key_layer_scaling_coeff
 
         attention_probs = F.softmax(attention_scores, dim=-1)
-        attention_probs = attention_probs.type(self.params_dtype)
+        attention_probs = attention_probs.type(dtype)
 
     # =========================
     # Context layer. [sq, b, hp]
@@ -341,7 +339,6 @@ class SelfAttention(torch.nn.Module):
                  params_dtype=torch.float, position_encoding_2d=True):
         super(SelfAttention, self).__init__()
 
-        self.params_dtype = params_dtype
         self.layer_id = layer_id
         self.hidden_size = hidden_size
         self.hidden_size_per_partition = hidden_size
@@ -353,7 +350,7 @@ class SelfAttention(torch.nn.Module):
             if position_encoding_2d
             else self.hidden_size // self.num_attention_heads,
             base=10000,
-            precision=params_dtype,
+            precision=params_dtype or torch.half,
             learnable=False,
         )
 
@@ -372,7 +369,7 @@ class SelfAttention(torch.nn.Module):
             hidden_size,
             3 * self.inner_hidden_size,
             bias=bias,
-            dtype=params_dtype,
+            dtype=params_dtype or torch.half,
         )
 
         self.dense = skip_init(
@@ -380,7 +377,7 @@ class SelfAttention(torch.nn.Module):
             self.inner_hidden_size,
             hidden_size,
             bias=bias,
-            dtype=params_dtype,
+            dtype=params_dtype or torch.half,
         )
 
     @staticmethod
@@ -502,7 +499,7 @@ class GLU(torch.nn.Module):
             self.hidden_size,
             self.inner_hidden_size,
             bias=bias,
-            dtype=params_dtype,
+            dtype=params_dtype or torch.half,
         )
         # Project back to h.
         self.dense_4h_to_h = skip_init(
@@ -510,7 +507,7 @@ class GLU(torch.nn.Module):
             self.inner_hidden_size,
             self.hidden_size,
             bias=bias,
-            dtype=params_dtype,
+            dtype=params_dtype or torch.half,
         )
 
     def forward(self, hidden_states):
@@ -549,7 +546,7 @@ class GLMBlock(torch.nn.Module):
         self.layer_id = layer_id
 
         # Layernorm on the input data.
-        self.input_layernorm = layernorm(hidden_size, eps=layernorm_epsilon,dtype=params_dtype)
+        self.input_layernorm = layernorm(hidden_size, eps=layernorm_epsilon,dtype=params_dtype or torch.float)
 
         self.position_encoding_2d = position_encoding_2d
 
@@ -565,7 +562,7 @@ class GLMBlock(torch.nn.Module):
         )
 
         # Layernorm on the input data.
-        self.post_attention_layernorm = layernorm(hidden_size, eps=layernorm_epsilon,dtype=params_dtype)
+        self.post_attention_layernorm = layernorm(hidden_size, eps=layernorm_epsilon,dtype=params_dtype or torch.float)
 
         self.num_layers = num_layers
 
@@ -650,6 +647,7 @@ class ChatGLMPreTrainedModel(PreTrainedModel):
     def _init_weights(self, module):
         """Initialize the weights"""
         if self.config.initializer_weight:
+            print('initializer_weight...')
             if isinstance(module, nn.Linear):
                 # Slightly different from the TF version which uses truncated_normal for initialization
                 # cf https://github.com/pytorch/pytorch/pull/5617
@@ -752,13 +750,15 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         # recording parameters
         self.max_sequence_length = config.max_sequence_length
         self.hidden_size = config.hidden_size
-        self.params_dtype = getattr(config,'precision',torch.half)
-        if self.params_dtype == 16:
-            self.params_dtype = torch.half
-        elif self.params_dtype == 32:
-            self.params_dtype = torch.float32
-        elif self.params_dtype == 64:
-            self.params_dtype = torch.float
+        self.params_dtype = getattr(config,'precision',None)
+        
+        if self.params_dtype is not None:
+            if self.params_dtype == 16:
+                self.params_dtype = torch.half
+            elif self.params_dtype == 32:
+                self.params_dtype = torch.float32
+            elif self.params_dtype == 64:
+                self.params_dtype = torch.float
 
 
 
@@ -773,7 +773,7 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         self.word_embeddings = skip_init(
             torch.nn.Embedding,
             num_embeddings=self.vocab_size, embedding_dim=self.hidden_size,
-            dtype=self.params_dtype
+            dtype=self.params_dtype or torch.half
         )
 
         def get_layer(layer_id):
@@ -795,7 +795,7 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         )
 
         # Final layer norm before output.
-        self.final_layernorm = LayerNorm(self.hidden_size, eps=self.layernorm_epsilon,dtype=self.params_dtype)
+        self.final_layernorm = LayerNorm(self.hidden_size, eps=self.layernorm_epsilon,dtype=self.params_dtype or torch.half)
 
     def get_input_embeddings(self):
         return self.word_embeddings
@@ -914,6 +914,7 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
             attention_mask = attention_mask.to(input_ids.device)
 
         for i, layer in enumerate(self.layers):
+        
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
@@ -967,7 +968,7 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
             config.hidden_size,
             config.vocab_size,
             bias=False,
-            dtype=self.transformer.params_dtype
+            dtype=self.transformer.params_dtype or torch.half
         )
 
     def get_output_embeddings(self):

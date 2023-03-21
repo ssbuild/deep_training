@@ -71,7 +71,7 @@ class ChatGLMConfig(PretrainedConfig):
             inner_hidden_size=16384,
             position_encoding_2d=True,
             initializer_range=0.02,
-            initializer_weight=True,
+            initializer_weight=False,
             #precision=16, # 16,32,64 or torch.half,torch.float,torch.float32
             **kwargs
     ):
@@ -89,15 +89,6 @@ class ChatGLMConfig(PretrainedConfig):
         self.position_encoding_2d = position_encoding_2d
         self.initializer_range = initializer_range
         self.initializer_weight = initializer_weight
-        # if precision == 16:
-        #     self.precision = torch.half
-        # elif precision == 32:
-        #     self.precision = torch.float32
-        # elif precision == 64:
-        #     self.precision = torch.float
-        # else:
-        #     self.precision = precision
-
 
         super().__init__(
             pad_token_id=pad_token_id,
