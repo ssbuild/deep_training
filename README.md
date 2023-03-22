@@ -8,8 +8,12 @@
   - [tf-task-example](https://github.com/ssbuild/tf-task-example)
   - [poetry_training](https://github.com/ssbuild/poetry_training)
 
+
 ## 优化器
   adamw,adam,lamb,lion
+
+## download 
+  https://pypi.org/project/deep-training/#history
 
 ## 开发计划
   - 2023年3月8日 keras 模块封装 
