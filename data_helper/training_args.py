@@ -214,7 +214,7 @@ class TrainingArguments:
         default=1,
         metadata={"help": "模型任务层训练时的学习率"},
     )
-    seed: float = field(
+    seed: Optional[float] = field(
         default=42,
         metadata={"help": "模型任务层训练时的学习率"},
     )
@@ -223,7 +223,8 @@ class TrainingArguments:
         if self.learning_rate_for_task is None:
             self.learning_rate_for_task = self.learning_rate
 
-        seed_everything(self.seed)
+        if self.seed is not None:
+            seed_everything(self.seed)
 
         assert self.hierarchical_position is None or (self.hierarchical_position >0 and self.hierarchical_position <1)
 

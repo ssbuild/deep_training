@@ -236,7 +236,7 @@ class LoraModel(torch.nn.Module,PushToHubMixin):
         self.lora_config.inference_mode = inference_mode
 
     @classmethod
-    def from_pretrained(cls, model, pretrained_model_name_or_path, **kwargs):
+    def from_pretrained(cls, model, pretrained_model_name_or_path,lora_config: LoraArguments = None, **kwargs):
         r"""
         Args:
         Instantiate a `LoraModel` from a pretrained Lora configuration and weights.
@@ -250,7 +250,9 @@ class LoraModel(torch.nn.Module,PushToHubMixin):
                     - A path to a directory containing a Lora configuration file saved using the
                         `save_pretrained` method, e.g., ``./my_lora_config_directory/``.
         """
-        lora_config: LoraArguments = LoraArguments.from_pretrained(pretrained_model_name_or_path)
+        if lora_config is None:
+            lora_config: LoraArguments = LoraArguments.from_pretrained(pretrained_model_name_or_path)
+
         model = cls(model, lora_config)
         # load weights if any
         if os.path.exists(os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)):
@@ -265,7 +267,6 @@ class LoraModel(torch.nn.Module,PushToHubMixin):
             filename, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
         # load the weights into the model
         model = set_lora_model_state_dict(model, adapters_weights)
-
         return model
 
     def print_trainable_parameters(self):
