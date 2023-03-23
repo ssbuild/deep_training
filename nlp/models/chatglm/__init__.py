@@ -195,7 +195,7 @@ class RotaryEmbedding(torch.nn.Module):
             # Different from paper, but it uses a different permutation in order to obtain the same calculation
             emb = torch.cat((freqs, freqs), dim=-1).to(x.device)
             if self.precision == torch.bfloat16:
-                emb = emb.bfloat16()
+                emb = emb.float()
 
 
             # [sx, 1 (b * np), hn]
@@ -293,7 +293,7 @@ def attention_fn(
             # if auto-regressive, skip
             attention_scores.masked_fill_(attention_mask, -10000.0)
 
-        dtype = attention_scores.type()
+        dtype = attention_scores.dtype
         attention_scores = attention_scores.float()
         attention_scores = attention_scores * query_key_layer_scaling_coeff
 
@@ -370,7 +370,7 @@ class SelfAttention(torch.nn.Module):
             hidden_size,
             3 * self.inner_hidden_size,
             bias=bias,
-            dtype=params_dtype or torch.half,
+            dtype=params_dtype,
         )
 
         self.dense = skip_init(
@@ -378,7 +378,7 @@ class SelfAttention(torch.nn.Module):
             self.inner_hidden_size,
             hidden_size,
             bias=bias,
-            dtype=params_dtype or torch.half,
+            dtype=params_dtype,
         )
 
     @staticmethod
@@ -500,7 +500,7 @@ class GLU(torch.nn.Module):
             self.hidden_size,
             self.inner_hidden_size,
             bias=bias,
-            dtype=params_dtype or torch.half,
+            dtype=params_dtype,
         )
         # Project back to h.
         self.dense_4h_to_h = skip_init(
@@ -508,7 +508,7 @@ class GLU(torch.nn.Module):
             self.inner_hidden_size,
             self.hidden_size,
             bias=bias,
-            dtype=params_dtype or torch.half,
+            dtype=params_dtype,
         )
 
     def forward(self, hidden_states):
@@ -636,7 +636,7 @@ class ChatGLMPreTrainedModel(PreTrainedModel):
     a simple interface for downloading and loading pretrained models.
     """
 
-    is_parallelizable = True
+    is_parallelizable = False
     supports_gradient_checkpointing = False
     config_class = ChatGLMConfig
     base_model_prefix = "transformer"
@@ -648,7 +648,6 @@ class ChatGLMPreTrainedModel(PreTrainedModel):
     def _init_weights(self, module):
         """Initialize the weights"""
         if self.config.initializer_weight:
-            print('initializer_weight...')
             if isinstance(module, nn.Linear):
                 # Slightly different from the TF version which uses truncated_normal for initialization
                 # cf https://github.com/pytorch/pytorch/pull/5617
@@ -825,12 +824,14 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         cond2 = torch.where(input_ids[0] == SPTokens.gMASK)[0]
 
         assert len(cond1) > 0 or len(cond2) > 0 , ValueError('ou have to add either [MASK] or [gMASK] in your input')
+        use_gmask = False if len(cond1) in input_ids else SPTokens.gMASK
         mask_position = cond1[0] if len(cond1) > 0 else cond2[0]
 
         if self.position_encoding_2d:
             seq_length = seq.index(SPTokens.BOS_ID)
             position_ids = torch.arange(context_length, dtype=torch.long, device=input_ids.device)
-            position_ids[seq_length:] = mask_position
+            if not use_gmask:
+                position_ids[seq_length:] = mask_position
             block_position_ids = torch.cat((
                 torch.zeros(seq_length, dtype=torch.long, device=input_ids.device),
                 torch.arange(context_length - seq_length, dtype=torch.long, device=input_ids.device) + 1
@@ -838,7 +839,8 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
             position_ids = torch.stack((position_ids, block_position_ids), dim=0)
         else:
             position_ids = torch.arange(context_length, dtype=torch.long, device=input_ids.device)
-            position_ids[context_length - 1:] = mask_position
+            if not use_gmask:
+                position_ids[context_length - 1:] = mask_position
 
         position_ids = position_ids.unsqueeze(0)
 
@@ -1017,6 +1019,7 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
         use_gmask = False if SPTokens.MASK in input_ids else SPTokens.gMASK
         seq = input_ids[0].tolist()
         mask_position = seq.index(mask_token)
+
 
         if mask_token not in seq:
             raise ValueError("You have to add either [SPTokens.MASK] or [SPTokens.gMASK] in your input")
