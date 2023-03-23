@@ -14,10 +14,10 @@ setup(
     author_email='9727464@qq.com',
     install_requires=['pytorch-lightning>=1.7,<1.10',
                       'fastdatasets>=0.9.6 , <= 1',
-                      'tfrecords >= 0.2.4 , <=3',
+                      'tfrecords >= 0.2.4 , <= 1',
                       'sentencepiece',
                       'numpy',
                       'transformers >= 4.22',
-                      'seqmetric','sklearn','scipy','scikit-learn','tqdm','six'],
+                      'seqmetric','scipy','scikit-learn','tqdm','six'],
     packages=[p for p in find_packages() if p not in ignore]
 )
