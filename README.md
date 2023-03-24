@@ -16,7 +16,8 @@
   https://pypi.org/project/deep-training/#history
 
 ## 开发计划
-  - 2023年3月8日 keras 模块封装 
+  - keras 模块封装 
+  - lightning2.0 兼容测试，torch 2.0兼容性测试
 
 ## 更新
 - <strong>2023年03月15</strong>
@@ -24,6 +25,7 @@
   - 0.0.18@post8 解决deepspeed进程数据平衡 
   - 0.0.18@post9 增加流式输出接口stream_chat接口
   - 0.0.20 ChatGLM lora 加载权重继续训练 ， 修改数据数据编码 ，权重自适应
+  - 0.0.21 fix ChatGLM deepspeed stage 3 权重加载
 - <strong>2023年03月09</strong>
   - 增加LLaMA 模型(并行版) 完整训练参考 [llama_finetuning](https://github.com/ssbuild/llama_finetuning)
 - <strong>2023年03月08</strong>

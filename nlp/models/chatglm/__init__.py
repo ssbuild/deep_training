@@ -636,8 +636,8 @@ class ChatGLMPreTrainedModel(PreTrainedModel):
     a simple interface for downloading and loading pretrained models.
     """
 
-    is_parallelizable = False
-    supports_gradient_checkpointing = False
+    is_parallelizable = True
+    supports_gradient_checkpointing = True
     config_class = ChatGLMConfig
     base_model_prefix = "transformer"
     _no_split_modules = ["GLM6BBlock"]
@@ -662,6 +662,9 @@ class ChatGLMPreTrainedModel(PreTrainedModel):
                 module.bias.data.zero_()
                 module.weight.data.fill_(1.0)
 
+    def _set_gradient_checkpointing(self, module, value=False):
+        if isinstance(module, ChatGLMModel):
+            module.gradient_checkpointing = value
 
 CHATGLM_6B_START_DOCSTRING = r"""
     This model is a PyTorch [torch.nn.Module](https://pytorch.org/docs/stable/nn.html#torch.nn.Module) sub-class.
@@ -959,13 +962,9 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
 class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
-
         self.max_sequence_length = config.max_sequence_length
-
         self.position_encoding_2d = config.position_encoding_2d
-
         self.transformer = ChatGLMModel(config)
-
         self.lm_head = skip_init(
             nn.Linear,
             config.hidden_size,
@@ -974,11 +973,11 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
             dtype=self.transformer.params_dtype or torch.half
         )
 
-    def get_output_embeddings(self):
-        return self.lm_head
-
-    def set_output_embeddings(self, new_embeddings):
-        self.lm_head = new_embeddings
+    # def get_output_embeddings(self):
+    #     return self.lm_head
+    #
+    # def set_output_embeddings(self, new_embeddings):
+    #     self.lm_head = new_embeddings
 
     def get_masks_and_position_ids(self, seq, mask_position, context_length, device, gmask=False):
         attention_mask = torch.ones((1, context_length, context_length), device=device)

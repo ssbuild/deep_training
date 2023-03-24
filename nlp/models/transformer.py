@@ -2,30 +2,15 @@
 # @Author  : tk
 # @FileName: model.py
 
-import argparse
-import copy
 import sys
 import typing
 from functools import partial
-from typing import Any, Callable, cast, Dict, IO, MutableMapping, Optional, Type, Union
-import torch
+from typing import Any, IO
+
 import pytorch_lightning as pl
-from pytorch_lightning.utilities.types import EPOCH_OUTPUT
+import torch
 from torch import nn, Tensor
-from torch.nn import CrossEntropyLoss
-from transformers.models.auto.auto_factory import _get_model_class
-
-from ..losses.lm_loss import LM_loss
-from ...data_helper import TrainingArguments, ModelArguments, PrefixModelArguments, DataArguments
-from ..layers.mask import lm_mask,unilm_mask
-from ..utils import configure_optimizers, get_value_from_args
-from ..utils.adversarial import AdversarialMethods
-
-
 from transformers import (
-    CONFIG_MAPPING,
-    MODEL_FOR_MASKED_LM_MAPPING,
-    MODEL_FOR_PRETRAINING_MAPPING,
     AutoModelForMaskedLM,
     AutoModelForSeq2SeqLM,
     AutoModelForSequenceClassification,
@@ -40,11 +25,17 @@ from transformers import (
     AutoModelForObjectDetection,
     AutoModelForAudioClassification,
     AutoModelForMaskedImageModeling,
-    AutoConfig,
     AutoModelForCausalLM,
     PretrainedConfig,
-    get_linear_schedule_with_warmup, AutoModelForPreTraining, AutoModel, PreTrainedModel
+    AutoModel
 )
+
+from ..layers.mask import unilm_mask
+from ..losses.lm_loss import LM_loss
+from ..utils import configure_optimizers, get_value_from_args
+from ..utils.adversarial import AdversarialMethods
+from ...data_helper import TrainingArguments, ModelArguments, PrefixModelArguments, DataArguments
+
 
 # class TransformerMeta(type):
 #     def __new__(cls, name, base, attr,*args,**kwargs):

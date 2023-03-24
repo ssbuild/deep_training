@@ -3,10 +3,11 @@
 # @FileName: training_args.py
 import os
 import typing
+import warnings
 from dataclasses import dataclass, field
 from typing import Optional
 
-from pytorch_lightning.utilities.seed import seed_everything
+
 
 __all__ = [
     'ModelArguments',
@@ -224,7 +225,16 @@ class TrainingArguments:
             self.learning_rate_for_task = self.learning_rate
 
         if self.seed is not None:
-            seed_everything(self.seed)
+            try:
+                from pytorch_lightning.utilities.seed import seed_everything
+                seed_everything(self.seed)
+            except:
+                try:
+                    from lightning_fabric.utilities.seed import seed_everything
+                    seed_everything(self.seed)
+                except:
+                    warnings.warn('missing seed_everything')
+
 
         assert self.hierarchical_position is None or (self.hierarchical_position >0 and self.hierarchical_position <1)
 
