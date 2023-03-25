@@ -25,7 +25,7 @@
   - 0.0.18@post8 解决deepspeed进程数据平衡 
   - 0.0.18@post9 增加流式输出接口stream_chat接口
   - 0.0.20 ChatGLM lora 加载权重继续训练 ， 修改数据数据编码 ，权重自适应
-  - 0.0.21 fix ChatGLM deepspeed stage 3 权重加载
+  - 0.0.21@post0 fix ChatGLM deepspeed stage 3 权重加载
 - <strong>2023年03月09</strong>
   - 增加LLaMA 模型(并行版) 完整训练参考 [llama_finetuning](https://github.com/ssbuild/llama_finetuning)
 - <strong>2023年03月08</strong>
