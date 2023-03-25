@@ -960,6 +960,7 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
 
 
 class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
+    _keys_to_ignore_on_load_missing = [ r"lm_head.weight"]
     def __init__(self, config):
         super().__init__(config)
         self.max_sequence_length = config.max_sequence_length
@@ -973,11 +974,11 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
             dtype=self.transformer.params_dtype or torch.half
         )
 
-    # def get_output_embeddings(self):
-    #     return self.lm_head
-    #
-    # def set_output_embeddings(self, new_embeddings):
-    #     self.lm_head = new_embeddings
+    def get_output_embeddings(self):
+        return self.lm_head
+
+    def set_output_embeddings(self, new_embeddings):
+        self.lm_head = new_embeddings
 
     def get_masks_and_position_ids(self, seq, mask_position, context_length, device, gmask=False):
         attention_mask = torch.ones((1, context_length, context_length), device=device)

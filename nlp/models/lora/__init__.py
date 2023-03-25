@@ -97,11 +97,11 @@ class LoraModel(torch.nn.Module,PushToHubMixin):
 
     def _find_and_replace(self):
         loaded_in_8bit = getattr(self.model, "is_loaded_in_8bit", False)
-        # if loaded_in_8bit and not is_bnb_available():
-        #     raise ImportError(
-        #         "To use Lora with 8-bit quantization, please install the `bitsandbytes` package. "
-        #         "You can install it with `pip install bitsandbytes`."
-        #     )
+        if loaded_in_8bit and not is_bnb_available():
+            raise ImportError(
+                "To use Lora with 8-bit quantization, please install the `bitsandbytes` package. "
+                "You can install it with `pip install bitsandbytes`."
+            )
         is_target_modules_in_base_model = False
         kwargs = {
             "r": self.lora_config.r,
