@@ -827,7 +827,7 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         cond2 = torch.where(input_ids[0] == SPTokens.gMASK)[0]
 
         assert len(cond1) > 0 or len(cond2) > 0 , ValueError('ou have to add either [MASK] or [gMASK] in your input')
-        use_gmask = False if len(cond1) in input_ids else SPTokens.gMASK
+        use_gmask = False if len(cond1) else SPTokens.gMASK
         mask_position = cond1[0] if len(cond1) > 0 else cond2[0]
 
         if self.position_encoding_2d:
