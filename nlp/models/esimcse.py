@@ -65,8 +65,8 @@ class TransformerForESimcse(TransformerModel):
             optimizer: Union[Optimizer, LightningOptimizer],
             optimizer_idx: int = 0,
             optimizer_closure: Optional[Callable[[], Any]] = None,
-            on_tpu: bool = False,
-            using_lbfgs: bool = False,
+            # on_tpu: bool = False,
+            # using_lbfgs: bool = False,
             **kwargs
     ) -> None:
         # update params
