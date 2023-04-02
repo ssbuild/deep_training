@@ -72,6 +72,9 @@ class ChatGLMConfig(PretrainedConfig):
             position_encoding_2d=True,
             initializer_range=0.02,
             initializer_weight=False,
+            quantization_bit=0,
+            pre_seq_len=None,
+            prefix_projection=False,
             #precision=16, # 16,32,64 or torch.half,torch.float,torch.float32
             **kwargs
     ):
@@ -89,6 +92,9 @@ class ChatGLMConfig(PretrainedConfig):
         self.position_encoding_2d = position_encoding_2d
         self.initializer_range = initializer_range
         self.initializer_weight = initializer_weight
+        self.quantization_bit = quantization_bit
+        self.pre_seq_len = pre_seq_len
+        self.prefix_projection = prefix_projection
 
         super().__init__(
             pad_token_id=pad_token_id,

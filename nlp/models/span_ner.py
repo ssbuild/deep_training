@@ -5,7 +5,6 @@ from typing import Union, List
 
 import numpy as np
 import torch
-from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from torch import nn
 from .transformer import TransformerModel
 __all__ = [

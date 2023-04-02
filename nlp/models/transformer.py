@@ -348,23 +348,8 @@ class TransformerLightningModule(MyLightningModule):
         ]
         for k in copy_attr:
             setattr(self.__backbone, k, getattr(self, k))
-        # setattr(self.__model, 'estimated_stepping_batches', self.trainer.estimated_stepping_batches)
-        # if hasattr(self.__model,'validation_epoch_end'):
-        #     cname = self.validation_epoch_end.__qualname__
-        #     if cname.endswith('.{}.validation_epoch_end'.format('LightningModule')) or cname.endswith('.{}.validation_epoch_end'.format('TransformerLightningModule')) :
-        #         self.validation_epoch_end = self.__model.validation_epoch_end
 
         event_ = [
-            'training_step',
-            'training_step_end',
-            'training_epoch_end',
-            'validation_step',
-            'validation_step_end',
-            'validation_epoch_end',
-            'test_step',
-            'test_step_end',
-            'test_epoch_end',
-            'predict_step',
             'configure_optimizers',
             'configure_gradient_clipping',
             'lr_scheduler_step',
@@ -559,7 +544,7 @@ class TransformerLightningModule(MyLightningModule):
         if isinstance(loss,dict):
             self.log_dict(loss,prog_bar=True)
         else:
-            self.log('loss',loss,prog_bar=False)
+            self.log('loss',loss,prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):

@@ -435,6 +435,42 @@ class DataHelper(DataPreprocessHelper):
         return dataset_
 
 
+    def load_distributed_random_sampler(self,
+                                        files: typing.Union[typing.List, str],
+                                        batch_size,
+                                        num_processes: int = 1,
+                                        process_index: int = 0,
+                                        collate_fn=None,
+                                        pin_memory=False,
+                                        backend=None,
+                                        with_load_memory: bool = False,
+                                        with_torchdataset: bool = True,
+                                        transform_fn: typing.Callable = None,
+                                        check_dataset_file_fn=None,
+                                        limit_start: typing.Optional[int] = None,
+                                        limit_count: typing.Optional[int] = None,
+                                        dataset_loader_filter_fn: typing.Callable = None,
+                                        **kwargs
+                                        ):
+        dataset = self.load_dataset(
+            files, shuffle=False,
+            backend=backend, with_record_iterable_dataset=False,
+            with_load_memory=with_load_memory, with_torchdataset=with_torchdataset,
+            transform_fn=transform_fn, check_dataset_file_fn=check_dataset_file_fn,
+            limit_start=limit_start,
+            limit_count=limit_count,
+            dataset_loader_filter_fn=dataset_loader_filter_fn,
+        )
+        if dataset is None:
+            return None
+
+        sampler = torch.utils.data.distributed.DistributedSampler(dataset,num_replicas=num_processes,rank=process_index) if num_processes > 1 else None
+        return DataLoader(dataset, batch_size=batch_size,
+                          shuffle=sampler is None,
+                          sampler=sampler,
+                          collate_fn=collate_fn,
+                          pin_memory=pin_memory, **kwargs)
+
     def load_random_sampler(self,files: typing.Union[typing.List, str],
                      batch_size,
                      collate_fn=None,

@@ -3,7 +3,7 @@
 from typing import Union, List
 import numpy as np
 import torch
-from pytorch_lightning.utilities.types import EPOCH_OUTPUT
+
 from torch import nn
 from .transformer import TransformerModel
 from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer, f1_metric_for_pointer
@@ -56,18 +56,18 @@ class TransformerForPointer(TransformerModel):
             outputs = (logits,)
         return outputs
 
-    def validation_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
-        label2id = self.config.label2id
-        threshold = 1e-8
-        y_preds, y_trues = [], []
-        eval_labels = self.eval_labels
-        for i,o in enumerate(outputs):
-            logits, _ = o['outputs']
-            y_preds.extend(extract_lse(logits,threshold))
-            bs = len(logits)
-            y_trues.extend(eval_labels[i * bs: (i+1) * bs])
-
-        f1, str_report = metric_for_pointer(y_trues, y_preds, label2id)
-        print(f1)
-        print(str_report)
-        self.log('val_f1', f1, prog_bar=True)
+    # def validation_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
+    #     label2id = self.config.label2id
+    #     threshold = 1e-8
+    #     y_preds, y_trues = [], []
+    #     eval_labels = self.eval_labels
+    #     for i,o in enumerate(outputs):
+    #         logits, _ = o['outputs']
+    #         y_preds.extend(extract_lse(logits,threshold))
+    #         bs = len(logits)
+    #         y_trues.extend(eval_labels[i * bs: (i+1) * bs])
+    #
+    #     f1, str_report = metric_for_pointer(y_trues, y_preds, label2id)
+    #     print(f1)
+    #     print(str_report)
+    #     self.log('val_f1', f1, prog_bar=True)

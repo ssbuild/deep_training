@@ -11,7 +11,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from .transformer import TransformerModel
-from pytorch_lightning.utilities.types import EPOCH_OUTPUT
+
 from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from ..layers.norm import LayerNorm

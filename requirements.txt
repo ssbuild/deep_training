@@ -1,5 +1,5 @@
 transformers >=4.22
-pytorch_lightning >= 1.8,<2.0
+pytorch_lightning >= 2
 fastdatasets >= 0.9.6 , <= 1
 seqmetric >= 0.1.2
 scipy
