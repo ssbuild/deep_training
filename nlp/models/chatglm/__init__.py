@@ -1163,6 +1163,7 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
                     input_ids,
                     device=input_ids.device
                 )
+            attention_mask = attention_mask.bool()
             if position_ids is None:
                 position_ids = self.get_position_ids(
                     input_ids,
