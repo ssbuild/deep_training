@@ -1125,7 +1125,7 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
     ) -> dict:
 
         batch_size, seq_length = input_ids.shape
-        MASK, gMASK = 150000, 150001
+        MASK, gMASK = SPTokens.MASK, SPTokens.gMASK
         mask_token = MASK if MASK in input_ids else gMASK
         use_gmask = False if MASK in input_ids else gMASK
         seqs = input_ids.tolist()
