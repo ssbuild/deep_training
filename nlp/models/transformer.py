@@ -117,12 +117,17 @@ class TransformerFakeMeta(type):
         return cls_
 
 
+
+class PreTrainedModel_Data:
+    base_model_prefix = None
+    config_class = None
+
 class TransformerBase(MyLightningModule,metaclass=TransformerFakeMeta):
     def __init__(self,*args,**kwargs):
         config = get_value_from_args('config',PretrainedConfig,*args,**kwargs)
         super(TransformerBase, self).__init__()
         self.config = config
-        self.base_model_prefix = None
+        self._premodel_data = PreTrainedModel_Data()
         self._trainer:  typing.Optional["pl.Trainer"]  = None
 
     def forward(self, *args, **batch):
@@ -216,9 +221,9 @@ class TransformerBase(MyLightningModule,metaclass=TransformerFakeMeta):
 
     @property
     def model(self):
-        if not self.base_model_prefix:
+        if not self._premodel_data.base_model_prefix:
             return None
-        return getattr(self, self.base_model_prefix,None)
+        return getattr(self, self._premodel_data.base_model_prefix,None)
 
     @model.setter
     def model(self, model):
@@ -231,13 +236,15 @@ class TransformerBase(MyLightningModule,metaclass=TransformerFakeMeta):
                 o = getattr(model,k,None)
                 if o is None:
                     continue
-                setattr(self,k,o)
+                if o == 'model':
+                    o = 'model_'
+                setattr(self._premodel_data,k,o)
 
-        assert self.base_model_prefix is not None, ValueError('base_model_prefix is not allow empty')
-        setattr(self, self.base_model_prefix, model)
+        assert self._premodel_data.base_model_prefix is not None, ValueError('base_model_prefix is not allow empty')
+        setattr(self, self._premodel_data.base_model_prefix, model)
 
     def get_model_lr(self):
-        return [(self.model if self.base_model_prefix is not None else self , self.config.task_specific_params['learning_rate']), ]
+        return [(self.model if self._premodel_data.base_model_prefix is not None else self , self.config.task_specific_params['learning_rate']), ]
 
 
 

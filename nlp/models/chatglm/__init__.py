@@ -877,7 +877,7 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
 
             total_params = sum(p.numel() for p in self.parameters())
             trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
-            print("Using p-tuning v2: # trainable_params = {} / {}".format(trainable_params, total_params))
+            print("Using p-tuning v2: # trainable_params = {} / {} , || trainable %: {}".format(trainable_params, total_params , 100 * trainable_params / total_params))
     def get_input_embeddings(self):
         return self.word_embeddings
 
