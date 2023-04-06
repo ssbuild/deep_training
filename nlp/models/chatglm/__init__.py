@@ -966,7 +966,7 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
             if position_ids is None:
                 MASK, gMASK = SPTokens.MASK, SPTokens.gMASK
                 mask_token = MASK if MASK in input_ids else gMASK
-                use_gmask = False if MASK in input_ids else gMASK
+                use_gmask = False if MASK in input_ids else True
 
                 mask_positions = [seq.tolist().index(mask_token) for seq in input_ids]
                 position_ids = self.get_position_ids(
@@ -1127,7 +1127,7 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
         batch_size, seq_length = input_ids.shape
         MASK, gMASK = SPTokens.MASK, SPTokens.gMASK
         mask_token = MASK if MASK in input_ids else gMASK
-        use_gmask = False if MASK in input_ids else gMASK
+        use_gmask = False if MASK in input_ids else True
         seqs = input_ids.tolist()
         mask_positions = [seq.index(mask_token) for seq in seqs]
 

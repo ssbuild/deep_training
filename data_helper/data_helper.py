@@ -453,7 +453,7 @@ class DataHelper(DataPreprocessHelper):
                                         **kwargs
                                         ):
         dataset = self.load_dataset(
-            files, shuffle=False,
+            files, shuffle=False if num_processes > 1 else True,
             backend=backend, with_record_iterable_dataset=False,
             with_load_memory=with_load_memory, with_torchdataset=with_torchdataset,
             transform_fn=transform_fn, check_dataset_file_fn=check_dataset_file_fn,
