@@ -20,7 +20,7 @@
 
 ## 更新
 - <strong>2023年04月02</strong>
-- release 0.1.0 and pytorch_lightning >= 2
+  - release 0.1.0 and pytorch_lightning >= 2
 - <strong>2023年03月15</strong>
   - 增加ChatGLM模型(稳定版>=0.0.18@post7) 完整训练参考 [chatglm_finetuning](https://github.com/ssbuild/chatglm_finetuning)
   - 0.0.18@post8 解决deepspeed进程数据平衡 
