@@ -669,7 +669,7 @@ class ChatGLMPreTrainedModel(PreTrainedModel):
     a simple interface for downloading and loading pretrained models.
     """
 
-    is_parallelizable = True
+    is_parallelizable = False
     supports_gradient_checkpointing = True
     config_class = ChatGLMConfig
     base_model_prefix = "transformer"
@@ -966,7 +966,7 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
             if position_ids is None:
                 MASK, gMASK = SPTokens.MASK, SPTokens.gMASK
                 mask_token = MASK if MASK in input_ids else gMASK
-                use_gmask = False if MASK in input_ids else True
+                use_gmask = True if gMASK in input_ids else False
 
                 mask_positions = [seq.tolist().index(mask_token) for seq in input_ids]
                 position_ids = self.get_position_ids(
@@ -1127,7 +1127,7 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
         batch_size, seq_length = input_ids.shape
         MASK, gMASK = SPTokens.MASK, SPTokens.gMASK
         mask_token = MASK if MASK in input_ids else gMASK
-        use_gmask = False if MASK in input_ids else True
+        use_gmask = True if gMASK in input_ids else False
         seqs = input_ids.tolist()
         mask_positions = [seq.index(mask_token) for seq in seqs]
 

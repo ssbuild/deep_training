@@ -19,6 +19,8 @@
   - keras 模块封装
 
 ## 更新
+- <strong>2023年04月07</strong>
+  - deep_training 0.1.1 同步更新chatglm 词表配置信息 
 - <strong>2023年04月02</strong>
   - release 0.1.0 and pytorch_lightning >= 2
 - <strong>2023年03月15</strong>
