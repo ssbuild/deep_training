@@ -5,7 +5,6 @@ import json
 import os
 from dataclasses import dataclass, field, asdict
 from typing import Union, Optional, List, Literal, AnyStr
-
 from transformers.utils import PushToHubMixin
 
 WEIGHTS_NAME = "adapter_model.bin"
@@ -122,7 +121,6 @@ class LoraArguments(LoraConfigMixin):
     """
     lora_model_name_or_path: str = field(default=None, metadata={"help": "The name of the base model to use."})
     inference_mode: bool = field(default=False, metadata={"help": "Whether to use inference mode"})
-
     with_lora: bool = field(default=False, metadata={"help": "whether use lora"})
     r: int = field(default=8, metadata={"help": "Lora attention dimension"})
     target_modules: Optional[Union[List[str], str]] = field(

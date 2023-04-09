@@ -1,9 +1,16 @@
-# -*- coding: utf-8 -*-
-# @Time    : 2023/4/7 16:07
+# @Time    : 2023/4/7 23:25
+# @Author  : tk
+# @FileName: adalora
+import warnings
 
 import torch
 from torch import nn
-from ..lora.layers import LoraLayer
+from torch.nn import functional as F
+from . import Linear8bitLt,LoraLayer,is_bnb_available
+from .utils import transpose
+
+if is_bnb_available():
+    import bitsandbytes as bnb
 
 class AdaLoraLayer(LoraLayer):
     def __init__(
