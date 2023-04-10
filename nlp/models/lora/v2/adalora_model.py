@@ -8,9 +8,9 @@ import torch
 from torch import nn
 from transformers import Conv1D
 
-from ....layers.lora.lora_v2 import mark_only_lora_as_trainable, is_bnb_available, LoraLayer
-from ....layers.lora.lora_v2.adalora import RankAllocator, SVDLinear8bitLt, SVDLinear
-from ....layers.lora.lora_v2.utils import _freeze_adapter, _get_submodules, \
+from ....layers.lora_v2.layers import mark_only_lora_as_trainable, is_bnb_available, LoraLayer
+from ....layers.lora_v2.adalora import RankAllocator,SVDLinear
+from ....layers.lora_v2.utils import _freeze_adapter, _get_submodules, \
     TRANSFORMERS_MODELS_TO_ADALORA_TARGET_MODULES_MAPPING
 from .lora_model import LoraModel
 
@@ -23,6 +23,7 @@ __all__ = [
 
 if is_bnb_available():
     import bitsandbytes as bnb
+    from ....layers.lora_v2.adalora import SVDLinear8bitLt
 
 
 class AdaLoraModel(LoraModel):

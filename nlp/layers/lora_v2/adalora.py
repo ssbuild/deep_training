@@ -6,7 +6,7 @@ import warnings
 import torch
 from torch import nn
 from torch.nn import functional as F
-from . import Linear8bitLt,LoraLayer,is_bnb_available
+from .layers import LoraLayer,is_bnb_available
 from .utils import transpose
 
 if is_bnb_available():

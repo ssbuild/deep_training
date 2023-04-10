@@ -13,8 +13,8 @@ import torch
 from torch import nn
 from transformers import Conv1D
 
-from ....layers.lora.lora_v2 import mark_only_lora_as_trainable, is_bnb_available, LoraLayer, Linear8bitLt, Linear
-from ....layers.lora.lora_v2.utils import _freeze_adapter, _get_submodules
+from ....layers.lora_v2.layers import mark_only_lora_as_trainable, is_bnb_available, LoraLayer, Linear
+from ....layers.lora_v2.utils import _freeze_adapter, _get_submodules
 
 __all__ = [
     'is_bnb_available',
@@ -24,6 +24,8 @@ __all__ = [
 
 if is_bnb_available():
     import bitsandbytes as bnb
+    from ....layers.lora_v2.layers import Linear8bitLt
+
 class LoraModel(torch.nn.Module):
     """
     Creates Low Rank Adapter (Lora) model from a pretrained transformers model.

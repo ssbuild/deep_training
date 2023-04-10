@@ -16,7 +16,7 @@
 
 
 
-def get_peft_model_state_dict(model, state_dict=None, adapter_name="default"):
+def get_lora_model_state_dict(model, state_dict=None, adapter_name="default"):
     """
     Get the state dict of the Peft model.
 
@@ -68,7 +68,7 @@ def get_peft_model_state_dict(model, state_dict=None, adapter_name="default"):
     return to_return
 
 
-def set_peft_model_state_dict(model, peft_model_state_dict, adapter_name="default"):
+def set_lora_model_state_dict(model, peft_model_state_dict, adapter_name="default"):
     """
     Set the state dict of the Peft model.
 
@@ -102,7 +102,7 @@ def set_peft_model_state_dict(model, peft_model_state_dict, adapter_name="defaul
                 peft_model_state_dict[k] = v
             else:
                 peft_model_state_dict[k] = v
-        if config.peft_type == 'adalora':
+        if config.lora_type == 'adalora':
             rank_pattern = config.rank_pattern
             if rank_pattern is not None:
                 model.resize_modules_by_rank_pattern(rank_pattern, adapter_name)

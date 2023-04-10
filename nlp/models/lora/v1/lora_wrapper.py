@@ -19,8 +19,8 @@ from transformers import Conv1D
 from transformers.utils import PushToHubMixin
 
 from .configuration import LoraArguments, WEIGHTS_NAME
-from ....layers.lora.lora_v1.layers import MergedLinear, is_bnb_available, LoraLayer, Linear
-from ....layers.lora.lora_v1.utils import mark_only_lora_as_trainable
+from ....layers.lora_v1.layers import MergedLinear, is_bnb_available, LoraLayer, Linear
+from ....layers.lora_v1.utils import mark_only_lora_as_trainable
 
 __all__ = [
     'LoraArguments',
@@ -30,7 +30,7 @@ __all__ = [
 
 if is_bnb_available():
     import bitsandbytes as bnb
-    from ....layers.lora.lora_v1.layers import Linear8bitLt
+    from ....layers.lora_v1.layers import Linear8bitLt
 
 
 def get_lora_model_state_dict(model, state_dict=None):

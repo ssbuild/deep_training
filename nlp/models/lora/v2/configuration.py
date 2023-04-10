@@ -24,8 +24,6 @@ class LoraConfigMixin(PushToHubMixin):
     push your model to the Hub. The method `save_pretrained` will save the configuration of your adapter model in a
     directory. The method `from_pretrained` will load the configuration of your adapter model from a directory.
 
-    Args:
-        peft_type (Union[[`~peft.utils.config.PeftType`], `str`]): The type of Peft method to use.
     """
 
     @property
@@ -101,7 +99,6 @@ class LoraConfigMixin(PushToHubMixin):
 
 
 
-
 @dataclass
 class LoraArguments(LoraConfigMixin):
     """
@@ -113,19 +110,16 @@ class LoraArguments(LoraConfigMixin):
         target_modules (`Union[List[str],str]`): The names of the modules to apply Lora to.
         lora_alpha (`float`): The alpha parameter for Lora scaling.
         lora_dropout (`float`): The dropout probability for Lora layers.
-        merge_weights (`bool`):
-            Whether to merge the weights of the Lora layers with the base transformer model in `eval` mode.
         fan_in_fan_out (`bool`): Set this to True if the layer to replace stores weight like (fan_in, fan_out)
-        enable_lora ( `List[bool]`): Used with `lora.MergedLinear`.
         bias (`str`): Bias type for Lora. Can be 'none', 'all' or 'lora_only'
         modules_to_save (`List[str]`):List of modules apart from LoRA layers to be set as trainable
             and saved in the final checkpoint.
     """
-    lora_model_name_or_path: str = field(default=None, metadata={"help": "The name of the base model to use."})
+    base_model_name_or_path: str = field(default=None, metadata={"help": "The name of the base model to use."})
     inference_mode: bool = field(default=False, metadata={"help": "Whether to use inference mode"})
-
-    lora_type: str = field(default=None, metadata={"help": "one of lora,adalora"})
     with_lora: bool = field(default=False, metadata={"help": "whether use lora"})
+    lora_type: str = field(default='lora', metadata={"help": "one of lora,adalora"})
+
     r: int = field(default=8, metadata={"help": "Lora attention dimension"})
     target_modules: Optional[Union[List[str], str]] = field(
         default=None,
@@ -142,14 +136,10 @@ class LoraArguments(LoraConfigMixin):
     )
     lora_alpha: int = field(default=None, metadata={"help": "Lora alpha"})
     lora_dropout: float = field(default=None, metadata={"help": "Lora dropout"})
-    merge_weights: bool = field(
-        default=False, metadata={"help": "Merge weights of the original model and the Lora model"}
-    )
     fan_in_fan_out: bool = field(
         default=False,
         metadata={"help": "Set this to True if the layer to replace stores weight like (fan_in, fan_out)"},
     )
-    enable_lora: Optional[List[bool]] = field(default=None, metadata={"help": "Used with `lora.MergedLinear`."})
     bias: str = field(default="none", metadata={"help": "Bias type for Lora. Can be 'none', 'all' or 'lora_only'"})
     modules_to_save: Optional[List[str]] = field(
         default=None,
@@ -159,14 +149,14 @@ class LoraArguments(LoraConfigMixin):
                     "the final layer `classifier/score` are randomly initialized and as such need to be trainable and saved."
         },
     )
+    init_lora_weights: bool = field(
+        default=True,
+        metadata={"help": "Whether to initialize the weights of the Lora layers."},
+    )
 
     def __post_init__(self):
-        if self.inference_mode:
-            self.merge_weights = True
-
-        if self.target_modules is not None and len(self.target_modules) == 1:
-            self.fan_in_fan_out = True
-            self.enable_lora = [True, False, True]
+        if self.lora_type is None:
+            self.lora_type = 'lora'
 
 
 @dataclass
@@ -199,5 +189,5 @@ class AdaLoraArguments(LoraArguments):
     rank_pattern: Optional[dict] = field(default=None, metadata={"help": "The saved rank pattern."})
 
     def __post_init__(self):
-        ...
-class LoraArgumentsV2(AdaLoraArguments):...
+        if self.lora_type is None:
+            self.lora_type = 'adalora'
