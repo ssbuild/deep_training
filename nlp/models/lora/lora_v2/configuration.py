@@ -7,7 +7,6 @@ import json
 import os
 from dataclasses import dataclass, field, asdict
 from typing import Union, Optional, List, Literal, AnyStr
-
 from transformers.utils import PushToHubMixin
 
 WEIGHTS_NAME = "adapter_model.bin"

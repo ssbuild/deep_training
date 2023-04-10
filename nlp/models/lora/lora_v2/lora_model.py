@@ -13,8 +13,8 @@ import torch
 from torch import nn
 from transformers import Conv1D
 
-from nlp.layers.lora.lora_v2 import mark_only_lora_as_trainable, is_bnb_available, LoraLayer, Linear8bitLt, Linear
-from nlp.layers.lora.lora_v2.utils import _freeze_adapter, _get_submodules
+from ....layers.lora.lora_v2 import mark_only_lora_as_trainable, is_bnb_available, LoraLayer, Linear8bitLt, Linear
+from ....layers.lora.lora_v2.utils import _freeze_adapter, _get_submodules
 
 __all__ = [
     'is_bnb_available',

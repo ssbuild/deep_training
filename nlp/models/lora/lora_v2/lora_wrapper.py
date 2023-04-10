@@ -6,11 +6,11 @@ import os
 from contextlib import contextmanager
 import torch
 from transformers.utils import PushToHubMixin
-from nlp.layers.lora.lora_v2.utils import _set_trainable, _set_adapter
-from nlp.models.lora.lora_v2.adalora_model import AdaLoraModel
-from nlp.models.lora.lora_v2.configuration import LoraArgumentsV2, WEIGHTS_NAME, LoraArguments, AdaLoraArguments
-from nlp.models.lora.lora_v2.lora_model import LoraModel
-from nlp.models.lora.lora_v2.save_and_load import get_peft_model_state_dict, set_peft_model_state_dict
+from ....layers.lora.lora_v2.utils import _set_trainable, _set_adapter
+from .adalora_model import AdaLoraModel
+from .configuration import LoraArgumentsV2, WEIGHTS_NAME, LoraArguments, AdaLoraArguments
+from .lora_model import LoraModel
+from .save_and_load import get_peft_model_state_dict, set_peft_model_state_dict
 
 
 PEFT_TYPE_TO_MODEL_MAPPING = {

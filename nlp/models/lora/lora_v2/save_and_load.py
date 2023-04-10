@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .config import PeftType, PromptLearningConfig
+
 
 
 def get_peft_model_state_dict(model, state_dict=None, adapter_name="default"):
@@ -30,7 +30,7 @@ def get_peft_model_state_dict(model, state_dict=None, adapter_name="default"):
     config = model.lora_config_v2[adapter_name]
     if state_dict is None:
         state_dict = model.state_dict()
-    if config.peft_type in (PeftType.LORA, PeftType.ADALORA):
+    if config.lora_type in ('lora', 'adalora'):
         # to_return = lora_state_dict(model, bias=model.peft_config.bias)
         # adapted from `https://github.com/microsoft/LoRA/blob/main/loralib/utils.py`
         # to be used directly with the state dict which is necessary when using DeepSpeed or FSDP
@@ -50,19 +50,13 @@ def get_peft_model_state_dict(model, state_dict=None, adapter_name="default"):
         else:
             raise NotImplementedError
         to_return = {k: v for k, v in to_return.items() if (("lora_" in k and adapter_name in k) or ("bias" in k))}
-        if config.peft_type == PeftType.ADALORA:
+        if config.lora_type == 'adalora':
             rank_pattern = config.rank_pattern
             if rank_pattern is not None:
                 rank_pattern = {k.replace(f".{adapter_name}", ""): v for k, v in rank_pattern.items()}
                 config.rank_pattern = rank_pattern
                 to_return = model.resize_state_dict_by_rank_pattern(rank_pattern, to_return, adapter_name)
-    elif isinstance(config, PromptLearningConfig):
-        to_return = {}
-        if config.inference_mode:
-            prompt_embeddings = model.prompt_encoder[adapter_name].embedding.weight
-        else:
-            prompt_embeddings = model.get_prompt_embedding_to_save(adapter_name)
-        to_return["prompt_embeddings"] = prompt_embeddings
+
     else:
         raise NotImplementedError
     if model.modules_to_save is not None:
@@ -95,7 +89,7 @@ def set_peft_model_state_dict(model, peft_model_state_dict, adapter_name="defaul
     else:
         state_dict = peft_model_state_dict
 
-    if config.peft_type in (PeftType.LORA, PeftType.ADALORA):
+    if config.lora_type in ('lora', 'adalora'):
         peft_model_state_dict = {}
         for k, v in state_dict.items():
             if "lora_" in k:
@@ -108,17 +102,12 @@ def set_peft_model_state_dict(model, peft_model_state_dict, adapter_name="defaul
                 peft_model_state_dict[k] = v
             else:
                 peft_model_state_dict[k] = v
-        if config.peft_type == PeftType.ADALORA:
+        if config.peft_type == 'adalora':
             rank_pattern = config.rank_pattern
             if rank_pattern is not None:
                 model.resize_modules_by_rank_pattern(rank_pattern, adapter_name)
-    elif isinstance(config, PromptLearningConfig):
-        peft_model_state_dict = state_dict
     else:
         raise NotImplementedError
 
     model.load_state_dict(peft_model_state_dict, strict=False)
-    if isinstance(config, PromptLearningConfig):
-        model.prompt_encoder[adapter_name].embedding.load_state_dict(
-            {"weight": peft_model_state_dict["prompt_embeddings"]}, strict=True
-        )
+

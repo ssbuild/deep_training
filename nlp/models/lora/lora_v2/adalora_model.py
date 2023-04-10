@@ -8,17 +8,18 @@ import torch
 from torch import nn
 from transformers import Conv1D
 
-from nlp.layers.lora.lora_v2 import mark_only_lora_as_trainable, is_bnb_available, LoraLayer
-from nlp.layers.lora.lora_v2.adalora import RankAllocator, SVDLinear8bitLt, SVDLinear
-from nlp.layers.lora.lora_v2.utils import _freeze_adapter, _get_submodules, \
+from ....layers.lora.lora_v2 import mark_only_lora_as_trainable, is_bnb_available, LoraLayer
+from ....layers.lora.lora_v2.adalora import RankAllocator, SVDLinear8bitLt, SVDLinear
+from ....layers.lora.lora_v2.utils import _freeze_adapter, _get_submodules, \
     TRANSFORMERS_MODELS_TO_ADALORA_TARGET_MODULES_MAPPING
+from .lora_model import LoraModel
 
 __all__ = [
     'is_bnb_available',
     'AdaLoraModel'
 ]
 
-from nlp.models.lora.lora_v2.lora_model import LoraModel
+
 
 if is_bnb_available():
     import bitsandbytes as bnb
