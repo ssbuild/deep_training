@@ -8,7 +8,7 @@ import torch
 from transformers.utils import PushToHubMixin
 from ....layers.lora_v2.utils import _set_trainable, _set_adapter
 from .adalora_model import AdaLoraModel
-from .configuration import WEIGHTS_NAME, LoraArguments, AdaLoraArguments
+from .configuration import WEIGHTS_NAME, LoraConfig, AdaLoraConfig,LoraArguments
 from .lora_model import LoraModel
 from .save_and_load import get_lora_model_state_dict, set_lora_model_state_dict
 
@@ -19,8 +19,8 @@ LORA_TYPE_TO_MODEL_MAPPING = {
 }
 
 LORA_TYPE_TO_CONFIG_MAPPING = {
-    "lora": LoraArguments,
-    "adalora": AdaLoraArguments,
+    "lora": LoraConfig,
+    "adalora": AdaLoraConfig,
 }
 
 class LoraModel(PushToHubMixin, torch.nn.Module):
@@ -29,12 +29,12 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
 
     Args:
         model ([`~transformers.PreTrainedModel`]): The base transformer model used for Peft.
-        lora_config_v2 ([`LoraV2Arguments`]): The configuration of the Peft model.
+        lora_config_v2 ([`LoraConfig`]): The configuration of the Peft model.
 
 
     **Attributes**:
         - **base_model** ([`~transformers.PreTrainedModel`]) -- The base transformer model used for Peft.
-        - **lora_config** ([`LoraV2Arguments`]) -- The configuration of the Peft model.
+        - **lora_config** ([`LoraConfig`]) -- The configuration of the Peft model.
         - **modules_to_save** (`list` of `str`) -- The list of sub-module names to save when
         saving the model.
         - **prompt_encoder** ([`PromptEncoder`]) -- The prompt encoder used for Peft if
@@ -47,7 +47,7 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         in the base model if using [`PromptLearningConfig`].
     """
 
-    def __init__(self, model, lora_config_v2: LoraArguments, adapter_name="default"):
+    def __init__(self, model, lora_config_v2: LoraConfig, adapter_name="default"):
         super().__init__()
         assert lora_config_v2.lora_type is not None
         self.base_model = model
@@ -99,7 +99,7 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
             lora_config.inference_mode = inference_mode
 
     @classmethod
-    def from_pretrained(cls, model, pretrained_model_name_or_path, lora_config: LoraArguments = None, adapter_name="default", is_trainable=False, **kwargs):
+    def from_pretrained(cls, model, pretrained_model_name_or_path, lora_config: LoraConfig = None, adapter_name="default", is_trainable=False, **kwargs):
         r"""
         Instantiate a [`LoraModel`] from a pretrained Lora configuration and weights.
 
@@ -118,7 +118,7 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         # load the config
         if lora_config is None:
             lora_config = LORA_TYPE_TO_CONFIG_MAPPING[
-                LoraArguments.from_pretrained(pretrained_model_name_or_path, subfolder=kwargs.get("subfolder", None)).lora_type
+                LoraConfig.from_pretrained(pretrained_model_name_or_path, subfolder=kwargs.get("subfolder", None)).lora_type
             ].from_pretrained(pretrained_model_name_or_path, subfolder=kwargs.get("subfolder", None))
 
 
@@ -197,7 +197,7 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         if adapter_name not in self.lora_config_v2:
             # load the config
             lora_config = LORA_TYPE_TO_CONFIG_MAPPING[
-                LoraArguments.from_pretrained(model_id, subfolder=kwargs.get("subfolder", None)).lora_type
+                LoraConfig.from_pretrained(model_id, subfolder=kwargs.get("subfolder", None)).lora_type
             ].from_pretrained(model_id, subfolder=kwargs.get("subfolder", None))
 
             lora_config.inference_mode = not is_trainable

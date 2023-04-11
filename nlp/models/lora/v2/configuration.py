@@ -16,6 +16,9 @@ _PRECISION_INPUT_INT = Literal[64, 32, 16]
 _PRECISION_INPUT_STR = Literal["64", "32", "16", "bf16"]
 _PRECISION_INPUT = Union[_PRECISION_INPUT_INT, _PRECISION_INPUT_STR]
 
+
+
+
 @dataclass
 class LoraConfigMixin(PushToHubMixin):
     r"""
@@ -96,16 +99,34 @@ class LoraConfigMixin(PushToHubMixin):
 
         return json_object
 
+    @classmethod
+    def from_memory(cls,json_object: dict, **kwargs):
+        config = cls(**kwargs)
+        loaded_attributes = json_object
+        for key, value in loaded_attributes.items():
+            if hasattr(config, key):
+                setattr(config, key, value)
 
+        return config
 
 
 @dataclass
-class LoraArguments(LoraConfigMixin):
+class LoraBaseArguments(LoraConfigMixin):
+    """
+      inference_mode (`bool`, defaults to `False`): Whether to use the Peft model in inference mode.
+    """
+    base_model_name_or_path: str = field(default=None, metadata={"help": "The name of the base model to use."})
+    inference_mode: bool = field(default=False, metadata={"help": "Whether to use inference mode"})
+    lora_type: str = field(default='lora', metadata={"help": "one of lora,adalora"})
+    with_lora: bool = field(default=False, metadata={"help": "whether use lora"})
+
+@dataclass
+class LoraConfig(LoraBaseArguments):
     """
     This is the configuration class to store the configuration of a [`~peft.Lora`].
 
     Args:
-        inference_mode (`bool`, defaults to `False`): Whether to use the Peft model in inference mode.
+
         r (`int`): Lora attention dimension
         target_modules (`Union[List[str],str]`): The names of the modules to apply Lora to.
         lora_alpha (`float`): The alpha parameter for Lora scaling.
@@ -115,11 +136,6 @@ class LoraArguments(LoraConfigMixin):
         modules_to_save (`List[str]`):List of modules apart from LoRA layers to be set as trainable
             and saved in the final checkpoint.
     """
-    base_model_name_or_path: str = field(default=None, metadata={"help": "The name of the base model to use."})
-    inference_mode: bool = field(default=False, metadata={"help": "Whether to use inference mode"})
-    with_lora: bool = field(default=False, metadata={"help": "whether use lora"})
-    lora_type: str = field(default='lora', metadata={"help": "one of lora,adalora"})
-
     r: int = field(default=8, metadata={"help": "Lora attention dimension"})
     target_modules: Optional[Union[List[str], str]] = field(
         default=None,
@@ -160,7 +176,7 @@ class LoraArguments(LoraConfigMixin):
 
 
 @dataclass
-class AdaLoraArguments(LoraArguments):
+class AdaLoraConfig(LoraConfig):
     """
     This is the configuration class to store the configuration of a [`~peft.AdaLora`].
 
@@ -191,3 +207,53 @@ class AdaLoraArguments(LoraArguments):
     def __post_init__(self):
         if self.lora_type is None:
             self.lora_type = 'adalora'
+
+
+LORA_TYPE_TO_CONFIG_MAPPING = {
+    "lora": LoraConfig,
+    "adalora": AdaLoraConfig,
+}
+
+@dataclass
+class LoraArguments:
+    lora: LoraConfig= field(default=None, metadata={"help": "LoraArguments."})
+    adalora: AdaLoraConfig = field(default=None, metadata={"help": "AdaLoraArguments."})
+
+    def save_pretrained(self, save_directory, **kwargs):
+        if self.lora is not None:
+            self.lora.save_pretrained(save_directory, **kwargs)
+        elif self.adalora is not None:
+            self.adalora.save_pretrained(save_directory, **kwargs)
+
+    @classmethod
+    def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
+        config = LORA_TYPE_TO_CONFIG_MAPPING[LoraBaseArguments.from_pretrained(pretrained_model_name_or_path,**kwargs).lora_type].from_pretrained(pretrained_model_name_or_path,**kwargs)
+        # config = cls()
+        # config.lora = None
+        # config.adalora = None
+        # setattr(config,obj.lora_type,obj)
+        # if config.lora is not None:
+        #     config.with_lora = config.lora.with_lora
+        # if config.adalora is not None:
+        #     config.with_lora = config.adalora.with_lora
+        return config
+
+    @property
+    def config(self):
+        if not self.with_lora:
+            return None
+        if self.lora is not None:
+            return self.lora
+        return self.adalora
+
+
+    def __post_init__(self):
+        self.with_lora = False
+        if self.lora is not None and isinstance(self.lora, dict):
+            self.lora = LoraConfig.from_memory(self.lora)
+            self.with_lora = self.lora.with_lora | self.with_lora
+
+
+        if self.adalora is not None and isinstance(self.adalora, dict):
+            self.adalora = AdaLoraConfig.from_memory(self.adalora)
+            self.with_lora = self.adalora.with_lora | self.with_lora
