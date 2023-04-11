@@ -30,9 +30,7 @@ class AdaLoraLayer(LoraLayer):
         if lora_dropout > 0.0:
             lora_dropout_layer = nn.Dropout(p=lora_dropout)
         else:
-
-            def lora_dropout_layer(x):
-                return x
+            lora_dropout_layer = nn.Identity()
 
         self.lora_dropout.update(nn.ModuleDict({adapter_name: lora_dropout_layer}))
         # Actual trainable parameters
