@@ -144,14 +144,15 @@ class TrainingArguments:
                           "},
     )
     adv: dict = field(
-        default_factory= lambda: {
-            'mode': None, # None, fgm, fgsm_local, fgsm, pgd, free_local, free
-            'emb_name=': 'embedding',
-            'attack_iters': 2, # pgd
-            'minibatch_replays': 2, # free
-            'alpha': 0.1, # pgd
-            'epsilon': 1.0 # pgd,fgm
-        },
+        # default_factory= lambda: {
+        #     'mode': None, # None, fgm, fgsm_local, fgsm, pgd, free_local, free
+        #     'emb_name=': 'embedding',
+        #     'attack_iters': 2, # pgd
+        #     'minibatch_replays': 2, # free
+        #     'alpha': 0.1, # pgd
+        #     'epsilon': 1.0 # pgd,fgm
+        # },
+        default=None,
         metadata={"help": "对抗训练"},
     )
     hierarchical_position: float = field(

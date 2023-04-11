@@ -234,6 +234,7 @@ class LoraArguments:
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
         config = LORA_TYPE_TO_CONFIG_MAPPING[LoraBaseArguments.from_pretrained(pretrained_model_name_or_path,**kwargs).lora_type].from_pretrained(pretrained_model_name_or_path,**kwargs)
+        assert config.with_lora , ValueError('lora config get bad with_lora ',config.with_lora)
         # config = cls()
         # config.lora = None
         # config.adalora = None
