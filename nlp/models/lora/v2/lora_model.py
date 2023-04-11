@@ -80,6 +80,18 @@ class LoraModel(torch.nn.Module):
             "fan_in_fan_out": lora_config.fan_in_fan_out,
             "init_lora_weights": lora_config.init_lora_weights,
         }
+        if lora_config.target_dtype is not None and not loaded_in_8bit:
+            if lora_config.target_dtype == 16 or lora_config.target_dtype == '16':
+                kwargs['dtype'] = torch.float16
+            elif lora_config.target_dtype == 32 or lora_config.target_dtype == '32':
+                kwargs['dtype'] = torch.float32
+            elif lora_config.target_dtype == 64 or lora_config.target_dtype == '64':
+                kwargs['dtype'] = torch.float64
+            elif lora_config.target_dtype == 'bf16':
+                kwargs['dtype'] = torch.bfloat16
+            elif isinstance(lora_config.target_dtype, torch.dtype):
+                kwargs['dtype'] = lora_config.target_dtype
+
         key_list = [key for key, _ in self.model.named_modules()]
         for key in key_list:
             if isinstance(lora_config.target_modules, str):
@@ -98,6 +110,7 @@ class LoraModel(torch.nn.Module):
                         lora_config.lora_alpha,
                         lora_config.lora_dropout,
                         lora_config.init_lora_weights,
+                        dtype=kwargs.get('dtype',None)
                     )
                 else:
                     if loaded_in_8bit and isinstance(target, bnb.nn.Linear8bitLt):

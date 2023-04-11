@@ -119,6 +119,12 @@ class LoraBaseArguments(LoraConfigMixin):
     inference_mode: bool = field(default=False, metadata={"help": "Whether to use inference mode"})
     lora_type: str = field(default='lora', metadata={"help": "one of lora,adalora"})
     with_lora: bool = field(default=False, metadata={"help": "whether use lora"})
+    target_dtype: Optional[Union[int, str]] = field(
+        default=None,
+        metadata={
+            "help": "target_modules dtype , one of [\"64\", \"32\", \"16\", \"bf16\"]  or one of [16,32,64]"
+        },
+    )
 
 @dataclass
 class LoraConfig(LoraBaseArguments):
@@ -239,12 +245,14 @@ class LoraArguments:
         return config
 
     @property
-    def config(self):
+    def config(self) -> Optional[Union[LoraConfig,AdaLoraConfig]]:
         if not self.with_lora:
             return None
-        if self.lora is not None:
+        if self.lora is not None and self.lora.with_lora:
             return self.lora
-        return self.adalora
+        elif self.adalora is not None and self.adalora.with_lora:
+            return self.adalora
+        return None
 
 
     def __post_init__(self):

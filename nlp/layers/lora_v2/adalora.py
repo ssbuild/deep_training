@@ -24,7 +24,7 @@ class AdaLoraLayer(LoraLayer):
         self.lora_B = nn.ParameterDict({})
         self.ranknum = nn.ParameterDict({})
 
-    def update_layer(self, adapter_name, r, lora_alpha, lora_dropout, init_lora_weights):
+    def update_layer(self, adapter_name, r, lora_alpha, lora_dropout, init_lora_weights,dtype=None):
         self.r[adapter_name] = r
         self.lora_alpha[adapter_name] = lora_alpha
         if lora_dropout > 0.0:
@@ -37,13 +37,13 @@ class AdaLoraLayer(LoraLayer):
         self.lora_dropout.update(nn.ModuleDict({adapter_name: lora_dropout_layer}))
         # Actual trainable parameters
         # Right singular vectors
-        self.lora_A.update(nn.ParameterDict({adapter_name: nn.Parameter(torch.zeros(r, self.in_features))}))
+        self.lora_A.update(nn.ParameterDict({adapter_name: nn.Parameter(torch.zeros(r, self.in_features,dtype=dtype))}))
         # Singular values
-        self.lora_E.update(nn.ParameterDict({adapter_name: nn.Parameter(torch.zeros(r, 1))}))
+        self.lora_E.update(nn.ParameterDict({adapter_name: nn.Parameter(torch.zeros(r, 1,dtype=dtype))}))
         # Left singular vectors
-        self.lora_B.update(nn.ParameterDict({adapter_name: nn.Parameter(torch.zeros(self.out_features, r))}))
+        self.lora_B.update(nn.ParameterDict({adapter_name: nn.Parameter(torch.zeros(self.out_features, r,dtype=dtype))}))
         # The current rank
-        self.ranknum.update(nn.ParameterDict({adapter_name: nn.Parameter(torch.zeros(1), requires_grad=False)}))
+        self.ranknum.update(nn.ParameterDict({adapter_name: nn.Parameter(torch.zeros(1,dtype=dtype), requires_grad=False)}))
         self.ranknum[adapter_name].data.fill_(float(r))
         self.ranknum[adapter_name].requires_grad = False
         self.scaling[adapter_name] = lora_alpha if lora_alpha > 0 else float(r)
@@ -95,7 +95,8 @@ class SVDLinear(nn.Linear, AdaLoraLayer):
             self.weight.data += (
                 transpose(
                     self.lora_B[self.active_adapter]
-                    @ (self.lora_A[self.active_adapter] * self.lora_E[self.active_adapter])
+                    @ (self.lora_A[self.active_adapter] * self.lora_E[self.active_adapter]),
+                    self.fan_in_fan_out
                 )
                 * self.scaling[self.active_adapter]
                 / (self.ranknum[self.active_adapter] + 1e-5)
@@ -112,7 +113,8 @@ class SVDLinear(nn.Linear, AdaLoraLayer):
             self.weight.data -= (
                 transpose(
                     self.lora_B[self.active_adapter]
-                    @ (self.lora_A[self.active_adapter] * self.lora_E[self.active_adapter])
+                    @ (self.lora_A[self.active_adapter] * self.lora_E[self.active_adapter]),
+                    self.fan_in_fan_out
                 )
                 * self.scaling[self.active_adapter]
                 / (self.ranknum[self.active_adapter] + 1e-5)
@@ -171,7 +173,7 @@ if is_bnb_available():
             self.weight.requires_grad = False
 
             init_lora_weights = kwargs.pop("init_lora_weights", True)
-            self.update_layer(adapter_name, r, lora_alpha, lora_dropout, init_lora_weights)
+            self.update_layer(adapter_name, r, lora_alpha, lora_dropout, init_lora_weights,dtype=kwargs.get('dtype',None))
             self.active_adapter = adapter_name
 
         def forward(self, x: torch.Tensor):
