@@ -67,6 +67,10 @@ class LoraModel(torch.nn.Module):
     def _find_and_replace(self, adapter_name):
         lora_config = self.peft_config[adapter_name]
         loaded_in_8bit = getattr(self.model, "is_loaded_in_8bit", False)
+        if not loaded_in_8bit:
+            if hasattr(self.model,'model'):
+                loaded_in_8bit = getattr(self.model.model, "is_loaded_in_8bit", False)
+
         if loaded_in_8bit and not is_bnb_available():
             raise ImportError(
                 "To use Lora with 8-bit quantization, please install the `bitsandbytes` package. "

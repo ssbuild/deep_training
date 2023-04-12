@@ -20,7 +20,8 @@
 
 ## 更新
 - <strong>2023年04月11</strong>
-  - deep_training 0.1.2 重构lora v2, 增加adalora
+  - 0.1.2 重构lora v2, 增加adalora
+  - 0.1.2@post0 fix lova v1,lova v2 load_in_8bit
 - <strong>2023年04月07</strong>
   - deep_training 0.1.1 同步更新chatglm 词表配置信息 
 - <strong>2023年04月02</strong>

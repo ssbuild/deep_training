@@ -99,6 +99,10 @@ class LoraModel(torch.nn.Module,PushToHubMixin):
 
     def _find_and_replace(self):
         loaded_in_8bit = getattr(self.model, "is_loaded_in_8bit", False)
+        if not loaded_in_8bit:
+            if hasattr(self.model, 'model'):
+                loaded_in_8bit = getattr(self.model.model, "is_loaded_in_8bit", False)
+
         if loaded_in_8bit and not is_bnb_available():
             raise ImportError(
                 "To use Lora with 8-bit quantization, please install the `bitsandbytes` package. "
@@ -113,7 +117,7 @@ class LoraModel(torch.nn.Module,PushToHubMixin):
             "merge_weights": self.lora_config.merge_weights or self.lora_config.inference_mode,
         }
 
-        if self.lora_config.target_dtype is not None:
+        if self.lora_config.target_dtype is not None and not loaded_in_8bit:
             if self.lora_config.target_dtype == 16 or self.lora_config.target_dtype == '16':
                 kwargs['dtype'] = torch.float16
             elif self.lora_config.target_dtype == 32 or self.lora_config.target_dtype == '32':
