@@ -14,7 +14,7 @@ from torch import nn
 from transformers import Conv1D
 
 from ....layers.lora_v2.layers import mark_only_lora_as_trainable, is_bnb_available, LoraLayer, Linear
-from ....layers.lora_v2.utils import _freeze_adapter, _get_submodules
+from ....layers.lora_v2.utils import _freeze_adapter, _get_submodules, ModulesToSaveWrapper
 
 __all__ = [
     'is_bnb_available',
@@ -245,10 +245,17 @@ class LoraModel(torch.nn.Module):
 
         key_list = [key for key, _ in self.model.named_modules() if "lora" not in key]
         for key in key_list:
-            parent, target, target_name = _get_submodules(self.model, key)
+            try:
+                parent, target, target_name = _get_submodules(self.model, key)
+            except AttributeError:
+                continue
             if isinstance(target, LoraLayer):
                 bias = target.bias is not None
                 new_module = torch.nn.Linear(target.in_features, target.out_features, bias=bias)
                 target.merge()
                 self._replace_module(parent, target_name, new_module, target)
+
+            # save any additional trainable modules part of `modules_to_save`
+            if isinstance(target, ModulesToSaveWrapper):
+                setattr(parent, target_name, target.modules_to_save[target.active_adapter])
         return self.model
