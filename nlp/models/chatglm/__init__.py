@@ -55,14 +55,24 @@ class InvalidScoreLogitsProcessor(LogitsProcessor):
 
 
 
+def module_init_function(cls,*args,**kwargs):
+    return cls(*args,**kwargs)
 
+skip_init_function = skip_init
 
-def setup_model_profile():
+def setup_model_profile(skip_init_flag=True):
     # flags required to enable jit fusion kernels
     torch._C._jit_set_profiling_mode(False)
     torch._C._jit_set_profiling_executor(False)
     torch._C._jit_override_can_fuse_on_cpu(True)
     torch._C._jit_override_can_fuse_on_gpu(True)
+
+    global skip_init_function
+    if skip_init_flag:
+        skip_init_function = skip_init
+    else:
+        skip_init_function = module_init_function
+
 
 
 def load_tf_weights_in_chatglm_6b(model, config, tf_checkpoint_path):
@@ -385,7 +395,7 @@ class SelfAttention(torch.nn.Module):
         self.inner_hidden_size = num_attention_heads * self.hidden_size_per_attention_head
 
         # Strided linear layer.
-        self.query_key_value = skip_init(
+        self.query_key_value = skip_init_function(
             torch.nn.Linear,
             hidden_size,
             3 * self.inner_hidden_size,
@@ -393,7 +403,7 @@ class SelfAttention(torch.nn.Module):
             dtype=params_dtype,
         )
 
-        self.dense = skip_init(
+        self.dense = skip_init_function(
             torch.nn.Linear,
             self.inner_hidden_size,
             hidden_size,
@@ -515,7 +525,7 @@ class GLU(torch.nn.Module):
         if inner_hidden_size is None:
             inner_hidden_size = 4 * hidden_size
         self.inner_hidden_size = inner_hidden_size
-        self.dense_h_to_4h = skip_init(
+        self.dense_h_to_4h = skip_init_function(
             torch.nn.Linear,
             self.hidden_size,
             self.inner_hidden_size,
@@ -523,7 +533,7 @@ class GLU(torch.nn.Module):
             dtype=params_dtype,
         )
         # Project back to h.
-        self.dense_4h_to_h = skip_init(
+        self.dense_4h_to_h = skip_init_function(
             torch.nn.Linear,
             self.inner_hidden_size,
             self.hidden_size,
@@ -831,7 +841,7 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         self.pre_seq_len = config.pre_seq_len
         self.prefix_projection = config.prefix_projection
 
-        self.word_embeddings = skip_init(
+        self.word_embeddings = skip_init_function(
             torch.nn.Embedding,
             num_embeddings=self.vocab_size, embedding_dim=self.hidden_size,
             dtype=self.params_dtype or torch.half
@@ -929,7 +939,7 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         elif input_ids is not None:
             batch_size, seq_length = input_ids.shape[:2]
         elif inputs_embeds is not None:
-            batch_size, seq_length, _ = inputs_embeds.shape[:2]
+            batch_size, seq_length = inputs_embeds.shape[:2]
         else:
             raise ValueError("You have to specify either input_ids or inputs_embeds")
 
@@ -982,17 +992,11 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         presents = () if use_cache else None
         all_self_attentions = () if output_attentions else None
         all_hidden_states = () if output_hidden_states else None
-
-                                         
-                                  
-                                          
-                                                                   
-                                                                                
         if attention_mask is None:
             attention_mask = torch.zeros(1, 1, device=input_ids.device).bool()
 
         else:
-            attention_mask = attention_mask.to(input_ids.device)
+            attention_mask = attention_mask.to(hidden_states.device)
 
         for i, layer in enumerate(self.layers):
 
@@ -1054,7 +1058,7 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
         self.max_sequence_length = config.max_sequence_length
         self.position_encoding_2d = config.position_encoding_2d
         self.transformer = ChatGLMModel(config)
-        self.lm_head = skip_init(
+        self.lm_head = skip_init_function(
             nn.Linear,
             config.hidden_size,
             config.vocab_size,
