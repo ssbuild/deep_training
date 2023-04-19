@@ -227,11 +227,11 @@ class TrainingArguments:
 
         if self.seed is not None:
             try:
-                from pytorch_lightning.utilities.seed import seed_everything
-                seed_everything(self.seed)
+                from lightning_fabric.utilities.seed import seed_everything
+                seed_everything(int(self.seed))
             except:
                 try:
-                    from lightning_fabric.utilities.seed import seed_everything
+                    from pytorch_lightning.utilities.seed import seed_everything
                     seed_everything(self.seed)
                 except:
                     warnings.warn('missing seed_everything')
