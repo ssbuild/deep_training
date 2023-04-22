@@ -151,5 +151,10 @@
 ## 愿景
 创建一个模型工厂, 轻量且高效的训练程序，让训练模型更容易,更轻松上手。
 
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=ssbuild/deep_training&type=Date)](https://star-history.com/#ssbuild/deep_training&Date)
+
 ## 交流
 QQ交流群：185144988
