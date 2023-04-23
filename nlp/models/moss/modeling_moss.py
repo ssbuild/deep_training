@@ -4,6 +4,7 @@ from typing import Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
+import transformers
 from torch import nn
 from torch.nn import CrossEntropyLoss
 
@@ -585,9 +586,25 @@ class MossForCausalLM(MossPreTrainedModel):
 
     def __init__(self, config):
         super().__init__(config)
+        if config.wbits not in [4, 8, 32]:
+            logger.warning(f'Specify `wbits` with 4, 8 or 32 to load the model. ')
+        if config.wbits in [4, 8]:
+            def noop(*args, **kwargs):
+                pass
+
+            torch.nn.init.kaiming_uniform_ = noop
+            torch.nn.init.uniform_ = noop
+            torch.nn.init.normal_ = noop
+
+            torch.set_default_dtype(torch.half)
+            transformers.modeling_utils._init_weights = False
+            torch.set_default_dtype(torch.half)
         self.transformer = MossModel(config)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size)
-
+        if config.wbits in [4, 8]:
+            torch.set_default_dtype(torch.float)
+            transformers.modeling_utils._init_weights = True
+            self.quantize(config.wbits, config.groupsize)
         # Initialize weights and apply final processing
         self.post_init()
 
