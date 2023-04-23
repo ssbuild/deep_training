@@ -11,12 +11,88 @@ from tqdm import tqdm
 from torch.nn import functional as F
 import torch.distributed as dist
 from .....nlp.layers.ppo import AdaptiveKLController, FixedKLController
-from .data_type import PPORLElement
-from .utils import logprobs_of_labels, Clock, gather_dict, RunningMoments
+from .data_type import PPORLElement, PPORLBatch
+from .utils import logprobs_of_labels, Clock, gather_dict, RunningMoments, pad_across_processes,_gpu_gather
 
 logger = logging.get_logger(__name__)
 
 
+
+class PPOLoss(nn.Module):
+    def __init__(self):
+        super(PPOLoss, self).__init__()
+
+    def foward(self,batch: PPORLBatch):
+        """Forward pass & loss
+
+              Args:
+                  batch: Previous batch of episodes
+              """
+        # Move `batch` data to `accelerator` device
+        query_tensors = batch.query_tensors.to(self.accelerator.device)
+        response_tensors = batch.response_tensors.to(self.accelerator.device)
+        old_logprobs = batch.logprobs.to(self.accelerator.device)
+        old_values = batch.values.to(self.accelerator.device)
+        old_rewards = batch.rewards.to(self.accelerator.device)
+        response_length = old_rewards.shape[1]
+
+        advantages, returns = self.config.method.get_advantages_and_returns(old_values, old_rewards, response_length)
+
+        if self.config.model.model_arch_type == "seq2seq":
+            input_ids = query_tensors
+            decoder_input_ids = response_tensors
+            attention_mask = input_ids.ne(self.tokenizer.pad_token_id).long().to(self.accelerator.device)
+            decoder_attention_mask = (
+                decoder_input_ids.ne(self.tokenizer.pad_token_id).long().to(self.accelerator.device)
+            )
+            decoder_attention_mask[:, 0] = 1
+
+            # Forward pass
+            outputs = self.model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                decoder_input_ids=decoder_input_ids,
+                decoder_attention_mask=decoder_attention_mask,
+            )
+
+            logits = outputs.logits
+            values_pred = outputs.value
+            logprobs = logprobs_of_labels(logits[:, :-1, :], decoder_input_ids[:, 1:])
+            mask = decoder_input_ids.ne(self.tokenizer.pad_token_id).long().to(self.accelerator.device)
+            start = 0
+            end = start + response_length
+            logprobs, values_pred, mask = (
+                logprobs[:, start:end],
+                values_pred[:, start:end],
+                mask[:, start:end],
+            )
+        else:
+            tokens = torch.cat((query_tensors, response_tensors), dim=1)
+            attention_mask = tokens.not_equal(self.tokenizer.pad_token_id).long().to(tokens.device)
+            outputs = self.model(tokens, attention_mask, return_dict=True)
+            logits = outputs.logits
+            values_pred = outputs.value
+            values_pred = values_pred[:, :-1]
+            logprobs = logprobs_of_labels(logits[:, :-1, :], tokens[:, 1:])
+
+            start = query_tensors.shape[1] - 1
+            end = start + response_length
+            logprobs, values_pred, mask = (
+                logprobs[:, start:end],
+                values_pred[:, start:end],
+                attention_mask[:, start:end],
+            )
+
+        loss, stats = self.config.method.loss(
+            logprobs=logprobs,
+            values=values_pred,
+            old_logprobs=old_logprobs,
+            old_values=old_values,
+            advantages=advantages,
+            returns=returns,
+            mask=mask,
+        )
+        return loss, stats
 class PPO_dataset:
     def __init__(self,
                  model,
@@ -151,15 +227,15 @@ class PPO_dataset:
             device = samples.device
 
             prompt_sizes = torch.tensor([prompt_tensors.shape[1]] * len(prompt_tensors), device=device)
-            padded_samples = self.accelerator.pad_across_processes(
+            padded_samples = pad_across_processes(
                 samples, dim=1, pad_index=self.tokenizer.eos_token_id, pad_first=False
             )
-            padded_prompts = self.accelerator.pad_across_processes(
+            padded_prompts = pad_across_processes(
                 prompt_tensors, dim=1, pad_index=self.tokenizer.eos_token_id, pad_first=False
             )
-            gathered_samples = self.accelerator.gather(padded_samples)
-            gathered_prompts = self.accelerator.gather(padded_prompts)
-            gathered_prompt_sizes = self.accelerator.gather(prompt_sizes)
+            gathered_samples = _gpu_gather(padded_samples)
+            gathered_prompts = _gpu_gather(padded_prompts)
+            gathered_prompt_sizes = _gpu_gather(prompt_sizes)
             metadata = gather_dict({k: v for k, v in batch.items() if k != "input_ids" and k != "attention_mask"})
 
             if is_main_process:
@@ -353,3 +429,15 @@ class PPO_dataset:
 
         # Push samples and rewards to trainer's rollout storage
         self.push_to_store(ppo_rl_elements)
+
+    def post_backward_callback(self):
+        self.kl_ctl.update(self.mean_kl.item(), n_steps=self.config.train.batch_size)
+
+    def post_epoch_callback(self):
+        """Post epoch callback
+
+        Clears the store and creates `num_rollouts` new episodes.
+        """
+        self.store.clear_history()
+        # Collect more rollouts for training
+        self.make_experience(self.config.method.num_rollouts, self.iter_count)

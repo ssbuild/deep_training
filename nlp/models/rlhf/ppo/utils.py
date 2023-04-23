@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/4/23 14:15
 import time
-from typing import Dict, MutableMapping, Union, Tuple
+from typing import Dict, MutableMapping, Union, Tuple, Mapping
 
 import numpy as np
 from transformers import PretrainedConfig
@@ -181,3 +181,126 @@ class RunningMoments:
         self.count = tot_count
 
         return xs_mean, (xs_var * xs_count / (xs_count - 1)).sqrt()
+
+
+def is_torch_tensor(tensor):
+    return isinstance(tensor, torch.Tensor)
+
+def honor_type(obj, generator):
+    """
+    Cast a generator to the same type as obj (list, tuple or namedtuple)
+    """
+    try:
+        return type(obj)(generator)
+    except TypeError:
+        # Some objects may not be able to instantiate from a generator directly
+        return type(obj)(*list(generator))
+
+def recursively_apply(func, data, *args, test_type=is_torch_tensor, error_on_other_type=False, **kwargs):
+    """
+    Recursively apply a function on a data structure that is a nested list/tuple/dictionary of a given base type.
+
+    Args:
+        func (`callable`):
+            The function to recursively apply.
+        data (nested list/tuple/dictionary of `main_type`):
+            The data on which to apply `func`
+        *args:
+            Positional arguments that will be passed to `func` when applied on the unpacked data.
+        main_type (`type`, *optional*, defaults to `torch.Tensor`):
+            The base type of the objects to which apply `func`.
+        error_on_other_type (`bool`, *optional*, defaults to `False`):
+            Whether to return an error or not if after unpacking `data`, we get on an object that is not of type
+            `main_type`. If `False`, the function will leave objects of types different than `main_type` unchanged.
+        **kwargs:
+            Keyword arguments that will be passed to `func` when applied on the unpacked data.
+
+    Returns:
+        The same data structure as `data` with `func` applied to every object of type `main_type`.
+    """
+    if isinstance(data, (tuple, list)):
+        return honor_type(
+            data,
+            (
+                recursively_apply(
+                    func, o, *args, test_type=test_type, error_on_other_type=error_on_other_type, **kwargs
+                )
+                for o in data
+            ),
+        )
+    elif isinstance(data, Mapping):
+        return type(data)(
+            {
+                k: recursively_apply(
+                    func, v, *args, test_type=test_type, error_on_other_type=error_on_other_type, **kwargs
+                )
+                for k, v in data.items()
+            }
+        )
+    elif test_type(data):
+        return func(data, *args, **kwargs)
+    elif error_on_other_type:
+        raise TypeError(
+            f"Can't apply {func.__name__} on object of type {type(data)}, only of nested list/tuple/dicts of objects "
+            f"that satisfy {test_type.__name__}."
+        )
+    return data
+
+
+def _gpu_gather(tensor):
+    def _gpu_gather_one(tensor):
+        if tensor.ndim == 0:
+            tensor = tensor.clone()[None]
+        output_tensors = [tensor.clone() for _ in range(torch.distributed.get_world_size())]
+        torch.distributed.all_gather(output_tensors, tensor)
+        return torch.cat(output_tensors, dim=0)
+
+    return recursively_apply(_gpu_gather_one, tensor, error_on_other_type=True)
+
+
+_cpu_gather = _gpu_gather
+
+def pad_across_processes(tensor, dim=0, pad_index=0, pad_first=False):
+    """
+    Recursively pad the tensors in a nested list/tuple/dictionary of tensors from all devices to the same size so they
+    can safely be gathered.
+
+    Args:
+        tensor (nested list/tuple/dictionary of `torch.Tensor`):
+            The data to gather.
+        dim (`int`, *optional*, defaults to 0):
+            The dimension on which to pad.
+        pad_index (`int`, *optional*, defaults to 0):
+            The value with which to pad.
+        pad_first (`bool`, *optional*, defaults to `False`):
+            Whether to pad at the beginning or the end.
+    """
+
+    def _pad_across_processes(tensor, dim=0, pad_index=0, pad_first=False):
+        if dim >= len(tensor.shape):
+            return tensor
+
+        # Gather all sizes
+        size = torch.tensor(tensor.shape, device=tensor.device)[None]
+        sizes = _cpu_gather(size).cpu()
+        # Then pad to the maximum size
+        max_size = max(s[dim] for s in sizes)
+        if max_size == tensor.shape[dim]:
+            return tensor
+
+        old_size = tensor.shape
+        new_size = list(old_size)
+        new_size[dim] = max_size
+        new_tensor = tensor.new_zeros(tuple(new_size)) + pad_index
+        if pad_first:
+            indices = tuple(
+                slice(max_size - old_size[dim], max_size) if i == dim else slice(None) for i in range(len(new_size))
+            )
+        else:
+            indices = tuple(slice(0, old_size[dim]) if i == dim else slice(None) for i in range(len(new_size)))
+        new_tensor[indices] = tensor
+        return new_tensor
+
+    return recursively_apply(
+        _pad_across_processes, tensor, error_on_other_type=True, dim=dim, pad_index=pad_index, pad_first=pad_first
+    )

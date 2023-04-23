@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Iterable
 
-from torchtyping import TensorType
+import torch
 
 
 @dataclass
@@ -31,11 +31,11 @@ class PPORLElement:
     :type rewards: torch.Tensor
     """
 
-    query_tensor: TensorType["query_size"]
-    response_tensor: TensorType["response_size"]
-    logprobs: TensorType["response_size"]
-    values: TensorType["response_size"]
-    rewards: TensorType["response_size"]
+    query_tensor: torch.Tensor
+    response_tensor: torch.Tensor
+    logprobs: torch.Tensor
+    values: torch.Tensor
+    rewards: torch.Tensor
 
 @dataclass
 class PromptBatch:
@@ -50,4 +50,35 @@ class PromptBatch:
     """
 
     text: Iterable[str]
-    tokens: TensorType["batch_size", "num_tokens"]
+    tokens:  torch.Tensor #TensorType["batch_size", "num_tokens"]
+    
+    
+
+
+
+@dataclass
+class PPORLBatch:
+    """
+    A batched version of the PPORLElement. See PPORLElement for more details on individual fields.
+
+    :param query_tensors: A batch of query tensors. Should be a long tensor.
+    :type query_tensors: torch.Tensor
+
+    :param response_tensors: A batch of response tensors. Should be a long tensor.
+    :type response_tensors: torch.Tensor
+
+    :param logprobs: A batch of log probabilities from policy
+    :type logprobs: torch.Tensor
+
+    :param values: A batch of values from value network
+    :type values: torch.Tensor
+
+    :param rewards: A batch of rewards
+    :type rewards: torch.Tensor
+    """
+
+    query_tensors: torch.Tensor #TensorType["batch_size", "query_size"]
+    response_tensors:  torch.Tensor #TensorType["batch_size", "response_size"]
+    logprobs:  torch.Tensor #TensorType["batch_size", "response_size"]
+    values:  torch.Tensor #TensorType["batch_size", "response_size"]
+    rewards:  torch.Tensor #TensorType["batch_size", "response_size"]
