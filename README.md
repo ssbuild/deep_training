@@ -20,7 +20,7 @@
 
 ## 更新
 - <strong>2023年04月21</strong>
-  - 0.1.3rc0 增加 moss chat模型 完整训练参考 [chatmoss_finetuning](https://github.com/ssbuild/chatmoss_finetuning)
+  - 0.1.3rc0 增加 moss chat模型 完整训练参考 [moss_finetuning](https://github.com/ssbuild/moss_finetuning)
   - moss 量化int4 int8推理
 - <strong>2023年04月11</strong>
   - 0.1.2 重构lora v2, 增加adalora

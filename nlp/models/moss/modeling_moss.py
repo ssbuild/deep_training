@@ -726,3 +726,7 @@ class MossForCausalLM(MossPreTrainedModel):
             tuple(past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past)
             for layer_past in past_key_values
         )
+
+    def quantize(self, wbits, groupsize):
+        from .quantization import quantize_with_gptq
+        return quantize_with_gptq(self, wbits, groupsize)
