@@ -31,11 +31,19 @@ PRETRAINED_VOCAB_FILES_MAP = {
         "fnlp/moss-moon-003-base": "https://huggingface.co/fnlp/moss-moon-003-base/resolve/main/vocab.json",
         "fnlp/moss-moon-003-sft": "https://huggingface.co/fnlp/moss-moon-003-sft/resolve/main/vocab.json",
         "fnlp/moss-moon-003-sft-plugin": "https://huggingface.co/fnlp/moss-moon-003-sft-plugin/resolve/main/vocab.json",
+        "fnlp/moss-moon-003-sft-int8": "https://huggingface.co/fnlp/moss-moon-003-sft-int8/resolve/main/vocab.json",
+        "fnlp/moss-moon-003-sft-plugin-int8": "https://huggingface.co/fnlp/moss-moon-003-sft-plugin-int8/resolve/main/vocab.json",
+        "fnlp/moss-moon-003-sft-int4": "https://huggingface.co/fnlp/moss-moon-003-sft-int4/resolve/main/vocab.json",
+        "fnlp/moss-moon-003-sft-plugin-int4": "https://huggingface.co/fnlp/moss-moon-003-sft-plugin-int4/resolve/main/vocab.json",
     },
     "merges_file": {
         "fnlp/moss-moon-003-base": "https://huggingface.co/fnlp/moss-moon-003-base/resolve/main/merges.txt",
         "fnlp/moss-moon-003-sft": "https://huggingface.co/fnlp/moss-moon-003-sft/resolve/main/merges.txt",
         "fnlp/moss-moon-003-sft-plugin": "https://huggingface.co/fnlp/moss-moon-003-sft-plugin/resolve/main/merges.txt",
+        "fnlp/moss-moon-003-sft-int8": "https://huggingface.co/fnlp/moss-moon-003-sft-int8/resolve/main/merges.txt",
+        "fnlp/moss-moon-003-sft-plugin-int8": "https://huggingface.co/fnlp/moss-moon-003-sft-plugin-int8/resolve/main/merges.txt",
+        "fnlp/moss-moon-003-sft-int4": "https://huggingface.co/fnlp/moss-moon-003-sft-int4/resolve/main/merges.txt",
+        "fnlp/moss-moon-003-sft-plugin-int4": "https://huggingface.co/fnlp/moss-moon-003-sft-plugin-int4/resolve/main/merges.txt",
     },
 }
 
@@ -43,6 +51,10 @@ PRETRAINED_POSITIONAL_EMBEDDINGS_SIZES = {
     "fnlp/moss-moon-003-base": 2048,
     "fnlp/moss-moon-003-sft": 2048,
     "fnlp/moss-moon-003-sft-plugin": 2048,
+    "fnlp/moss-moon-003-sft-int8": 2048,
+    "fnlp/moss-moon-003-sft-plugin-int8": 2048,
+    "fnlp/moss-moon-003-sft-int4": 2048,
+    "fnlp/moss-moon-003-sft-plugin-int4": 2048,
 }
 
 
@@ -51,7 +63,6 @@ def bytes_to_unicode():
     """
     Returns list of utf-8 byte and a mapping to unicode strings. We specifically avoids mapping to whitespace/control
     characters the bpe code barfs on.
-
     The reversible bpe codes work on unicode strings. This means you need a large # of unicode characters in your vocab
     if you want to avoid UNKs. When you're at something like a 10B token dataset you end up needing around 5K for
     decent coverage. This is a significant percentage of your normal, say, 32K bpe vocab. To avoid that, we want lookup
@@ -74,7 +85,6 @@ def bytes_to_unicode():
 def get_pairs(word):
     """
     Return set of symbol pairs in a word.
-
     Word is represented as tuple of symbols (symbols being variable-length strings).
     """
     pairs = set()
@@ -88,22 +98,15 @@ def get_pairs(word):
 class MossTokenizer(PreTrainedTokenizer):
     """
     Construct a Moss tokenizer. Based on byte-level Byte-Pair-Encoding.
-
     This tokenizer has been trained to treat spaces like parts of the tokens (a bit like sentencepiece) so a word will
     be encoded differently whether it is at the beginning of the sentence (without space) or not:
-
     You can get around that behavior by passing `add_prefix_space=True` when instantiating this tokenizer or when you
     call it on some text, but since the model was not pretrained this way, it might yield a decrease in performance.
-
     <Tip>
-
     When used with `is_split_into_words=True`, this tokenizer will add a space before each word (even the first one).
-
     </Tip>
-
     This tokenizer inherits from [`PreTrainedTokenizer`] which contains most of the main methods. Users should refer to
     this superclass for more information regarding those methods.
-
     Args:
         vocab_file (`str`):
             Path to the vocabulary file.
@@ -306,9 +309,7 @@ class MossTokenizer(PreTrainedTokenizer):
         """
         Converts a sequence of ids in a string, using the tokenizer and vocabulary with options to remove special
         tokens and clean up tokenization spaces.
-
         Similar to doing `self.convert_tokens_to_string(self.convert_ids_to_tokens(token_ids))`.
-
         Args:
             token_ids (`Union[int, List[int], np.ndarray, torch.Tensor, tf.Tensor]`):
                 List of tokenized input ids. Can be obtained using the `__call__` method.
@@ -323,7 +324,6 @@ class MossTokenizer(PreTrainedTokenizer):
                 of a new line). An example pattern could be `["^#", re.escape("<|endoftext|>"), "^'''", "\n\n\n"]`.
             kwargs (additional keyword arguments, *optional*):
                 Will be passed to the underlying model specific decode method.
-
         Returns:
             `str`: The decoded sentence.
         """
