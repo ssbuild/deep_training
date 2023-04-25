@@ -54,7 +54,7 @@ class TransformerForHphtlinker(TransformerModel):
                                          cond_dim=config.hidden_size * 2)
         self.loss_fn = LossForCasRel(reduction='none')
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerForHphtlinker, self).get_model_lr() + [
             (self.subject_layer, self.config.task_specific_params['learning_rate_for_task']),
             (self.object_layer, self.config.task_specific_params['learning_rate_for_task']),

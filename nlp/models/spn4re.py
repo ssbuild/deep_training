@@ -297,7 +297,7 @@ class TransformerForSPN4RE(TransformerModel):
                                       matcher=self.spn4re_args.matcher)
 
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerForSPN4RE, self).get_model_lr() + [
             (self.dropout, self.config.task_specific_params['learning_rate']),
             (self.decoder, self.config.task_specific_params['learning_rate']),

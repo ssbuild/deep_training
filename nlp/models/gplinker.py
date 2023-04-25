@@ -53,7 +53,7 @@ class TransformerForGplinker(TransformerModel):
         self.tails_layer = PointerLayerObject(self.config.hidden_size, self.config.num_labels, 64, RoPE=False,
                                               tril_mask=False)
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerForGplinker, self).get_model_lr() + [
             (self.entities_layer, self.config.task_specific_params['learning_rate_for_task']),
             (self.heads_layer, self.config.task_specific_params['learning_rate_for_task']),
@@ -229,7 +229,7 @@ class TransformerForGplinkerEvent(TransformerModel):
         self.heads_layer = PointerLayerObject(self.config.hidden_size, 1, 64, RoPE=False)
         self.tails_layer = PointerLayerObject(self.config.hidden_size, 1, 64, RoPE=False)
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerForGplinkerEvent, self).get_model_lr() + [
             (self.entities_layer, self.config.task_specific_params['learning_rate_for_task']),
             (self.heads_layer, self.config.task_specific_params['learning_rate_for_task']),

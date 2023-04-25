@@ -26,7 +26,7 @@ class TransformerForESimcse(TransformerModel):
         self.momentum_encoder = TransformerModel(*args,**kwargs)
         self.loss_fn = MultipleNegativesRankingLoss()
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerForESimcse, self).get_model_lr()
 
     def pooling_output(self,outputs):

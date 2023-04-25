@@ -120,7 +120,7 @@ class TransformerForTSDAE(TransformerModel):
 
 
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerForTSDAE, self).get_model_lr() + [
             (self.classifier, self.config.task_specific_params['learning_rate_for_task']),
             (self.classifier2, self.config.task_specific_params['learning_rate_for_task']),

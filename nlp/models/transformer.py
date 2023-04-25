@@ -48,7 +48,7 @@ class TransformerModelForUnilm(TransformerModel):
         self.loss_fct = LM_loss(ignore_index=ignore_index)
         self.lm_head = nn.Linear(self.config.hidden_size, self.config.vocab_size, bias=False)
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerModelForUnilm, self).get_model_lr() + \
                [(self.lm_head,self.config.task_specific_params['learning_rate_for_task']),]
 

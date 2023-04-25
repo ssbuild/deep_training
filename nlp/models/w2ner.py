@@ -169,7 +169,7 @@ class TransformerForW2ner(TransformerModel):
         self.criterion = nn.CrossEntropyLoss(reduction='mean')
 
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerForW2ner, self).get_model_lr() + [
             (self.dropout, self.config.task_specific_params['learning_rate_for_task']),
             (self.dis_embs, self.config.task_specific_params['learning_rate_for_task']),

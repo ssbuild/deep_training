@@ -89,7 +89,7 @@ class TransformerForCascadCRF(TransformerModel):
         self.cross_loss = nn.CrossEntropyLoss(reduction='none')
 
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerForCascadCRF, self).get_model_lr() + [
             (self.dropout, self.config.task_specific_params['learning_rate_for_task']),
             (self.seqs_classifier, self.config.task_specific_params['learning_rate_for_task']),

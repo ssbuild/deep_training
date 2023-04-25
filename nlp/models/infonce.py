@@ -22,7 +22,7 @@ class TransformerForInfoNce(TransformerModel):
         self.feat_head = nn.Linear(config.hidden_size, vector_size, bias=False)
         self.loss_fn = InfoNCE(temperature=temperature,negative_mode='paired', reduction='sum')
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerForInfoNce, self).get_model_lr() + [
             (self.feat_head, self.config.task_specific_params['learning_rate_for_task'])
         ]

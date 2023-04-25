@@ -35,7 +35,7 @@ class TransformerForPointer(TransformerModel):
         PointerLayerObject = EfficientPointerLayer if with_efficient else PointerLayer
         self.pointer_layer = PointerLayerObject(self.config.hidden_size,self.config.num_labels,64)
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerForPointer, self).get_model_lr() + [
             (self.pointer_layer, self.config.task_specific_params['learning_rate_for_task']),
         ]

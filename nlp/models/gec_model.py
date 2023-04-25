@@ -79,7 +79,7 @@ class TransformerForGec(TransformerModel):
         self.loss_fn = nn.CrossEntropyLoss()
 
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerForGec, self).get_model_lr() + [
             (self.classifier1, self.config.task_specific_params['learning_rate_for_task']),
             (self.classifier2, self.config.task_specific_params['learning_rate_for_task']),

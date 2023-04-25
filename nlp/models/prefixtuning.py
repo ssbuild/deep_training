@@ -72,7 +72,7 @@ class PrefixTransformerForModel(TransformerModel):
         self._get_transformer_outputs : typing.Callable = self.get_transformer_outputs_0 if prompt_args.prompt_type == 0 else self.get_transformer_outputs_1
 
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(PrefixTransformerForModel, self).get_model_lr() + [
             (self.prefix_encoder, self.config.task_specific_params['learning_rate_for_task']),
         ]
@@ -153,7 +153,7 @@ class PrefixTransformerForSequenceClassification(PrefixTransformerForModel):
         super().__init__(*args, **kwargs)
         self.classifier = torch.nn.Linear(self.config.hidden_size, self.config.num_labels)
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(PrefixTransformerForSequenceClassification, self).get_model_lr() + [
             (self.classifier, self.config.task_specific_params['learning_rate_for_task']),
         ]
@@ -204,7 +204,7 @@ class PrefixTransformerForTokenClassification(PrefixTransformerForModel):
         self.num_labels = self.config.num_labels
         self.classifier = torch.nn.Linear(self.config.hidden_size,  self.config.num_labels)
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(PrefixTransformerForTokenClassification, self).get_model_lr() + [
             (self.classifier, self.config.task_specific_params['learning_rate_for_task']),
         ]
@@ -247,7 +247,7 @@ class PrefixTransformerPointer(PrefixTransformerForModel):
         PointerLayerObject = EfficientPointerLayer if with_efficient else PointerLayer
         self.pointer_layer = PointerLayerObject(self.config.hidden_size, self.config.num_labels, 64)
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(PrefixTransformerPointer, self).get_model_lr() + [
             (self.pointer_layer, self.config.task_specific_params['learning_rate_for_task']),
         ]
@@ -301,7 +301,7 @@ class PrefixTransformerForCRF(PrefixTransformerForModel):
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
         self.crf = CRF(num_tags=config.num_labels)
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(PrefixTransformerForCRF, self).get_model_lr() + [
             (self.classifier, self.config.task_specific_params['learning_rate']),
             (self.crf, self.config.task_specific_params['learning_rate_for_task']),

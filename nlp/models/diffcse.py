@@ -232,7 +232,7 @@ class TransformerForDiffcse(TransformerModel):
         self.loss_fn_cse = MultipleNegativesRankingLoss()
 
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerForDiffcse, self).get_model_lr() + [
             (self.dropout, self.config.task_specific_params['learning_rate_for_task']),
             (self.discriminator, self.config.task_specific_params['learning_rate_for_task']),

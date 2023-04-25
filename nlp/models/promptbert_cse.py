@@ -187,7 +187,7 @@ class TransformerForPromptbertcse(TransformerModel):
             self.dict_mbv = None
             self.fl_mbv = None
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         current = [(self.mlp, self.config.task_specific_params['learning_rate_for_task']),
                    (getattr(self, 'p_mbv', None), self.config.task_specific_params['learning_rate_for_task']),
                    (getattr(self, 'dict_mbv', None), self.config.task_specific_params['learning_rate_for_task']),

@@ -16,7 +16,7 @@ class TransformerForCRF(TransformerModel):
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
         self.crf = CRF(num_tags=config.num_labels)
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerForCRF, self).get_model_lr() + [
             (self.classifier, self.config.task_specific_params['learning_rate']),
             (self.crf, self.config.task_specific_params['learning_rate_for_task']),

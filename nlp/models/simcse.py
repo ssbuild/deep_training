@@ -26,7 +26,7 @@ class TransformerForSimcse(TransformerModel):
         self.sim_head = nn.Linear(config.hidden_size, 512, bias=False)
         self.loss_fn = MultipleNegativesRankingLoss()
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerForSimcse, self).get_model_lr() + [
             (self.sim_head, self.config.task_specific_params['learning_rate_for_task'])
         ]

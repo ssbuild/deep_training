@@ -47,7 +47,7 @@ class TransformerForMhsNer(TransformerModel):
         self.sigmoid = nn.Sigmoid()
         self.loss_fn = MutiheadlinkerLossEx()
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerForMhsNer, self).get_model_lr() + [
             (self.dropout, self.config.task_specific_params['learning_rate_for_task']),
             (self.mhslayer, self.config.task_specific_params['learning_rate_for_task']),

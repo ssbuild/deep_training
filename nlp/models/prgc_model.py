@@ -229,7 +229,7 @@ class TransformerForPRGC(TransformerModel):
         self.loss_fn2 = nn.BCEWithLogitsLoss(reduction='none')
 
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerForPRGC, self).get_model_lr() + [
             (self.dropout, self.config.task_specific_params['learning_rate_for_task']),
             (self.sequence_tagging_sub, self.config.task_specific_params['learning_rate_for_task']),

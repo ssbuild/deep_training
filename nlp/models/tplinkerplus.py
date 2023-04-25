@@ -136,7 +136,7 @@ class TransformerForTplinkerPlus(TransformerModel):
         self.fc = nn.Linear(self.config.hidden_size,self.config.num_labels)
         self.loss_fn = TplinkerPlusLoss()
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerForTplinkerPlus, self).get_model_lr() + [
             (self.dropout, self.config.task_specific_params['learning_rate_for_task']),
             (self.handshakingkernel, self.config.task_specific_params['learning_rate_for_task']),

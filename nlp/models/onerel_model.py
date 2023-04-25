@@ -51,7 +51,7 @@ class TransformerForOneRel(TransformerModel):
         self.loss_fn = nn.CrossEntropyLoss(reduction='none',ignore_index=-100)
 
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerForOneRel, self).get_model_lr() + [
             (self.dropout, self.config.task_specific_params['learning_rate']),
             (self.dropout_2, self.config.task_specific_params['learning_rate']),

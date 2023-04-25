@@ -225,8 +225,11 @@ class TransformerBase(MyLightningModule,metaclass=TransformerFakeMeta):
         assert self._premodel_data.base_model_prefix is not None, ValueError('base_model_prefix is not allow empty')
         setattr(self, self._premodel_data.base_model_prefix, model)
 
-    def get_model_lr(self):
-        return [(self.model if self._premodel_data.base_model_prefix is not None else self , self.config.task_specific_params['learning_rate']), ]
+    def get_model_lr(self,model=None,lr=None):
+        lr = lr if lr is not None else self.config.task_specific_params['learning_rate']
+        if model is not None:
+            return [(model,lr)]
+        return [(self.model if self._premodel_data.base_model_prefix is not None else self , lr), ]
 
 
 
@@ -351,8 +354,11 @@ class TransformerLightningModule(MyLightningModule):
                 setattr(self,e,a)
 
 
-    def get_model_lr(self):
-        return self.model.get_model_lr()
+    def get_model_lr(self,model=None,lr=None):
+        lr = lr if lr is not None else self.config.task_specific_params['learning_rate']
+        if model is not None:
+            return [(model, lr)]
+        return self.model.get_model_lr(model=None,lr=None) if model is None else [(model,self.config.task_specific_params['learning_rate'])]
 
 
     def compute_loss(self,*args, **kwargs):
@@ -366,13 +372,14 @@ class TransformerLightningModule(MyLightningModule):
 
 
     def setup(self, stage: str) -> None:
-        setattr(self.backbone, 'trainer', self.trainer)
-        setattr(self.backbone, 'estimated_stepping_batches', self.trainer.estimated_stepping_batches)
+        if self.backbone is not None:
+            setattr(self.backbone, 'trainer', self.trainer)
+            setattr(self.backbone, 'estimated_stepping_batches', self.trainer.estimated_stepping_batches)
 
 
-    def get_named_parameters(self):
+    def get_named_parameters(self,*args,**kwargs):
         training_args = self.training_args
-        model_attrs = self.get_model_lr()
+        model_attrs = self.get_model_lr(*args,**kwargs)
         no_decay = ["bias", "LayerNorm.weight"]
         def __get_named_parameters(a : nn.Module):
             return [

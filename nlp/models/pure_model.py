@@ -78,7 +78,7 @@ class TransformerForPure(TransformerModel):
         )
         self.loss_fn = CrossEntropyLoss(reduction='sum',ignore_index=-100)
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerForPure, self).get_model_lr() + [
             (self.width_embedding, self.config.task_specific_params['learning_rate']),
             (self.classifier, self.config.task_specific_params['learning_rate']),

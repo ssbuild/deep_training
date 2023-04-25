@@ -53,7 +53,7 @@ class TransformerForSplinker(TransformerModel):
         self.loss_fn = BCELossForSplinker()
         self.sigmoid = nn.Sigmoid()
 
-    def get_model_lr(self):
+    def get_model_lr(self,*args,**kwargs):
         return super(TransformerForSplinker, self).get_model_lr() + [
             (self.classifier, self.config.task_specific_params['learning_rate_for_task']),
         ]
