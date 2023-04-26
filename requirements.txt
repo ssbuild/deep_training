@@ -5,5 +5,6 @@ seqmetric >= 0.1.2
 scipy
 scikit-learn
 sentencepiece
+tensorboard
 tqdm
 six
