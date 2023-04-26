@@ -16,6 +16,12 @@ from ..optimizer.lamb import Lamb
 def configure_optimizers(named_parameter: typing.Union[typing.List,typing.Tuple],
                          training_args: TrainingArguments,
                          estimated_stepping_batches: int):
+
+    if estimated_stepping_batches is None:
+        if training_args.max_steps is not None and training_args.max_steps > 0:
+            estimated_stepping_batches = training_args.max_steps / training_args.gradient_accumulation_steps
+    assert estimated_stepping_batches is not None
+
     optimizer_name = training_args.optimizer.lower()
     if optimizer_name == 'adamw':
         optimizer = AdamW(named_parameter, lr=training_args.learning_rate,
