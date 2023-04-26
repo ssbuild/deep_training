@@ -15,7 +15,8 @@
   https://pypi.org/project/deep-training/#history
 
 ## 开发状态
-  - pytorch-lightning 更名 lightning 测试中
+  - pytorch-lightning 更名 lightning 测试中 
+  - 分离numpy-io模块
 
 ## 更新
 - <strong>2023年04月21</strong>
