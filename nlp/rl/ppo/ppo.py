@@ -10,7 +10,7 @@ from torch import nn
 from tqdm import tqdm
 from torch.nn import functional as F
 import torch.distributed as dist
-from .....nlp.layers.ppo import AdaptiveKLController, FixedKLController
+from ....nlp.layers.ppo import AdaptiveKLController, FixedKLController
 from .data_type import PPORLElement, PPORLBatch
 from .utils import logprobs_of_labels, Clock, gather_dict, RunningMoments, pad_across_processes, _gpu_gather, \
     get_tensor_stats, flatten_dict, whiten
