@@ -6,7 +6,7 @@ import typing
 from functools import partial
 from typing import Any, IO
 
-import pytorch_lightning as pl
+import lightning as pl
 import torch
 from torch import nn, Tensor
 from transformers import (
@@ -276,7 +276,7 @@ class TransformerLightningModule(MyLightningModule):
             else:
                 self.adversarial = AdversarialMethods[training_args.adv['mode']](model=self.model,
                                                                                  emb_name=training_args.adv.get('emb_name', 'embedding'))
-            k = 'pytorch_lightning.trainer.configuration_validator'
+            k = 'lightning.trainer.configuration_validator'
             if k in sys.modules:
                 setattr( sys.modules[k],'__verify_manual_optimization_support' , verify_manual_optimization_support)
         else:
@@ -413,6 +413,7 @@ class TransformerLightningModule(MyLightningModule):
     def adv_training_step(self,batch):
         mode = self.training_args.adv['mode']
         opt = self.optimizers()
+        scheduler = self.lr_schedulers()
         gradient_clip_val = self.gradient_clip_val
         epsilon = self.training_args.adv['epsilon']
         if mode == 'fgm':
@@ -427,6 +428,7 @@ class TransformerLightningModule(MyLightningModule):
                 self.clip_gradients(opt, gradient_clip_val=gradient_clip_val)
             opt.step()
             self.adversarial.restore()  # 恢复embedding参数
+            scheduler and scheduler.step()
             self.model.zero_grad()
         elif mode == 'fgsm_local':
             alpha = self.training_args.adv['alpha']
@@ -449,6 +451,7 @@ class TransformerLightningModule(MyLightningModule):
             if gradient_clip_val is not None:
                 self.clip_gradients(opt, gradient_clip_val=gradient_clip_val)
             opt.step()
+            scheduler and scheduler.step()
             self.model.zero_grad()
 
             setattr(self.get_embeddings_module().embeddings, 'forward', self.embeddings_forward_fn)
@@ -466,6 +469,7 @@ class TransformerLightningModule(MyLightningModule):
                 self.clip_gradients(opt, gradient_clip_val=gradient_clip_val)
             opt.step()
             self.adversarial.restore()  # 恢复embedding参数
+            scheduler and scheduler.step()
             self.model.zero_grad()
         elif mode == 'pgd':
             alpha = self.training_args.adv['alpha']
@@ -487,6 +491,7 @@ class TransformerLightningModule(MyLightningModule):
                     self.clip_gradients(opt, gradient_clip_val=gradient_clip_val)
             self.adversarial.restore()  # 恢复embedding参数
             opt.step()
+            scheduler and scheduler.step()
             self.model.zero_grad()
         elif mode == 'free_local':
             if not hasattr(self.adversarial,'delta_'):
@@ -508,6 +513,7 @@ class TransformerLightningModule(MyLightningModule):
                 opt.step()
                 delta = self.adversarial.attack(delta=delta,epsilon=epsilon)
                 # delta.grad.zero_()
+                scheduler and scheduler.step()
                 self.model.zero_grad()
 
             setattr(self.get_embeddings_module().embeddings, 'forward', self.embeddings_forward_fn)
@@ -520,6 +526,7 @@ class TransformerLightningModule(MyLightningModule):
                     self.clip_gradients(opt, gradient_clip_val=gradient_clip_val)
                 opt.step()
                 self.adversarial.attack(epsilon=epsilon)
+                scheduler and scheduler.step()
                 self.model.zero_grad()
         else:
             opt.zero_grad()
@@ -528,6 +535,7 @@ class TransformerLightningModule(MyLightningModule):
             if gradient_clip_val is not None:
                 self.clip_gradients(opt, gradient_clip_val=gradient_clip_val)
             opt.step()
+            scheduler and scheduler.step()
             self.model.zero_grad()
         return loss
 

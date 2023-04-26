@@ -4,7 +4,7 @@
 from typing import Union, Optional, Callable, Any
 
 import torch
-from pytorch_lightning.core.optimizer import LightningOptimizer
+from lightning.core.optimizer import LightningOptimizer
 from torch.optim.optimizer import Optimizer
 
 from .transformer import TransformerModel

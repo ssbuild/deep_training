@@ -5,10 +5,11 @@ import logging
 import warnings
 from typing import Optional, Any, Dict
 import torch
-import pytorch_lightning as pl
-from pytorch_lightning import Callback
-from pytorch_lightning.callbacks import ModelCheckpoint,Checkpoint
-from pytorch_lightning.utilities.types import STEP_OUTPUT
+import lightning as pl
+from lightning import Callback
+from lightning.callbacks import ModelCheckpoint,Checkpoint
+from lightning.utilities.types import STEP_OUTPUT
+
 
 from torch import Tensor
 __all__ = [

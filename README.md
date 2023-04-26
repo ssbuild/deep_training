@@ -5,7 +5,6 @@
 
 ## 完整训练模型
   - [pytorch-task-example](https://github.com/ssbuild/pytorch-task-example)
-  - [tf-task-example](https://github.com/ssbuild/tf-task-example)
   - [poetry_training](https://github.com/ssbuild/poetry_training)
 
 
@@ -15,20 +14,21 @@
 ## download 
   https://pypi.org/project/deep-training/#history
 
-## 开发计划
-  - keras 模块封装
+## 开发状态
+  - pytorch-lightning 更名 lightning 测试中
 
 ## 更新
 - <strong>2023年04月21</strong>
   - 0.1.3rc0 增加 moss chat模型 完整训练参考 [moss_finetuning](https://github.com/ssbuild/moss_finetuning)
   - moss 量化int4 int8推理
+
 - <strong>2023年04月11</strong>
   - 0.1.2 重构lora v2, 增加adalora
   - 0.1.2@post0 fix lova v1,lova v2 load_in_8bit
 - <strong>2023年04月07</strong>
   - deep_training 0.1.1 同步更新chatglm 词表配置信息 
 - <strong>2023年04月02</strong>
-  - release 0.1.0 and pytorch_lightning >= 2
+  - release 0.1.0 and lightning >= 2
 - <strong>2023年03月15</strong>
   - 增加ChatGLM模型(稳定版>=0.0.18@post7) 完整训练参考 [chatglm_finetuning](https://github.com/ssbuild/chatglm_finetuning)
   - 0.0.18@post8 解决deepspeed进程数据平衡 

@@ -231,7 +231,7 @@ class TrainingArguments:
                 seed_everything(int(self.seed))
             except:
                 try:
-                    from pytorch_lightning.utilities.seed import seed_everything
+                    from lightning.utilities.seed import seed_everything
                     seed_everything(self.seed)
                 except:
                     warnings.warn('missing seed_everything')
