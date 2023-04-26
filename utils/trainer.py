@@ -6,14 +6,10 @@ import warnings
 from typing import Optional, Any, Dict
 import torch
 import lightning as pl
-from lightning import Callback
-from lightning.pytorch.callbacks import Checkpoint,ModelCheckpoint
+from lightning.pytorch.callbacks import Checkpoint,ModelCheckpoint,Callback
 from lightning.pytorch.utilities.types import STEP_OUTPUT
-
-
-
-
 from torch import Tensor
+
 __all__ = [
     'SimpleModelCheckpoint'
 ]
