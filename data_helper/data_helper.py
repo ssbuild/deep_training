@@ -4,22 +4,17 @@ import json
 import logging
 import os
 import typing
-
 import torch
 from fastdatasets import memory as MEMORY
 from fastdatasets.common.iterable_dataset import IterableDatasetBase
 from fastdatasets.common.random_dataset import RandomDatasetBase
-from fastdatasets.leveldb import LEVELDB
-from fastdatasets.lmdb import LMDB
-from fastdatasets.record import RECORD
 from fastdatasets.torch_dataset import IterableDataset as torch_IterableDataset, Dataset as torch_Dataset
-from fastdatasets.utils.numpyadapter import NumpyReaderAdapter, E_file_backend
 from torch.utils.data import DataLoader, IterableDataset
-
 from .data_module import load_tokenizer, load_configure
-from .data_writer import DataWriteHelper
 from .training_args import ModelArguments, DataArguments, TrainingArguments
 from ..utils.func import is_chinese_char
+from numpy_io.core.writer import DataWriteHelper
+from numpy_io.core.reader import load_numpy_dataset
 
 __all__ = [
     'DataHelper',
@@ -323,36 +318,6 @@ class DataHelper(DataPreprocessHelper):
         return tokenizer, config
 
 
-    def load_numpy_dataset(self,files: typing.Union[typing.List[str], str],
-           options: typing.Union[
-               RECORD.TFRecordOptions, LEVELDB.LeveldbOptions, LMDB.LmdbOptions] = None,
-           data_key_prefix_list=('input',),
-           num_key='total_num',
-           cycle_length=1,
-           block_length=1,
-           backend=None,
-           with_record_iterable_dataset: bool=False,
-           with_parse_from_numpy: bool =True,
-           limit_start: typing.Optional[int] = None,
-           limit_count: typing.Optional[int] = None,
-           dataset_loader_filter_fn: typing.Callable = None,
-                           ):
-
-        dataset = NumpyReaderAdapter.load(files, backend or self.backend , options,
-                                       data_key_prefix_list=data_key_prefix_list,
-                                       num_key=num_key,
-                                       cycle_length=cycle_length,
-                                       block_length=block_length,
-                                       with_record_iterable_dataset=with_record_iterable_dataset,
-                                       with_parse_from_numpy=with_parse_from_numpy)
-        if limit_start is not None and limit_start >0:
-            dataset = dataset.skip(limit_start)
-        if limit_count is not None and limit_count > 0:
-            dataset = dataset.limit(limit_count)
-        if dataset_loader_filter_fn is not None:
-            dataset = dataset_loader_filter_fn(dataset)
-        return dataset
-
     """
         cycle_length for IterableDataset
         block_length for IterableDataset
@@ -382,15 +347,15 @@ class DataHelper(DataPreprocessHelper):
         if files is None:
             return None
 
-        dataset = self.load_numpy_dataset(files,
-                                          cycle_length=cycle_length,
-                                          block_length=block_length,
-                                          with_record_iterable_dataset=with_record_iterable_dataset,
-                                          with_parse_from_numpy=not with_load_memory,
-                                          backend=backend,
-                                          limit_start=limit_start,
-                                          limit_count=limit_count,
-                                          dataset_loader_filter_fn=dataset_loader_filter_fn)
+        dataset = load_numpy_dataset( files,
+                                      cycle_length=cycle_length,
+                                      block_length=block_length,
+                                      with_record_iterable_dataset=with_record_iterable_dataset,
+                                      with_parse_from_numpy=not with_load_memory,
+                                      backend=backend or self.backend,
+                                      limit_start=limit_start,
+                                      limit_count=limit_count,
+                                      dataset_loader_filter_fn=dataset_loader_filter_fn)
         #加载至内存
         if with_load_memory:
             logging.info('load dataset to memory...')

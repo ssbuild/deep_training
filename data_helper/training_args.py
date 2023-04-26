@@ -55,11 +55,11 @@ class ModelArguments:
         metadata={"help": "Where do you want to store the pretrained models downloaded from huggingface.co"},
     )
     do_lower_case: bool = field(
-        default=True,
+        default=None,
         metadata={"help": "Whether to lower case the input text. Should be True for uncased deep_training and False for cased deep_training."},
     )
     use_fast_tokenizer: bool = field(
-        default=True,
+        default=None,
         metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
     )
     model_revision: str = field(
@@ -186,39 +186,39 @@ class TrainingArguments:
     )
     gradient_accumulation_steps: int = field(
         default=1,
-        metadata={"help": "梯度积累"},
+        metadata={"help": "gradient_accumulation_steps"},
     )
     max_grad_norm: float = field(
         default=1.0,
-        metadata={"help": "模型任务层训练时的学习率"},
+        metadata={"help": "max_grad_norm"},
     )
     weight_decay: float = field(
         default=0,
-        metadata={"help": "模型任务层训练时的学习率"},
+        metadata={"help": "weight_decay"},
     )
 
     warmup_steps: int = field(
         default=0,
-        metadata={"help": "模型任务层训练时的学习率"},
+        metadata={"help": "warmup_steps"},
     )
 
     train_batch_size: int = field(
         default=16,
-        metadata={"help": "模型任务层训练时的学习率"},
+        metadata={"help": "train_batch_size"},
     )
 
     eval_batch_size: int = field(
         default=1,
-        metadata={"help": "模型任务层训练时的学习率"},
+        metadata={"help": "eval_batch_size"},
     )
 
     test_batch_size: int = field(
         default=1,
-        metadata={"help": "模型任务层训练时的学习率"},
+        metadata={"help": "test_batch_size"},
     )
     seed: Optional[float] = field(
         default=42,
-        metadata={"help": "模型任务层训练时的学习率"},
+        metadata={"help": "seed"},
     )
 
     def __post_init__(self):
@@ -226,15 +226,8 @@ class TrainingArguments:
             self.learning_rate_for_task = self.learning_rate
 
         if self.seed is not None:
-            try:
-                from lightning_fabric.utilities.seed import seed_everything
-                seed_everything(int(self.seed))
-            except:
-                try:
-                    from lightning.utilities.seed import seed_everything
-                    seed_everything(self.seed)
-                except:
-                    warnings.warn('missing seed_everything')
+            from lightning_fabric.utilities.seed import seed_everything
+            seed_everything(int(self.seed))
 
 
         assert self.hierarchical_position is None or (self.hierarchical_position >0 and self.hierarchical_position <1)

@@ -12,7 +12,7 @@ def load_tokenizer(tokenizer_name,
                    model_name_or_path=None,
                    class_name = None,
                    cache_dir="",
-                   do_lower_case=True,
+                   do_lower_case=None,
                    use_fast_tokenizer=True,
                    model_revision="main",
                    use_auth_token=None,
@@ -20,11 +20,16 @@ def load_tokenizer(tokenizer_name,
     tokenizer_kwargs = {
         "cache_dir": cache_dir,
         "do_lower_case": do_lower_case,
-        "use_fast": use_fast_tokenizer,
         "revision": model_revision,
         "use_auth_token": True if use_auth_token else None,
         **kwargs
     }
+    if do_lower_case is not None:
+        tokenizer_kwargs['do_lower_case'] = do_lower_case
+
+    if use_fast_tokenizer is not None:
+        tokenizer_kwargs['use_fast'] = use_fast_tokenizer
+
     if class_name is not None:
         tokenizer = class_name.from_pretrained(tokenizer_name, **tokenizer_kwargs)
     elif tokenizer_name:
