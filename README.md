@@ -1,6 +1,6 @@
 
 ## transformer is all you need.
-- 基于pytorch-lightning 和 transformers实现的上下游训练框架
+- 基于lightning 和 transformers实现的上下游训练框架
 - 安装 pip install -U deep_training
 
 ## 完整训练模型
