@@ -7,8 +7,10 @@ from typing import Optional, Any, Dict
 import torch
 import lightning as pl
 from lightning import Callback
-from lightning.callbacks import ModelCheckpoint,Checkpoint
-from lightning.utilities.types import STEP_OUTPUT
+from lightning.pytorch.callbacks import Checkpoint,ModelCheckpoint
+from lightning.pytorch.utilities.types import STEP_OUTPUT
+
+
 
 
 from torch import Tensor
