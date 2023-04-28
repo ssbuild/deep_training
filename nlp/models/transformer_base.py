@@ -6,6 +6,7 @@ import typing
 from functools import partial
 from typing import Any, IO
 
+import lightning
 import lightning as pl
 import torch
 from torch import nn, Tensor
@@ -276,7 +277,8 @@ class TransformerLightningModule(MyLightningModule):
             else:
                 self.adversarial = AdversarialMethods[training_args.adv['mode']](model=self.model,
                                                                                  emb_name=training_args.adv.get('emb_name', 'embedding'))
-            k = 'lightning.trainer.configuration_validator'
+            
+            k = 'lightning.pytorch.trainer.configuration_validator'
             if k in sys.modules:
                 setattr( sys.modules[k],'__verify_manual_optimization_support' , verify_manual_optimization_support)
         else:
@@ -307,7 +309,7 @@ class TransformerLightningModule(MyLightningModule):
 
 
     def get_embeddings_module(self):
-        base_model_prefix = self.backbone.base_model_prefix
+        base_model_prefix = self.backbone._premodel_data.base_model_prefix
         current_model = self.backbone.model
         tmp_obj = current_model
         while tmp_obj is not None:
