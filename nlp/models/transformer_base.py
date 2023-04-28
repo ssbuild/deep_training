@@ -101,16 +101,13 @@ class TransformerFakeMeta(type):
 
 
 
-class PreTrainedModel_Data:
-    base_model_prefix = None
-    config_class = None
-
 class TransformerBase(MyLightningModule,metaclass=TransformerFakeMeta):
     def __init__(self,*args,**kwargs):
         config = get_value_from_args('config',PretrainedConfig,*args,**kwargs)
         super(TransformerBase, self).__init__()
         self.config = config
-        self._premodel_data = PreTrainedModel_Data()
+        self.base_model_prefix = None
+        self.config_class = None
         self._trainer:  typing.Optional["pl.Trainer"]  = None
 
     def forward(self, *args, **batch):
@@ -204,9 +201,9 @@ class TransformerBase(MyLightningModule,metaclass=TransformerFakeMeta):
 
     @property
     def model(self):
-        if not self._premodel_data.base_model_prefix:
+        if not self.base_model_prefix:
             return None
-        return getattr(self, self._premodel_data.base_model_prefix,None)
+        return getattr(self, self.base_model_prefix,None)
 
     @model.setter
     def model(self, model):
@@ -221,16 +218,16 @@ class TransformerBase(MyLightningModule,metaclass=TransformerFakeMeta):
                     continue
                 if o == 'model':
                     o = 'model_'
-                setattr(self._premodel_data,k,o)
+                setattr(self,k,o)
 
-        assert self._premodel_data.base_model_prefix is not None, ValueError('base_model_prefix is not allow empty')
-        setattr(self, self._premodel_data.base_model_prefix, model)
+        assert self.base_model_prefix is not None, ValueError('base_model_prefix is not allow empty')
+        setattr(self, self.base_model_prefix, model)
 
     def get_model_lr(self,model=None,lr=None):
         lr = lr if lr is not None else self.config.task_specific_params['learning_rate']
         if model is not None:
             return [(model,lr)]
-        return [(self.model if self._premodel_data.base_model_prefix is not None else self , lr), ]
+        return [(self.model if self.base_model_prefix is not None else self , lr), ]
 
 
 
@@ -309,7 +306,7 @@ class TransformerLightningModule(MyLightningModule):
 
 
     def get_embeddings_module(self):
-        base_model_prefix = self.backbone._premodel_data.base_model_prefix
+        base_model_prefix = self.backbone.base_model_prefix
         current_model = self.backbone.model
         tmp_obj = current_model
         while tmp_obj is not None:
