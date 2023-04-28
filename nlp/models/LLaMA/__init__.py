@@ -309,9 +309,7 @@ class LLaMAModel(LLaMAPreTrainedModel):
             self.layers.append(LLaMABlock(layer_id, config))
 
         self.norm = RMSNorm(config.hidden_size, eps=config.layer_norm_epsilon)
-        self.output = nn.Linear(
-            config.hidden_size, config.vocab_size, bias=False,
-        )
+
 
         self.freqs_cis = precompute_freqs_cis(
             self.config.hidden_size // self.config.n_head, self.config.max_seq_len * 2
@@ -340,11 +338,11 @@ class LLaMAModel(LLaMAPreTrainedModel):
             h = layer(h, start_pos, freqs_cis, mask)
         h = self.norm(h)
 
-        if self.config.inference:
-            h = self.output(h[:, -1]).float()
-        else:
-            h = self.output(h)
-        return (h,)
+        # if self.config.inference:
+        #     h = self.output(h[:, -1]).float()
+        # else:
+        #     h = self.output(h)
+        return h
 
 
 class LLaMALMHeadModel(LLaMAPreTrainedModel):
@@ -353,6 +351,10 @@ class LLaMALMHeadModel(LLaMAPreTrainedModel):
     def __init__(self, config):
         super(LLaMALMHeadModel, self).__init__(config)
         self.transformer = LLaMAModel(config)
+
+        self.lm_head = nn.Linear(
+            config.hidden_size, config.vocab_size, bias=False,
+        )
 
         self.model_parallel = False
         self.device_map = None
@@ -399,7 +401,7 @@ class LLaMALMHeadModel(LLaMAPreTrainedModel):
             torch.cuda.set_device(self.transformer.first_device)
             hidden_states = hidden_states.to(self.lm_head.weight.device)
 
-        lm_logits = hidden_states
+        lm_logits = self.lm_head(hidden_states)
         loss = None
         if labels is not None:
             # Shift so that tokens < n predict n

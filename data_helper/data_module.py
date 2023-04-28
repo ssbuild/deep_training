@@ -19,7 +19,6 @@ def load_tokenizer(tokenizer_name,
                    **kwargs):
     tokenizer_kwargs = {
         "cache_dir": cache_dir,
-        "do_lower_case": do_lower_case,
         "revision": model_revision,
         "use_auth_token": True if use_auth_token else None,
         **kwargs
