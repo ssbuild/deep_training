@@ -19,7 +19,7 @@
 
 ## 更新
 - <strong>2023年04月28</strong>
-  - 0.1.3 新版本基于lightning
+  - 0.1.3@post0 新版本基于lightning
   - pytorch-lightning 更名 lightning  完成
   - 分离numpy-io模块 完成
   

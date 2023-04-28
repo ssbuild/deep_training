@@ -277,7 +277,7 @@ class TransformerLightningModule(MyLightningModule):
             else:
                 self.adversarial = AdversarialMethods[training_args.adv['mode']](model=self.model,
                                                                                  emb_name=training_args.adv.get('emb_name', 'embedding'))
-            
+
             k = 'lightning.pytorch.trainer.configuration_validator'
             if k in sys.modules:
                 setattr( sys.modules[k],'__verify_manual_optimization_support' , verify_manual_optimization_support)
