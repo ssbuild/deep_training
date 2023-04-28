@@ -22,8 +22,7 @@
   - 0.1.3@post0 新版本基于lightning
   - pytorch-lightning 更名 lightning  完成
   - 分离numpy-io模块 完成
-  
-- 
+
 - <strong>2023年04月21</strong>
   - 0.1.3rc0 增加 moss chat模型 完整训练参考 [moss_finetuning](https://github.com/ssbuild/moss_finetuning)
   - moss 量化int4 int8推理
