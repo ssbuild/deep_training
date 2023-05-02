@@ -128,7 +128,7 @@ class PromptBaseArguments(PromptConfigMixin):
     inference_mode: bool = field(default=False, metadata={"help": "Whether to use inference mode"})
     prompt_type: str = field(default='lora', metadata={"help": "one of prompt_tuning,p_tuning,prefix_tuning"})
     with_prompt: bool = field(default=False, metadata={"help": "whether use lora"})
-    task_type: Union[str, TaskType] = field(default=None, metadata={"help": "Task type"})
+    task_type: Union[str, TaskType] = field(default=None, metadata={"help": "Task type, one of seq_cls,seq_2_seq_lm,causal_lm,token_cls"})
     target_dtype: Optional[Union[int, str]] = field(
         default=None,
         metadata={
@@ -184,7 +184,7 @@ class PrefixTuningConfig(PromptLearningConfig):
     )
 
     def __post_init__(self):
-        self.peft_type = PromptType.PREFIX_TUNING
+        self.prompt_type = PromptType.PREFIX_TUNING
 
 
 
@@ -223,7 +223,7 @@ class PromptEncoderConfig(PromptLearningConfig):
     )
 
     def __post_init__(self):
-        self.peft_type = PromptType.P_TUNING
+        self.prompt_type = PromptType.P_TUNING
 
 
 class PromptTuningInit(str, enum.Enum):
@@ -261,7 +261,7 @@ class PromptTuningConfig(PromptLearningConfig):
     )
 
     def __post_init__(self):
-        self.peft_type = PromptType.PROMPT_TUNING
+        self.prompt_type = PromptType.PROMPT_TUNING
 @dataclass
 class AdaptionPromptConfig(PromptLearningConfig):
     """Stores the configuration of an [`AdaptionPromptModel`]."""
@@ -273,14 +273,17 @@ class AdaptionPromptConfig(PromptLearningConfig):
     adapter_layers: int = field(default=None, metadata={"help": "Number of adapter layers (from the top)"})
 
     def __post_init__(self):
-        self.peft_type = PromptType.ADAPTION_PROMPT
+        self.prompt_type = PromptType.ADAPTION_PROMPT
 
 
 
 
 
 PROMPT_TYPE_TO_CONFIG_MAPPING = {
-    "prompt": PromptLearningConfig,
+    "prompt_tuning": PromptTuningConfig,
+    "p_tuning": PromptTuningConfig,
+    "prefix_tuning": PrefixTuningConfig,
+    "adaption_prompt": AdaptionPromptConfig
 }
 
 
@@ -311,6 +314,7 @@ class PromptArguments:
     def __post_init__(self):
         self.with_prompt = False
         if self.prompt is not None and isinstance(self.prompt, dict):
-            self.prompt = PromptLearningConfig.from_memory(self.prompt)
+            prompt_type = self.prompt.get('prompt_type','prefix_tuning')
+            self.prompt = PROMPT_TYPE_TO_CONFIG_MAPPING[prompt_type].from_memory(self.prompt)
             self.with_prompt = self.prompt.with_prompt | self.with_prompt
 

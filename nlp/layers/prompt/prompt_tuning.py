@@ -15,11 +15,9 @@
 
 import enum
 import math
-from dataclasses import dataclass, field
-from typing import Optional, Union
 import torch
 
-from ...models.prompt_learn.configuration import PromptTuningInit
+from ...models.prompt.configuration import PromptTuningInit
 
 
 class PromptEmbedding(torch.nn.Module):

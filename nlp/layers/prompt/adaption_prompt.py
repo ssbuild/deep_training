@@ -23,7 +23,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .utils import _get_submodules, _freeze_adapter
-from ...models.prompt_learn.configuration import AdaptionPromptConfig
+from ...models.prompt.configuration import AdaptionPromptConfig
 
 
 # from peft.utils.config import PeftConfig, PeftType
