@@ -99,7 +99,7 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
             prompt_config.inference_mode = inference_mode
 
     @classmethod
-    def from_pretrained(cls, model, pretrained_model_name_or_path, lora_config: PromptLearningConfig = None,
+    def from_pretrained(cls, model, pretrained_model_name_or_path, prompt_config: PromptLearningConfig = None,
                         adapter_name="default", is_trainable=False, **kwargs):
         r"""
         Instantiate a [`LoraModel`] from a pretrained Lora configuration and weights.
@@ -118,20 +118,22 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
 
 
         # load the config
-        config = PROMPT_TYPE_TO_CONFIG_MAPPING[
-            PromptBaseArguments.from_pretrained(pretrained_model_name_or_path, subfolder=kwargs.get("subfolder", None)).prompt_type
-        ].from_pretrained(pretrained_model_name_or_path, subfolder=kwargs.get("subfolder", None))
+        if prompt_config is None:
+            prompt_config = PROMPT_TYPE_TO_CONFIG_MAPPING[
+                PromptBaseArguments.from_pretrained(pretrained_model_name_or_path,
+                                                    subfolder=kwargs.get("subfolder", None)).prompt_type
+            ].from_pretrained(pretrained_model_name_or_path, subfolder=kwargs.get("subfolder", None))
 
 
-        if isinstance(config, PromptLearningConfig) and is_trainable:
+        if isinstance(prompt_config, PromptLearningConfig) and is_trainable:
             raise ValueError("Cannot set a prompt learning adapter to trainable when loading pretrained adapter.")
         else:
-            config.inference_mode = not is_trainable
+            prompt_config.inference_mode = not is_trainable
 
-        if config.task_type not in MODEL_TYPE_TO_PEFT_MODEL_MAPPING.keys():
-            model = cls(model, config, adapter_name)
+        if prompt_config.task_type not in MODEL_TYPE_TO_PEFT_MODEL_MAPPING.keys():
+            model = cls(model, prompt_config, adapter_name)
         else:
-            model = MODEL_TYPE_TO_PEFT_MODEL_MAPPING[config.task_type](model, config, adapter_name)
+            model = MODEL_TYPE_TO_PEFT_MODEL_MAPPING[prompt_config.task_type](model, prompt_config, adapter_name)
         model.load_adapter(pretrained_model_name_or_path, adapter_name, **kwargs)
         return model
 
