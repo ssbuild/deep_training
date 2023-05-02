@@ -99,7 +99,8 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
             prompt_config.inference_mode = inference_mode
 
     @classmethod
-    def from_pretrained(cls, model, model_id, adapter_name="default", is_trainable=False, **kwargs):
+    def from_pretrained(cls, model, pretrained_model_name_or_path, lora_config: PromptLearningConfig = None,
+                        adapter_name="default", is_trainable=False, **kwargs):
         r"""
         Instantiate a [`LoraModel`] from a pretrained Lora configuration and weights.
 
@@ -118,8 +119,8 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
 
         # load the config
         config = PROMPT_TYPE_TO_CONFIG_MAPPING[
-            PromptBaseArguments.from_pretrained(model_id, subfolder=kwargs.get("subfolder", None)).prompt_type
-        ].from_pretrained(model_id, subfolder=kwargs.get("subfolder", None))
+            PromptBaseArguments.from_pretrained(pretrained_model_name_or_path, subfolder=kwargs.get("subfolder", None)).prompt_type
+        ].from_pretrained(pretrained_model_name_or_path, subfolder=kwargs.get("subfolder", None))
 
 
         if isinstance(config, PromptLearningConfig) and is_trainable:
@@ -131,7 +132,7 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
             model = cls(model, config, adapter_name)
         else:
             model = MODEL_TYPE_TO_PEFT_MODEL_MAPPING[config.task_type](model, config, adapter_name)
-        model.load_adapter(model_id, adapter_name, **kwargs)
+        model.load_adapter(pretrained_model_name_or_path, adapter_name, **kwargs)
         return model
 
     def _setup_prompt_encoder(self, adapter_name):
@@ -274,7 +275,7 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
     def add_adapter(self, adapter_name, prompt_config):
         if prompt_config.prompt_type != self.prompt_type:
             raise ValueError(
-                f"Cannot combine adapters with different peft types. "
+                f"Cannot combine adapters with different prompt types. "
                 f"Found {self.prompt_type} and {prompt_config.prompt_type}."
             )
         self.prompt_config[adapter_name] = prompt_config
