@@ -52,7 +52,7 @@ class MyLightningModule(pl.LightningModule):
         return super(MyLightningModule, cls).load_from_checkpoint(checkpoint_path,map_location,hparams_file,strict,**kwargs)
 
     @property
-    def backbone(self):
+    def backbone(self) -> nn.Module:
         return self.__model
 
     @property
@@ -227,7 +227,8 @@ class TransformerBase(MyLightningModule,metaclass=TransformerFakeMeta):
         lr = lr if lr is not None else self.config.task_specific_params['learning_rate']
         if model is not None:
             return [(model,lr)]
-        return [(self.model if self.base_model_prefix is not None else self , lr), ]
+        # return [(self.model if self.base_model_prefix is not None else self , lr), ]
+        return [(self, lr), ]
 
 
 
@@ -317,7 +318,7 @@ class TransformerLightningModule(MyLightningModule):
         return tmp_obj
 
     @property
-    def backbone(self):
+    def backbone(self) -> nn.Module:
         return self.__backbone
 
     @property

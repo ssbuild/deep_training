@@ -30,7 +30,7 @@ def get_prompt_model(model, prompt_config):
 
     Args:
         model ([`transformers.PreTrainedModel`]): Model to be wrapped.
-        peft_config ([`PeftConfig`]): Configuration object containing the parameters of the Prompt model.
+        prompt_config ([`PromptConfig`]): Configuration object containing the parameters of the Prompt model.
     """
 
     model_config = model.config.to_dict()
@@ -66,15 +66,17 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
         super().__init__()
 
         self.base_model = model
-        self.transformer_model = model if model is PreTrainedModel else model.model
-        self.config = self.transformer_model.config
+        self.config = self.get_transformer_model().config
         self.modules_to_save = None
         self.prompt_config = {}
         self.active_adapter = adapter_name
         self.prompt_type = prompt_config.prompt_type
-        self.base_model_torch_dtype = getattr(self.transformer_model, "dtype", None)
+        self.base_model_torch_dtype = getattr(self.get_transformer_model(), "dtype", None)
 
         self.add_adapter(adapter_name, prompt_config)
+
+    def get_transformer_model(self):
+        return self.base_model if isinstance(self.base_model,PreTrainedModel) else self.base_model.model
 
     def save_pretrained(self, save_directory, **kwargs):
         r"""
@@ -291,7 +293,8 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
         """
         Returns the base model.
         """
-        return self.base_model if isinstance(self.active_peft_config, PromptLearningConfig) else self.base_model.model
+        return self.base_model.model
+        # return self.base_model if isinstance(self.active_peft_config, PromptLearningConfig) else self.base_model.model
 
     def add_adapter(self, adapter_name, prompt_config):
         if prompt_config.prompt_type != self.prompt_type:
@@ -590,7 +593,7 @@ class PromptModelForCausalLM(PromptModel):
 
     def __init__(self, model, prompt_config: PromptLearningConfig, adapter_name="default"):
         super().__init__(model, prompt_config, adapter_name)
-        self.base_model_prepare_inputs_for_generation = self.transformer_model.prepare_inputs_for_generation
+        self.base_model_prepare_inputs_for_generation = self.get_transformer_model().prepare_inputs_for_generation
 
     def forward(
         self,
@@ -655,7 +658,7 @@ class PromptModelForCausalLM(PromptModel):
 
     def generate(self, **kwargs):
         prompt_config = self.active_peft_config
-        self.transformer_model.prepare_inputs_for_generation = self.prepare_inputs_for_generation
+        self.get_transformer_model().prepare_inputs_for_generation = self.prepare_inputs_for_generation
         try:
             if not isinstance(prompt_config, PromptLearningConfig):
                 outputs = self.base_model.generate(**kwargs)
@@ -688,10 +691,10 @@ class PromptModelForCausalLM(PromptModel):
 
                 outputs = self.base_model.generate(**kwargs)
         except:
-            self.transformer_model.prepare_inputs_for_generation = self.base_model_prepare_inputs_for_generation
+            self.get_transformer_model().prepare_inputs_for_generation = self.base_model_prepare_inputs_for_generation
             raise
         else:
-            self.transformer_model.prepare_inputs_for_generation = self.base_model_prepare_inputs_for_generation
+            self.get_transformer_model().prepare_inputs_for_generation = self.base_model_prepare_inputs_for_generation
             return outputs
 
     def prepare_inputs_for_generation(self, *args, **kwargs):
@@ -775,9 +778,9 @@ class PromptModelForSeq2SeqLM(PromptModel):
 
     def __init__(self, model, prompt_config: PromptLearningConfig, adapter_name="default"):
         super().__init__(model, prompt_config, adapter_name)
-        self.base_model_prepare_inputs_for_generation = self.transformer_model.prepare_inputs_for_generation
+        self.base_model_prepare_inputs_for_generation = self.get_transformer_model().prepare_inputs_for_generation
         self.base_model_prepare_encoder_decoder_kwargs_for_generation = (
-            self.transformer_model._prepare_encoder_decoder_kwargs_for_generation
+            self.get_transformer_model()._prepare_encoder_decoder_kwargs_for_generation
         )
 
     def forward(
@@ -873,8 +876,8 @@ class PromptModelForSeq2SeqLM(PromptModel):
 
     def generate(self, **kwargs):
         prompt_config = self.active_peft_config
-        self.transformer_model.prepare_inputs_for_generation = self.prepare_inputs_for_generation
-        self.transformer_model._prepare_encoder_decoder_kwargs_for_generation = (
+        self.get_transformer_model().prepare_inputs_for_generation = self.prepare_inputs_for_generation
+        self.get_transformer_model()._prepare_encoder_decoder_kwargs_for_generation = (
             self._prepare_encoder_decoder_kwargs_for_generation
         )
         try:
@@ -899,14 +902,14 @@ class PromptModelForSeq2SeqLM(PromptModel):
                 else:
                     raise NotImplementedError
         except:
-            self.transformer_model.prepare_inputs_for_generation = self.base_model_prepare_inputs_for_generation
-            self.transformer_model._prepare_encoder_decoder_kwargs_for_generation = (
+            self.get_transformer_model().prepare_inputs_for_generation = self.base_model_prepare_inputs_for_generation
+            self.get_transformer_model()._prepare_encoder_decoder_kwargs_for_generation = (
                 self.base_model_prepare_encoder_decoder_kwargs_for_generation
             )
             raise
         else:
-            self.transformer_model.prepare_inputs_for_generation = self.base_model_prepare_inputs_for_generation
-            self.transformer_model._prepare_encoder_decoder_kwargs_for_generation = (
+            self.get_transformer_model().prepare_inputs_for_generation = self.base_model_prepare_inputs_for_generation
+            self.get_transformer_model()._prepare_encoder_decoder_kwargs_for_generation = (
                 self.base_model_prepare_encoder_decoder_kwargs_for_generation
             )
             return outputs
@@ -1080,7 +1083,7 @@ class PromptModelForTokenClassification(PromptModel):
         if "past_key_values" in fwd_params:
             return self.base_model(labels=labels, **kwargs)
         else:
-            transformer_backbone_name = self.transformer_model.get_submodule(self.transformer_backbone_name)
+            transformer_backbone_name = self.get_transformer_model().get_submodule(self.transformer_backbone_name)
             fwd_params = list(inspect.signature(transformer_backbone_name.forward).parameters.keys())
             if "past_key_values" not in fwd_params:
                 raise ValueError("Model does not support past key values which are required for prefix tuning.")

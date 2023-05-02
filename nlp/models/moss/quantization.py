@@ -5,7 +5,7 @@ from torch.cuda.amp import custom_bwd, custom_fwd
 import math
 import triton
 import triton.language as tl
-from models.custom_autotune import *
+from .custom_autotune import *
 
 
 def find_layers(module, layers=[nn.Conv2d, nn.Linear], name=''):

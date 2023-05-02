@@ -27,11 +27,11 @@ def get_prompt_model_state_dict(model, state_dict=None, adapter_name="default"):
             The state dict of the model. If not provided, the state dict of the model
         will be used.
     """
-    config = model.peft_config[adapter_name]
+    config = model.prompt_config[adapter_name]
     if state_dict is None:
         state_dict = model.state_dict()
 
-    if config.peft_type == PromptType.ADAPTION_PROMPT:
+    if config.prompt_type == PromptType.ADAPTION_PROMPT:
         to_return = {k: state_dict[k] for k in state_dict if k.split(".")[-1].startswith("adaption_")}
     elif isinstance(config, PromptLearningConfig):
         to_return = {}
@@ -59,7 +59,7 @@ def set_peft_model_state_dict(model, peft_model_state_dict, adapter_name="defaul
         model ([`PeftModel`]): The Peft model.
         peft_model_state_dict (`dict`): The state dict of the Peft model.
     """
-    config = model.peft_config[adapter_name]
+    config = model.prompt_config[adapter_name]
     state_dict = {}
     if model.modules_to_save is not None:
         for key, value in peft_model_state_dict.items():
@@ -73,7 +73,7 @@ def set_peft_model_state_dict(model, peft_model_state_dict, adapter_name="defaul
         state_dict = peft_model_state_dict
 
 
-    if isinstance(config, PromptLearningConfig) or config.peft_type == PromptType.ADAPTION_PROMPT:
+    if isinstance(config, PromptLearningConfig) or config.prompt_type == PromptType.ADAPTION_PROMPT:
         peft_model_state_dict = state_dict
     else:
         raise NotImplementedError

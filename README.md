@@ -18,6 +18,9 @@
  - 基于 lightning.fabric 封装RL ppo 进行中...
 
 ## 更新
+- <strong>2023年05月02</strong>
+  - 0.1.4 增加 prompt_tuning,p_tuning,prefix_tuning,adaption_prompt
+
 - <strong>2023年04月28</strong>
   - 0.1.3@post0 新版本基于lightning
   - pytorch-lightning 更名 lightning  完成
