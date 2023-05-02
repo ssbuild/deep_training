@@ -126,7 +126,7 @@ class PromptBaseArguments(PromptConfigMixin):
     """
     base_model_name_or_path: str = field(default=None, metadata={"help": "The name of the base model to use."})
     inference_mode: bool = field(default=False, metadata={"help": "Whether to use inference mode"})
-    prompt_type: str = field(default='lora', metadata={"help": "one of prompt_tuning,p_tuning,prefix_tuning"})
+    prompt_type: str = field(default='prefix_tuning', metadata={"help": "one of prompt_tuning,p_tuning,prefix_tuning"})
     with_prompt: bool = field(default=False, metadata={"help": "whether use lora"})
     task_type: Union[str, TaskType] = field(default=None, metadata={"help": "Task type, one of seq_cls,seq_2_seq_lm,causal_lm,token_cls"})
     target_dtype: Optional[Union[int, str]] = field(

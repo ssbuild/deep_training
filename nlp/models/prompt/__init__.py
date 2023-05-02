@@ -4,5 +4,5 @@
 # @File：__init__.py
 
 
-from .prompt_model import PromptModel,PromptLearningConfig
+from .prompt_model import PromptModel,PromptLearningConfig,get_prompt_model
 from .configuration import PromptArguments

@@ -153,7 +153,11 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         try:
             return super().__getattr__(name)  # defer to nn.Module's logic
         except AttributeError:
-            return getattr(self.base_model, name)
+            try:
+                return getattr(self.base_model, name) # defer to nn.Module's logic
+            except AttributeError:
+                return getattr(self.base_model.model, name)
+
 
     def forward(self, *args, **kwargs):
         """

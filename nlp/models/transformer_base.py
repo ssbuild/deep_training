@@ -381,6 +381,8 @@ class TransformerLightningModule(MyLightningModule):
         model_attrs = self.get_model_lr(*args,**kwargs)
         no_decay = ["bias", "LayerNorm.weight"]
         def __get_named_parameters(a : nn.Module):
+            for n, p in a.named_parameters():
+                print(n,p.requires_grad)
             return [
                 {
                     "params": [p for n, p in a.named_parameters() if not any(nd in n for nd in no_decay)],

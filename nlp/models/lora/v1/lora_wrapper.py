@@ -192,8 +192,10 @@ class LoraModel(torch.nn.Module,PushToHubMixin):
         try:
             return super().__getattr__(name)  # defer to nn.Module's logic
         except AttributeError:
-            return getattr(self.model, name)
-
+            try:
+                return getattr(self.model, name)
+            except AttributeError:
+                return getattr(self.model.model, name)
     @property
     def modules_to_save(self):
         return None

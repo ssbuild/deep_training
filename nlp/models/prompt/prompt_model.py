@@ -16,31 +16,45 @@ from transformers.utils import PushToHubMixin
 from .configuration import PromptLearningConfig, PromptType, PromptBaseArguments, PROMPT_TYPE_TO_CONFIG_MAPPING, \
     WEIGHTS_NAME, TaskType
 from .save_and_load import get_prompt_model_state_dict
-from ...layers.prefix_encoder import PrefixEncoder
+from .utils import _prepare_prompt_learning_config
+from ...layers.prompt.prefix_tuning import PrefixEncoder
 from ...layers.prompt.p_tuning import PromptEncoder
 from ...layers.prompt.prompt_tuning import PromptEmbedding
 from ...layers.prompt.utils import _set_trainable, _set_adapter, \
     TRANSFORMERS_MODELS_TO_PREFIX_TUNING_POSTPROCESS_MAPPING, shift_tokens_right
 
 
+def get_prompt_model(model, prompt_config):
+    """
+    Returns a Prompt model object from a model and a config.
+
+    Args:
+        model ([`transformers.PreTrainedModel`]): Model to be wrapped.
+        peft_config ([`PeftConfig`]): Configuration object containing the parameters of the Prompt model.
+    """
+
+    model_config = model.config.to_dict()
+    prompt_config = _prepare_prompt_learning_config(prompt_config, model_config)
+    return MODEL_TYPE_TO_PROMPT_MODEL_MAPPING[prompt_config.task_type](model, prompt_config)
+
 
 class PromptModel(PushToHubMixin, torch.nn.Module):
     """
-    Base model encompassing various Peft methods.
+    Base model encompassing various Prompt methods.
 
     Args:
-        model ([`~transformers.PreTrainedModel`]): The base transformer model used for Peft.
-        prompt_config ([`PromptLearningConfig`]): The configuration of the Peft model.
+        model ([`~transformers.PreTrainedModel`]): The base transformer model used for Prompt.
+        prompt_config ([`PromptLearningConfig`]): The configuration of the Prompt model.
 
 
     **Attributes**:
-        - **base_model** ([`~transformers.PreTrainedModel`]) -- The base transformer model used for Peft.
-        - **prompt_config** ([`PromptLearningConfig`]) -- The configuration of the Peft model.
+        - **base_model** ([`~transformers.PreTrainedModel`]) -- The base transformer model used for Prompt.
+        - **prompt_config** ([`PromptLearningConfig`]) -- The configuration of the Prompt model.
         - **modules_to_save** (`list` of `str`) -- The list of sub-module names to save when
         saving the model.
-        - **prompt_encoder** ([`PromptEncoder`]) -- The prompt encoder used for Peft if
+        - **prompt_encoder** ([`PromptEncoder`]) -- The prompt encoder used for Prompt if
         using [`PromptLearningConfig`].
-        - **prompt_tokens** (`torch.Tensor`) -- The virtual prompt tokens used for Peft if
+        - **prompt_tokens** (`torch.Tensor`) -- The virtual prompt tokens used for Prompt if
         using [`PromptLearningConfig`].
         - **transformer_backbone_name** (`str`) -- The name of the transformer
         backbone in the base model if using [`PromptLearningConfig`].
@@ -50,13 +64,15 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
 
     def __init__(self, model, prompt_config: PromptLearningConfig, adapter_name="default"):
         super().__init__()
+
         self.base_model = model
-        self.config = self.base_model.config
+        self.transformer_model = model if model is PreTrainedModel else model.model
+        self.config = self.transformer_model.config
         self.modules_to_save = None
         self.prompt_config = {}
         self.active_adapter = adapter_name
         self.prompt_type = prompt_config.prompt_type
-        self.base_model_torch_dtype = getattr(model, "dtype", None)
+        self.base_model_torch_dtype = getattr(self.transformer_model, "dtype", None)
 
         self.add_adapter(adapter_name, prompt_config)
 
@@ -130,10 +146,10 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
         else:
             prompt_config.inference_mode = not is_trainable
 
-        if prompt_config.task_type not in MODEL_TYPE_TO_PEFT_MODEL_MAPPING.keys():
+        if prompt_config.task_type not in MODEL_TYPE_TO_PROMPT_MODEL_MAPPING.keys():
             model = cls(model, prompt_config, adapter_name)
         else:
-            model = MODEL_TYPE_TO_PEFT_MODEL_MAPPING[prompt_config.task_type](model, prompt_config, adapter_name)
+            model = MODEL_TYPE_TO_PROMPT_MODEL_MAPPING[prompt_config.task_type](model, prompt_config, adapter_name)
         model.load_adapter(pretrained_model_name_or_path, adapter_name, **kwargs)
         return model
 
@@ -184,7 +200,7 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
 
     def get_prompt(self, batch_size):
         """
-        Returns the virtual prompts to use for Peft.
+        Returns the virtual prompts to use for Prompt.
         """
         prompt_config = self.active_peft_config
         prompt_encoder = self.prompt_encoder[self.active_adapter]
@@ -242,7 +258,10 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
         try:
             return super().__getattr__(name)  # defer to nn.Module's logic
         except AttributeError:
-            return getattr(self.base_model, name)
+            try:
+                return getattr(self.base_model, name)
+            except AttributeError:
+                return getattr(self.base_model.model, name)
 
     def forward(self, *args, **kwargs):
         """
@@ -346,11 +365,11 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
 
 class PromptModelForSequenceClassification(PromptModel):
     """
-    Peft model for sequence classification tasks.
+    Prompt model for sequence classification tasks.
 
     Args:
         model ([`~transformers.PreTrainedModel`]): Base transformer model.
-        prompt_config ([`PromptLearningConfig`]): Peft config.
+        prompt_config ([`PromptLearningConfig`]): Prompt config.
 
     **Attributes**:
         - **config** ([`~transformers.PretrainedConfig`]) -- The configuration object of the base model.
@@ -534,11 +553,11 @@ class PromptModelForSequenceClassification(PromptModel):
 
 class PromptModelForCausalLM(PromptModel):
     """
-    Peft model for causal language modeling.
+    Prompt model for causal language modeling.
 
     Args:
         model ([`~transformers.PreTrainedModel`]): Base transformer model.
-        prompt_config ([`PromptLearningConfig`]): Peft config.
+        prompt_config ([`PromptLearningConfig`]): Prompt config.
 
 
     Example:
@@ -571,7 +590,7 @@ class PromptModelForCausalLM(PromptModel):
 
     def __init__(self, model, prompt_config: PromptLearningConfig, adapter_name="default"):
         super().__init__(model, prompt_config, adapter_name)
-        self.base_model_prepare_inputs_for_generation = self.base_model.prepare_inputs_for_generation
+        self.base_model_prepare_inputs_for_generation = self.transformer_model.prepare_inputs_for_generation
 
     def forward(
         self,
@@ -636,13 +655,13 @@ class PromptModelForCausalLM(PromptModel):
 
     def generate(self, **kwargs):
         prompt_config = self.active_peft_config
-        self.base_model.prepare_inputs_for_generation = self.prepare_inputs_for_generation
+        self.transformer_model.prepare_inputs_for_generation = self.prepare_inputs_for_generation
         try:
             if not isinstance(prompt_config, PromptLearningConfig):
                 outputs = self.base_model.generate(**kwargs)
             else:
                 if "input_ids" not in kwargs:
-                    raise ValueError("input_ids must be provided for Peft model generation")
+                    raise ValueError("input_ids must be provided for Prompt model generation")
                 # For gpt2 models, we construct postion_ids on the fly by using attention mask, and position ids need to match input_shape.
                 # for prefix tuning, input shape is determined using `input_ids`. Thus we should not expand 'attention_mask' here
                 # for prompt tuning input_ids is not passed but a concatenated input_embeds is passed. Thus attention_mask needs to be of same size of num_virtual_tokens + input_ids
@@ -669,10 +688,10 @@ class PromptModelForCausalLM(PromptModel):
 
                 outputs = self.base_model.generate(**kwargs)
         except:
-            self.base_model.prepare_inputs_for_generation = self.base_model_prepare_inputs_for_generation
+            self.transformer_model.prepare_inputs_for_generation = self.base_model_prepare_inputs_for_generation
             raise
         else:
-            self.base_model.prepare_inputs_for_generation = self.base_model_prepare_inputs_for_generation
+            self.transformer_model.prepare_inputs_for_generation = self.base_model_prepare_inputs_for_generation
             return outputs
 
     def prepare_inputs_for_generation(self, *args, **kwargs):
@@ -719,11 +738,11 @@ class PromptModelForCausalLM(PromptModel):
 
 class PromptModelForSeq2SeqLM(PromptModel):
     """
-    Peft model for sequence-to-sequence language modeling.
+    Prompt model for sequence-to-sequence language modeling.
 
     Args:
         model ([`~transformers.PreTrainedModel`]): Base transformer model.
-        prompt_config ([`PromptLearningConfig`]): Peft config.
+        prompt_config ([`PromptLearningConfig`]): Prompt config.
 
 
     Example:
@@ -756,9 +775,9 @@ class PromptModelForSeq2SeqLM(PromptModel):
 
     def __init__(self, model, prompt_config: PromptLearningConfig, adapter_name="default"):
         super().__init__(model, prompt_config, adapter_name)
-        self.base_model_prepare_inputs_for_generation = self.base_model.prepare_inputs_for_generation
+        self.base_model_prepare_inputs_for_generation = self.transformer_model.prepare_inputs_for_generation
         self.base_model_prepare_encoder_decoder_kwargs_for_generation = (
-            self.base_model._prepare_encoder_decoder_kwargs_for_generation
+            self.transformer_model._prepare_encoder_decoder_kwargs_for_generation
         )
 
     def forward(
@@ -854,8 +873,8 @@ class PromptModelForSeq2SeqLM(PromptModel):
 
     def generate(self, **kwargs):
         prompt_config = self.active_peft_config
-        self.base_model.prepare_inputs_for_generation = self.prepare_inputs_for_generation
-        self.base_model._prepare_encoder_decoder_kwargs_for_generation = (
+        self.transformer_model.prepare_inputs_for_generation = self.prepare_inputs_for_generation
+        self.transformer_model._prepare_encoder_decoder_kwargs_for_generation = (
             self._prepare_encoder_decoder_kwargs_for_generation
         )
         try:
@@ -863,7 +882,7 @@ class PromptModelForSeq2SeqLM(PromptModel):
                 outputs = self.base_model.generate(**kwargs)
             else:
                 if "input_ids" not in kwargs:
-                    raise ValueError("input_ids must be provided for Peft model generation")
+                    raise ValueError("input_ids must be provided for Prompt model generation")
                 if kwargs.get("position_ids", None) is not None:
                     warnings.warn(
                         "Position ids are not supported for parameter efficient tuning. Ignoring position ids."
@@ -880,14 +899,14 @@ class PromptModelForSeq2SeqLM(PromptModel):
                 else:
                     raise NotImplementedError
         except:
-            self.base_model.prepare_inputs_for_generation = self.base_model_prepare_inputs_for_generation
-            self.base_model._prepare_encoder_decoder_kwargs_for_generation = (
+            self.transformer_model.prepare_inputs_for_generation = self.base_model_prepare_inputs_for_generation
+            self.transformer_model._prepare_encoder_decoder_kwargs_for_generation = (
                 self.base_model_prepare_encoder_decoder_kwargs_for_generation
             )
             raise
         else:
-            self.base_model.prepare_inputs_for_generation = self.base_model_prepare_inputs_for_generation
-            self.base_model._prepare_encoder_decoder_kwargs_for_generation = (
+            self.transformer_model.prepare_inputs_for_generation = self.base_model_prepare_inputs_for_generation
+            self.transformer_model._prepare_encoder_decoder_kwargs_for_generation = (
                 self.base_model_prepare_encoder_decoder_kwargs_for_generation
             )
             return outputs
@@ -918,11 +937,11 @@ class PromptModelForSeq2SeqLM(PromptModel):
 
 class PromptModelForTokenClassification(PromptModel):
     """
-    Peft model for token classification tasks.
+    Prompt model for token classification tasks.
 
     Args:
         model ([`~transformers.PreTrainedModel`]): Base transformer model.
-        prompt_config ([`PromptLearningConfig`]): Peft config.
+        prompt_config ([`PromptLearningConfig`]): Prompt config.
 
     **Attributes**:
         - **config** ([`~transformers.PretrainedConfig`]) -- The configuration object of the base model.
@@ -1061,7 +1080,7 @@ class PromptModelForTokenClassification(PromptModel):
         if "past_key_values" in fwd_params:
             return self.base_model(labels=labels, **kwargs)
         else:
-            transformer_backbone_name = self.base_model.get_submodule(self.transformer_backbone_name)
+            transformer_backbone_name = self.transformer_model.get_submodule(self.transformer_backbone_name)
             fwd_params = list(inspect.signature(transformer_backbone_name.forward).parameters.keys())
             if "past_key_values" not in fwd_params:
                 raise ValueError("Model does not support past key values which are required for prefix tuning.")
@@ -1089,9 +1108,9 @@ class PromptModelForTokenClassification(PromptModel):
             )
 
 
-MODEL_TYPE_TO_PEFT_MODEL_MAPPING = {
-    "SEQ_CLS": PromptModelForSequenceClassification,
-    "SEQ_2_SEQ_LM": PromptModelForSeq2SeqLM,
-    "CAUSAL_LM": PromptModelForCausalLM,
-    "TOKEN_CLS": PromptModelForTokenClassification,
+MODEL_TYPE_TO_PROMPT_MODEL_MAPPING = {
+    "seq_cls": PromptModelForSequenceClassification,
+    "seq_2_seq_lm": PromptModelForSeq2SeqLM,
+    "causal_lm": PromptModelForCausalLM,
+    "token_cls": PromptModelForTokenClassification,
 }
