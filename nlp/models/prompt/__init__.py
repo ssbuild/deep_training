@@ -5,3 +5,4 @@
 
 
 from .prompt_model import PromptModel,PromptLearningConfig
+from .configuration import PromptArguments

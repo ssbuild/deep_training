@@ -241,7 +241,7 @@ class DataHelper(DataPreprocessHelper):
                                    use_fast_tokenizer=model_args.use_fast_tokenizer,
                                    model_revision=model_args.model_revision,
                                    use_auth_token=model_args.use_auth_token,
-                                   **config_kwargs,
+                                   **tokenizer_kwargs,
                                    )
         self.tokenizer = tokenizer
 
@@ -270,7 +270,7 @@ class DataHelper(DataPreprocessHelper):
             "return_dict": return_dict,
             "task_specific_params": task_specific_params,
         }
-        kwargs_args.update(tokenizer_kwargs)
+        kwargs_args.update(config_kwargs)
 
 
         if with_labels and self.label2id is not None:
