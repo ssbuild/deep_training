@@ -33,9 +33,9 @@ def gather_log_probs(logits, labels):
     log_probs_labels = log_probs.gather(dim=-1, index=labels.unsqueeze(-1))
     return log_probs_labels.squeeze(-1)
 
-class MyTransformer(TransformerLightningModule):
+class PPO_Agent(TransformerLightningModule):
     def __init__(self, *args, **kwargs):
-        super(MyTransformer, self).__init__(*args, **kwargs)
+        super(PPO_Agent, self).__init__(*args, **kwargs)
         self.automatic_optimization = False
         self.rlhf_engine = PPOEngine()
         self.actor_model = self.rlhf_engine.actor_model
