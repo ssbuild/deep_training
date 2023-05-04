@@ -1,30 +1,27 @@
 
 ## transformer is all you need.
-- 基于lightning 和 transformers实现的上下游训练框架
-- 安装 pip install -U deep_training
+- Upstream and downstream training framework based on lightning and transformers
 
-## 完整训练模型
+## install and download
+- pip install -U deep_training
+- https://pypi.org/project/deep-training/#history
+
+## examples
   - [pytorch-task-example](https://github.com/ssbuild/pytorch-task-example)
   - [poetry_training](https://github.com/ssbuild/poetry_training)
 
 
-## 优化器
-  adamw,adam,lamb,lion
-
-## download 
-  https://pypi.org/project/deep-training/#history
-
-## 开发状态
+## state
  - 基于 lightning.fabric 封装RL ppo 进行中...
 
-## 更新
+## update
 - <strong>2023年05月02</strong>
   - 0.1.4 增加 prompt_tuning,p_tuning,prefix_tuning,adaption_prompt
 
 - <strong>2023年04月28</strong>
   - 0.1.3@post0 新版本基于lightning
-  - pytorch-lightning 更名 lightning  完成
-  - 分离numpy-io模块 完成
+  - pytorch-lightning 更名 lightning
+  - 分离numpy-io模块
 
 - <strong>2023年04月21</strong>
   - 0.1.3rc0 增加 moss chat模型 完整训练参考 [moss_finetuning](https://github.com/ssbuild/moss_finetuning)
@@ -106,7 +103,7 @@
 
 
 
-## 支持任务
+## tasks
 - <strong>预训练</strong>:
   - <strong> 数据参考 </strong> [THUCNews新闻文本分类数据集的子集](https://pan.baidu.com/s/1eS-QZpWbWfKtdQE4uvzBrA?pwd=1234)
   - <strong>mlm预训练</strong>例子 bert roberta等一些列中文预训练 
@@ -157,13 +154,13 @@
   - <strong>siamese net </strong> 例子 afqmc siamese net similar
 
   
-## 愿景
-创建一个模型工厂, 轻量且高效的训练程序，让训练模型更容易,更轻松上手。
+## works
+Create a model factory, lightweight and efficient training program and make it easier, training model easier to get started.
 
 
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=ssbuild/deep_training&type=Date)](https://star-history.com/#ssbuild/deep_training&Date)
 
-## 交流
-QQ交流群：185144988
+## discuss
+QQ group：185144988
