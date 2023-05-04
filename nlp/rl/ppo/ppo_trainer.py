@@ -128,6 +128,7 @@ class PPOTrainer:
     def fit(
         self,
         model: L.LightningModule,
+        ref_model: Optional[L.LightningModule],
         train_loader: torch.utils.data.DataLoader,
         val_loader: torch.utils.data.DataLoader,
         ckpt_path: Optional[str] = None,
@@ -136,7 +137,7 @@ class PPOTrainer:
 
         Args:
             model: the LightningModule to train.
-                Can have the same hooks as :attr:`callbacks` (see :meth:`MyCustomTrainer.__init__`).
+                Can have the same hooks as :attr:`callbacks` (see :meth:`PPPTrainer.__init__`).
             train_loader: the training dataloader. Has to be an iterable returning batches.
             val_loader: the validation dataloader. Has to be an iterable returning batches.
                 If not specified, no validation will run.
@@ -159,6 +160,7 @@ class PPOTrainer:
             optimizer, scheduler_cfg = self._parse_optimizers_schedulers(model.configure_optimizers())
             assert optimizer is not None
             model, optimizer = self.fabric.setup(model, optimizer)
+            ref_model = self.fabric.setup(ref_model)
 
         # assemble state (current epoch and global step will be added in save)
         state = {"model": model, "optim": optimizer, "scheduler": scheduler_cfg}
@@ -175,11 +177,11 @@ class PPOTrainer:
 
         while not self.should_stop:
             self.train_loop(
-                model, optimizer, train_loader, limit_batches=self.limit_train_batches, scheduler_cfg=scheduler_cfg
+                model,ref_model, optimizer, train_loader, limit_batches=self.limit_train_batches, scheduler_cfg=scheduler_cfg
             )
 
             if self.should_validate:
-                self.val_loop(model, val_loader, limit_batches=self.limit_val_batches)
+                self.val_loop(model,ref_model, val_loader, limit_batches=self.limit_val_batches)
 
             self.step_scheduler(model, scheduler_cfg, level="epoch", current_value=self.current_epoch)
 
@@ -197,6 +199,7 @@ class PPOTrainer:
     def train_loop(
         self,
         model: L.LightningModule,
+        ref_model: Optional[L.LightningModule],
         optimizer: torch.optim.Optimizer,
         train_loader: torch.utils.data.DataLoader,
         limit_batches: Union[int, float] = float("inf"),
@@ -266,6 +269,7 @@ class PPOTrainer:
     def val_loop(
         self,
         model: L.LightningModule,
+        ref_model: Optional[L.LightningModule],
         val_loader: Optional[torch.utils.data.DataLoader],
         limit_batches: Union[int, float] = float("inf"),
     ):

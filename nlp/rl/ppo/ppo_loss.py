@@ -1,19 +1,12 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/4/20 11:05
 import logging
-import os
-from time import time
-from typing import List, Callable, Tuple, Optional
+from typing import Tuple, Optional
 
 import torch
 from torch import nn
-from tqdm import tqdm
-from torch.nn import functional as F
-import torch.distributed as dist
-from ....nlp.layers.ppo import AdaptiveKLController, FixedKLController
-from .data_type import PPORLElement, PPORLBatch
-from .utils import logprobs_of_labels, Clock, gather_dict, RunningMoments, pad_across_processes, _gpu_gather, \
-    get_tensor_stats, flatten_dict, whiten
+
+from .utils import logprobs_of_labels, get_tensor_stats, flatten_dict, whiten, PPORLBatch
 
 logger = logging.get_logger(__name__)
 
