@@ -2,6 +2,12 @@
 # @Time    : 2023/5/3 19:08
 # @Author  : tk
 # @FileName: utils
+from torch.nn import functional as F
+
+def gather_log_probs(logits, labels):
+    log_probs = F.log_softmax(logits, dim=-1)
+    log_probs_labels = log_probs.gather(dim=-1, index=labels.unsqueeze(-1))
+    return log_probs_labels.squeeze(-1)
 
 class MiniDataset:
 

@@ -8,7 +8,9 @@ from functools import partial
 from typing import Any, cast, Iterable, List, Literal, Optional, Tuple, Union
 
 import torch
-from lightning_utilities import apply_to_collection, is_overridden
+# from lightning_utilities import apply_to_collection, is_overridden
+from lightning_utilities import is_overridden
+from lightning_utilities.core.apply_func import apply_to_collection
 from tqdm import tqdm
 
 import lightning as L
@@ -18,7 +20,7 @@ from lightning.fabric.strategies import Strategy
 from lightning.fabric.wrappers import _unwrap_objects
 
 
-class MyCustomTrainer:
+class PPO_Trainer:
     def __init__(
         self,
         accelerator: Union[str, Accelerator] = "auto",
@@ -221,6 +223,8 @@ class MyCustomTrainer:
             if self.should_stop or batch_idx >= limit_batches:
                 self.fabric.call("on_train_epoch_end")
                 return
+
+
 
             self.fabric.call("on_train_batch_start", batch, batch_idx)
 

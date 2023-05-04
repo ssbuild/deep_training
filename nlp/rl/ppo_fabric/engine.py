@@ -3,10 +3,14 @@
 import typing
 import torch
 from torch import nn
-from torch.nn import functional as F
+from .utils import gather_log_probs
 from ...models.transformer_base import TransformerLightningModule
 from ...utils import configure_optimizers
 
+
+__all__ = [
+    'PPOEngine',"PPO_Agent"
+]
 
 class PPOEngine:
     def __init__(self):
@@ -28,10 +32,7 @@ class PPOEngine:
 
 
 
-def gather_log_probs(logits, labels):
-    log_probs = F.log_softmax(logits, dim=-1)
-    log_probs_labels = log_probs.gather(dim=-1, index=labels.unsqueeze(-1))
-    return log_probs_labels.squeeze(-1)
+
 
 class PPO_Agent(TransformerLightningModule):
     def __init__(self, *args, **kwargs):
