@@ -140,7 +140,7 @@ class PPORolloutStore(BaseRolloutStore):
 
         self.pad_token_id = pad_token_id
         self.padding_side = padding_side
-        self.history: Iterable[PPORLElement] = [None]
+        self.history: Iterable[PPORLElement] = []
 
     def push(self, exps: Iterable[PPORLElement]):
         self.history += exps
@@ -151,10 +151,10 @@ class PPORolloutStore(BaseRolloutStore):
     def export_history(self, location: str):
         assert os.path.exists(location)
 
-        fpath = os.path.join(location, f"epoch-{str(time.time())}.json")
+        fpath = os.path.join(location, f"epoch-{str(time())}.json")
 
         def exp_to_dict(exp):
-            {k: v.cpu().tolist() for k, v in exp.__dict__.items()}
+            return {k: v.cpu().tolist() for k, v in exp.__dict__.items()}
 
         data = [exp_to_dict(exp) for exp in self.history]
         with open(fpath, "w") as f:

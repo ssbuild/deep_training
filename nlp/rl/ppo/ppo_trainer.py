@@ -25,7 +25,6 @@ from lightning.fabric.strategies import Strategy
 from lightning.fabric.wrappers import _unwrap_objects, _FabricModule
 
 from .ppo_dataset import PPORolloutStore, MiniBatchIterator
-from .ppo_loss import PPOLoss
 from .utils import logprobs_of_labels, Clock, gather_dict, RunningMoments, pad_across_processes, _gpu_gather, \
     PPORLElement
 from ...layers.ppo import AdaptiveKLController, FixedKLController
@@ -45,7 +44,7 @@ class PPOTrainer:
         loggers: Optional[Union[Logger, List[Logger]]] = None,
         max_epochs: Optional[int] = 1000,
         max_steps: Optional[int] = None,
-        grad_accum_steps: int = 1,
+        accumulate_grad_batches: int = 1,
         limit_train_batches: Union[int, float] = float("inf"),
         limit_val_batches: Union[int, float] = float("inf"),
         validation_frequency: int = 1,
@@ -89,7 +88,7 @@ class PPOTrainer:
 
             max_epochs: The maximum number of epochs to train
             max_steps: The maximum number of (optimizer) steps to train
-            grad_accum_steps: How many batches to process before each optimizer step
+            accumulate_grad_batches: How many batches to process before each optimizer step
             limit_train_batches: Limits the number of train batches per epoch
                 If greater than number of batches in the dataloader, this has no effect.
             limit_val_batches: Limits the number of validation batches per epoch.
@@ -114,7 +113,7 @@ class PPOTrainer:
             loggers=loggers,
         )
         self.global_step = 0
-        self.grad_accum_steps: int = grad_accum_steps
+        self.accumulate_grad_batches: int = accumulate_grad_batches
         self.current_epoch = 0
 
         self.max_epochs = max_epochs
@@ -139,6 +138,17 @@ class PPOTrainer:
         self.checkpoint_frequency = checkpoint_frequency
 
         self.mb_count = 0
+
+        self.fabric.launch()
+
+
+    @property
+    def world_size(self):
+        return self.fabric.world_size
+
+    @property
+    def global_rank(self):
+        return self.fabric.global_rank
 
     def fit(
         self,
@@ -182,11 +192,9 @@ class PPOTrainer:
 
 
 
-        self.fabric.launch()
+
 
         self.store = PPORolloutStore(self.tokenizer.pad_token_id, self.tokenizer.padding_side)
-
-        self.loss_fn = PPOLoss(self.ppo_config.model_arch_type)
 
         self.mb_count = 0
 
@@ -310,7 +318,7 @@ class PPOTrainer:
                 for mb in mbs:
                     self.mb_count += 1
 
-                    should_sync = self.mb_count % self.grad_accum_steps == 0
+                    should_sync = self.mb_count % self.accumulate_grad_batches == 0
 
                     with self.fabric.no_backward_sync(model,enabled=not should_sync):
                         forward_time -= time()

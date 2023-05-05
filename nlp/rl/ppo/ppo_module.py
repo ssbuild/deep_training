@@ -12,12 +12,36 @@ logger = logging.get_logger(__name__)
 
 
 
-class PPOLoss(nn.Module):
-    # def __init__(self,ppo_config: PPOConfig):
-    #     super(PPOLoss, self).__init__()
-    #     self.ppo_config = ppo_config
 
+class PPOLLMAbstract:
 
+    def forward_llm_value_and_logits(self,  input_ids,
+                attention_mask,
+                **kwargs):
+        outputs = self.model(input_ids=input_ids, attention_mask=attention_mask, return_dict=True,**kwargs)
+        logits = outputs.logits
+        values_pred = outputs.value
+        return (logits,values_pred)
+
+class PPOSEQ2SEQAbstract:
+
+    def forward_seq2seq_value_and_logits(self,  input_ids,
+                attention_mask,
+                decoder_input_ids,
+                decoder_attention_mask,
+                **kwargs):
+        outputs = self.model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            decoder_input_ids=decoder_input_ids,
+            decoder_attention_mask=decoder_attention_mask,
+            **kwargs
+        )
+        logits = outputs.logits
+        values_pred = outputs.value
+        return (logits,values_pred)
+
+class PPOModelBase(nn.Module,PPOLLMAbstract,PPOSEQ2SEQAbstract):
 
     def forward_ppo_loss(self,batch: PPORLBatch,device):
         """Forward pass & loss
@@ -45,15 +69,13 @@ class PPOLoss(nn.Module):
             decoder_attention_mask[:, 0] = 1
 
             # Forward pass
-            outputs = self.model(
+            logits,values_pred = self.forward_seq2seq_value_and_logits(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 decoder_input_ids=decoder_input_ids,
                 decoder_attention_mask=decoder_attention_mask,
             )
 
-            logits = outputs.logits
-            values_pred = outputs.value
             logprobs = logprobs_of_labels(logits[:, :-1, :], decoder_input_ids[:, 1:])
             mask = decoder_input_ids.ne(self.config.pad_token_id).long().to(device)
             start = 0
@@ -66,9 +88,7 @@ class PPOLoss(nn.Module):
         else:
             tokens = torch.cat((query_tensors, response_tensors), dim=1)
             attention_mask = tokens.not_equal(self.config.pad_token_id).long().to(tokens.device)
-            outputs = self.model(tokens, attention_mask, return_dict=True)
-            logits = outputs.logits
-            values_pred = outputs.value
+            logits,values_pred = self.forward_llm_value_and_logits(input_ids=tokens, attention_mask=attention_mask)
             values_pred = values_pred[:, :-1]
             logprobs = logprobs_of_labels(logits[:, :-1, :], tokens[:, 1:])
 
