@@ -5,7 +5,7 @@ from typing import Tuple, Optional
 
 import torch
 from torch import nn
-
+from .configuration import PPOConfig
 from .utils import logprobs_of_labels, get_tensor_stats, flatten_dict, whiten, PPORLBatch
 
 logger = logging.get_logger(__name__)
@@ -13,11 +13,13 @@ logger = logging.get_logger(__name__)
 
 
 class PPOLoss(nn.Module):
-    def __init__(self,model_arch_type):
-        super(PPOLoss, self).__init__()
-        self.model_arch_type = model_arch_type
+    # def __init__(self,ppo_config: PPOConfig):
+    #     super(PPOLoss, self).__init__()
+    #     self.ppo_config = ppo_config
 
-    def foward(self,batch: PPORLBatch,device):
+
+
+    def forward_ppo_loss(self,batch: PPORLBatch,device):
         """Forward pass & loss
 
               Args:
@@ -33,12 +35,12 @@ class PPOLoss(nn.Module):
 
         advantages, returns = self.get_advantages_and_returns(old_values, old_rewards, response_length)
 
-        if self.model_arch_type == "seq2seq":
+        if self.ppo_config.model_arch_type == "seq2seq":
             input_ids = query_tensors
             decoder_input_ids = response_tensors
-            attention_mask = input_ids.ne(self.tokenizer.pad_token_id).long().to(device)
+            attention_mask = input_ids.ne(self.config.pad_token_id).long().to(device)
             decoder_attention_mask = (
-                decoder_input_ids.ne(self.tokenizer.pad_token_id).long().to(device)
+                decoder_input_ids.ne(self.config.pad_token_id).long().to(device)
             )
             decoder_attention_mask[:, 0] = 1
 
@@ -53,7 +55,7 @@ class PPOLoss(nn.Module):
             logits = outputs.logits
             values_pred = outputs.value
             logprobs = logprobs_of_labels(logits[:, :-1, :], decoder_input_ids[:, 1:])
-            mask = decoder_input_ids.ne(self.tokenizer.pad_token_id).long().to(device)
+            mask = decoder_input_ids.ne(self.config.pad_token_id).long().to(device)
             start = 0
             end = start + response_length
             logprobs, values_pred, mask = (
@@ -63,7 +65,7 @@ class PPOLoss(nn.Module):
             )
         else:
             tokens = torch.cat((query_tensors, response_tensors), dim=1)
-            attention_mask = tokens.not_equal(self.tokenizer.pad_token_id).long().to(tokens.device)
+            attention_mask = tokens.not_equal(self.config.pad_token_id).long().to(tokens.device)
             outputs = self.model(tokens, attention_mask, return_dict=True)
             logits = outputs.logits
             values_pred = outputs.value
@@ -118,8 +120,8 @@ class PPOLoss(nn.Module):
         advantages_reversed = []
         for t in reversed(range(response_length)):
             nextvalues = values[:, t + 1] if t < response_length - 1 else 0.0
-            delta = rewards[:, t] + self.gamma * nextvalues - values[:, t]
-            lastgaelam = delta + self.gamma * self.lam * lastgaelam
+            delta = rewards[:, t] + self.ppo_config.gamma * nextvalues - values[:, t]
+            lastgaelam = delta + self.ppo_config.gamma * self.ppo_config.lam * lastgaelam
             advantages_reversed.append(lastgaelam)
         advantages = torch.stack(advantages_reversed[::-1], dim=1)
         returns = advantages + values
@@ -143,8 +145,8 @@ class PPOLoss(nn.Module):
         """
         values_clipped = torch.clamp(
             values,
-            old_values - self.cliprange_value,
-            old_values + self.cliprange_value,
+            old_values - self.ppo_config.cliprange_value,
+            old_values + self.ppo_config.cliprange_value,
         )
         n = mask.sum()
 
@@ -162,13 +164,13 @@ class PPOLoss(nn.Module):
         pg_loss1 = -advantages * ratio
         pg_loss2 = -advantages * torch.clamp(
             ratio,
-            1.0 - self.cliprange,
-            1.0 + self.cliprange,
+            1.0 - self.ppo_config.cliprange,
+            1.0 + self.ppo_config.cliprange,
         )
         pg_loss = torch.sum(torch.max(pg_loss1, pg_loss2) * mask) / n
         pg_clipfrac = torch.sum((pg_loss2 > pg_loss1).float() * mask) / n
 
-        loss = pg_loss + self.vf_coef * vf_loss
+        loss = pg_loss + self.ppo_config.vf_coef * vf_loss
 
         stats = dict(
             losses=dict(

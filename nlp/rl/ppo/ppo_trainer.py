@@ -2,22 +2,35 @@
 # @Time    : 2023/5/3 14:19
 # @Author  : tk
 # @FileName: ppo_trainner
+import logging
 import os
+
+import numpy as np
+from tqdm import tqdm
+from time import time
 from collections.abc import Mapping
 from functools import partial
-from typing import Any, cast, Iterable, List, Literal, Optional, Tuple, Union
-
+from typing import Any, cast, Iterable, List, Literal, Optional, Tuple, Union, Callable
 import torch
+import torch.distributed as dist
+from torch.nn import functional as F
+from torch.utils.data import DataLoader
 # from lightning_utilities import apply_to_collection, is_overridden
 from lightning_utilities import is_overridden
 from lightning_utilities.core.apply_func import apply_to_collection
-from tqdm import tqdm
-
 import lightning as L
 from lightning.fabric.accelerators import Accelerator
 from lightning.fabric.loggers import Logger
 from lightning.fabric.strategies import Strategy
-from lightning.fabric.wrappers import _unwrap_objects
+from lightning.fabric.wrappers import _unwrap_objects, _FabricModule
+
+from .ppo_dataset import PPORolloutStore, MiniBatchIterator
+from .ppo_loss import PPOLoss
+from .utils import logprobs_of_labels, Clock, gather_dict, RunningMoments, pad_across_processes, _gpu_gather, \
+    PPORLElement
+from ...layers.ppo import AdaptiveKLController, FixedKLController
+
+logger = logging.get_logger(__name__)
 
 
 class PPOTrainer:
@@ -125,13 +138,21 @@ class PPOTrainer:
         self.checkpoint_dir = checkpoint_dir
         self.checkpoint_frequency = checkpoint_frequency
 
+        self.mb_count = 0
+
     def fit(
         self,
         model: L.LightningModule,
         ref_model: Optional[L.LightningModule],
-        train_loader: torch.utils.data.DataLoader,
-        val_loader: torch.utils.data.DataLoader,
+        train_loader: DataLoader,
+        val_loader: DataLoader,
+        tokenizer,
+        reward_fn: Callable,
+        ppo_config,
+        stop_sequences=None,
+        generate_kwargs=None or {},
         ckpt_path: Optional[str] = None,
+
     ):
         """The main entrypoint of the trainer, triggering the actual training.
 
@@ -144,7 +165,41 @@ class PPOTrainer:
             ckpt_path: Path to previous checkpoints to resume training from.
                 If specified, will always look for the latest checkpoint within the given directory.
         """
+       
+    
+        self.config = model.config
+        self.tokenizer = tokenizer
+        self.reward_fn = reward_fn
+        self.ppo_config = ppo_config
+
+        self.stop_sequences = stop_sequences
+        self.generate_kwargs = generate_kwargs
+
+        # Setup stats tracker
+        self.running_moments = RunningMoments()
+        self.ref_mean = self.ppo_config.ref_mean
+        self.ref_std = self.ppo_config.ref_std
+
+
+
         self.fabric.launch()
+
+        self.store = PPORolloutStore(self.tokenizer.pad_token_id, self.tokenizer.padding_side)
+
+        self.loss_fn = PPOLoss(self.ppo_config.model_arch_type)
+
+        self.mb_count = 0
+
+
+        # self.fabric.barrier()
+        
+        # Setup the KL controller
+        # This helps prevent large divergences in the controller (policy)
+        if self.ppo_config.target is not None:
+            self.kl_ctl = AdaptiveKLController(self.ppo_config.init_kl_coef, self.ppo_config.target, self.ppo_config.horizon)
+        else:
+            self.kl_ctl = FixedKLController(self.ppo_config.init_kl_coef)
+
 
         # setup dataloaders
         train_loader = self.fabric.setup_dataloaders(train_loader, use_distributed_sampler=self.use_distributed_sampler)
@@ -175,13 +230,15 @@ class PPOTrainer:
                 if self.max_epochs is not None and self.current_epoch >= self.max_epochs:
                     self.should_stop = True
 
+        self.make_experience(model,ref_model,train_loader)
+
         while not self.should_stop:
             self.train_loop(
-                model,ref_model, optimizer, train_loader, limit_batches=self.limit_train_batches, scheduler_cfg=scheduler_cfg
+                model, ref_model, optimizer, limit_batches=self.limit_train_batches, scheduler_cfg=scheduler_cfg
             )
 
-            if self.should_validate:
-                self.val_loop(model,ref_model, val_loader, limit_batches=self.limit_val_batches)
+            # if self.should_validate:
+            #     self.val_loop(model,ref_model, val_loader, limit_batches=self.limit_val_batches)
 
             self.step_scheduler(model, scheduler_cfg, level="epoch", current_value=self.current_epoch)
 
@@ -198,10 +255,10 @@ class PPOTrainer:
 
     def train_loop(
         self,
-        model: L.LightningModule,
-        ref_model: Optional[L.LightningModule],
+        model: _FabricModule,
+        ref_model: Optional[_FabricModule],
         optimizer: torch.optim.Optimizer,
-        train_loader: torch.utils.data.DataLoader,
+        # train_loader: DataLoader,
         limit_batches: Union[int, float] = float("inf"),
         scheduler_cfg: Optional[Mapping[str, Union[L.fabric.utilities.types.LRScheduler, bool, str, int]]] = None,
     ):
@@ -216,10 +273,20 @@ class PPOTrainer:
             scheduler_cfg: The learning rate scheduler configuration.
                 Have a look at :meth:`lightning.pytorch.LightninModule.configure_optimizers` for supported values.
         """
+
+        num_mb = self.ppo_config.batch_size // self.ppo_config.mb_size
+
+        train_loader = self.fabric.setup_dataloaders(self.store.create_loader(self.ppo_config.batch_size,shuffle=True),
+                                                     use_distributed_sampler=False)
+
+        #
+
+
         self.fabric.call("on_train_epoch_start")
         iterable = self.progbar_wrapper(
             train_loader, total=min(len(train_loader), limit_batches), desc=f"Epoch {self.current_epoch}"
         )
+
 
         for batch_idx, batch in enumerate(iterable):
             # end epoch if stopping training completely or max batches for this epoch reached
@@ -227,50 +294,71 @@ class PPOTrainer:
                 self.fabric.call("on_train_epoch_end")
                 return
 
-
-
             self.fabric.call("on_train_batch_start", batch, batch_idx)
 
-            # check if optimizer should step in gradient accumulation
-            should_optim_step = self.global_step % self.grad_accum_steps == 0
-            if should_optim_step:
-                # currently only supports a single optimizer
-                self.fabric.call("on_before_optimizer_step", optimizer, 0)
+            mbs = MiniBatchIterator(batch, self.ppo_config.mb_size, num_mb)
+            # For each update per batch
+            for _ in range(self.ppo_config.ppo_epochs):
+                # Note that whereas standard policy gradient methods perform one
+                # gradient update per batch, PPO for example commonly performs
+                # multiple gradient updates on the same batch of data.
+                # https://arxiv.org/pdf/1707.06347.pdf
+                forward_time = 0
+                backward_time = 0
+                stats_accum = []
+                loss_accum = []
+                for mb in mbs:
+                    self.mb_count += 1
 
-                # optimizer step runs train step internally through closure
-                optimizer.step(partial(self.training_step, model=model, batch=batch, batch_idx=batch_idx))
-                self.fabric.call("on_before_zero_grad", optimizer)
+                    should_sync = self.mb_count % self.grad_accum_steps == 0
 
+                    with self.fabric.no_backward_sync(model,enabled=not should_sync):
+                        forward_time -= time()
+                        outputs = self.training_step(model=model, batch = mb, batch_idx = batch_idx)
+                        loss,stats = outputs['loss'],outputs['stats']
+                        loss_accum.append(loss)
+                        # forward_time += time()
+                        # backward_time -= time()
+                        # backward_time += time()
+                        stats_accum.append(stats)
+
+                self.fabric.logger.log_metrics(np.average(loss_accum),step=self.global_step)
+                forward_time /= num_mb
+                backward_time /= num_mb
+                # TODO(Dahoas): Best way to combine stats between mbs?
+                # How does accelerate do it?
+                stats = {key: sum([stats[key] for stats in stats_accum]) / self.num_mb for key in stats_accum[0]}
+
+                optimizer.step()
                 optimizer.zero_grad()
-
-            else:
-                # gradient accumulation -> no optimizer step
-                self.training_step(model=model, batch=batch, batch_idx=batch_idx)
-
-            self.fabric.call("on_train_batch_end", self._current_train_return, batch, batch_idx)
-
-            # this guard ensures, we only step the scheduler once per global step
-            if should_optim_step:
+                self.fabric.call("on_before_optimizer_step", optimizer, 0)
+                # optimizer step runs train step internally through closure
+                optimizer.step()
+                self.fabric.call("on_before_zero_grad", optimizer)
+                optimizer.zero_grad()
                 self.step_scheduler(model, scheduler_cfg, level="step", current_value=self.global_step)
+
+                self.fabric.call("on_train_batch_end", self._current_train_return, batch, batch_idx)
+
+                # only increase global step if optimizer stepped
+                self.global_step += 1
+
+                # stopping criterion on step level
+                if self.max_steps is not None and self.global_step >= self.max_steps:
+                    self.should_stop = True
+                    break
 
             # add output values to progress bar
             self._format_iterable(iterable, self._current_train_return, "train")
 
-            # only increase global step if optimizer stepped
-            self.global_step += int(should_optim_step)
-
-            # stopping criterion on step level
-            if self.max_steps is not None and self.global_step >= self.max_steps:
-                self.should_stop = True
-                break
 
         self.fabric.call("on_train_epoch_end")
 
     def val_loop(
         self,
-        model: L.LightningModule,
-        ref_model: Optional[L.LightningModule],
-        val_loader: Optional[torch.utils.data.DataLoader],
+        model: _FabricModule,
+        ref_model: Optional[_FabricModule],
+        val_loader: Optional[DataLoader],
         limit_batches: Union[int, float] = float("inf"),
     ):
         """The validation loop ruunning a single validation epoch.
@@ -332,6 +420,9 @@ class PPOTrainer:
             batch: the batch to run the forward on
             batch_idx: index of the current batch w.r.t the current epoch
         """
+
+
+
         outputs: Union[torch.Tensor, Mapping[str, Any]] = model.training_step(batch, batch_idx=batch_idx)
 
         loss = outputs if isinstance(outputs, torch.Tensor) else outputs["loss"]
@@ -343,7 +434,7 @@ class PPOTrainer:
         # avoid gradients in stored/accumulated values -> prevents potential OOM
         self._current_train_return = apply_to_collection(outputs, dtype=torch.Tensor, function=lambda x: x.detach())
 
-        return loss
+        return self._current_train_return
 
     def step_scheduler(
         self,
@@ -536,3 +627,310 @@ class PPOTrainer:
 
             if postfix_str:
                 prog_bar.set_postfix_str(postfix_str)
+
+    @torch.no_grad()
+    def generate(self, model, input_ids, attention_mask=None, **kwargs):
+        """Wraps hf's `generate` adding some specific method's defaults"""
+        input_ids = input_ids.to(model.device)
+        if attention_mask is not None:
+            attention_mask = attention_mask.to(model.device)
+        kwargs = dict(self.generate_kwargs, **kwargs)
+        return model.generate(
+            input_ids=input_ids, attention_mask=attention_mask, **kwargs
+        )
+
+
+
+    #
+    def decode(
+            self,
+            prompts: List[torch.LongTensor],
+            samples: List[torch.LongTensor],
+            prompt_sizes: torch.LongTensor = None,
+            append_eos_token: bool = False,
+    ) -> Tuple[List[str], List[str], List[str]]:
+        """
+        Decode tensor generations into lists of strings (`samples`: List[str], `prompts`: List[str], `outputs`: List[str])
+        """
+        if prompt_sizes is None:
+            # Assuming prompts were left-padded
+            prompt_sizes = [prompts.shape[1]] * len(prompts)
+
+        str_samples, str_prompts, str_outputs = [], [], []
+        for prompt, sample, prompt_size in zip(prompts, samples, prompt_sizes):
+            if self.ppo_config.model_arch_type == "seq2seq":
+                output_start_ix = 0
+            else:
+                output_start_ix = prompt_size
+
+            str_prompt = self.tokenizer.decode(prompt[:prompt_size], skip_special_tokens=True)
+            str_output = self.tokenizer.decode(sample[output_start_ix:], skip_special_tokens=True)
+            # Trim outputs up to `self.stop_sequences` if any are present
+            trimmed = False
+            if self.stop_sequences:
+                for stop in self.stop_sequences:
+                    stop_ix = str_output.find(stop)
+                    if stop_ix >= 0:
+                        str_output = str_output[:stop_ix].rstrip()
+                        trimmed = True
+
+            # Recover the last <eos> if it was present in the original sample
+            # or add one if it was trimmed with `self.stop_sequences`.
+            # Only in cases when a generation ended due to `max_new_tokens` exhaustion,
+            # <eos> token would not be present in the original sample
+            if append_eos_token and (trimmed or sample[-1] == self.tokenizer.eos_token_id):
+                str_output += self.tokenizer.eos_token
+
+            str_prompts.append(str_prompt)
+            str_outputs.append(str_output)
+
+            if self.ppo_config.model_arch_type == "seq2seq":
+                sample = str_prompt + self.tokenizer.sep_token + str_output
+            else:
+                sample = str_prompt + str_output
+
+            str_samples.append(sample)
+
+        return str_samples, str_prompts, str_outputs
+
+    def make_experience(self, model, ref_model, prompt_iterator,**kwargs):  # noqa:
+        """Make experiences
+
+        Takes `chunk_size` number of prompts from `prompt_iterator`, samples
+        from the model and then computes the KL against a reference model. Finally it
+        then appends PPOElements to trainer's `store`.
+
+        Args:
+            num_rollouts: Number of rollouts to generate
+            iter_count: Total number of updates run (i.e. number of updates run for all batches & epochs)
+        """
+        num_rollouts = self.ppo_config.num_rollouts
+        world_size = self.fabric.world_size
+        is_main_process = self.fabric.is_global_zero
+        logger.info("Collecting rollouts")
+        tbar = logging.tqdm(
+            total=num_rollouts,
+            disable=is_main_process !=0 ,
+            desc=f"[rollout 0 / {num_rollouts}]",
+            # Lower progress bar by 1 if we're in WARNING mode or above to avoid hiding high priority progress
+            # bars (e.g. loss progress in trainers)
+            position=logging.get_verbosity() >= logging.WARNING,
+            # Leave progress bar if we're in INFO mode or lower to avoid spamming in suppressed verbosity levels
+            leave=logging.get_verbosity() < logging.WARNING,
+        )
+
+        clock = Clock()
+        ppo_rl_elements = []
+        accumulated_stats = []
+
+        while len(ppo_rl_elements) < num_rollouts:
+            stats = {}
+            # Get next batch in prompt dataset
+            batch: dict = next(prompt_iterator)
+
+            rollout_generate_time = time()
+
+            # Generate samples from the language model (similar to using HuggingFace `generate` method)
+            samples = self.generate(model , batch["input_ids"], batch["attention_mask"], **kwargs)
+            stats["time/rollout_generate"] = time() - rollout_generate_time
+
+            prompt_tensors = batch['input_ids']
+            device = samples.device
+
+            prompt_sizes = torch.tensor([prompt_tensors.shape[1]] * len(prompt_tensors), device=device)
+            padded_samples = pad_across_processes(
+                samples, dim=1, pad_index=self.tokenizer.eos_token_id, pad_first=False
+            )
+            padded_prompts = pad_across_processes(
+                prompt_tensors, dim=1, pad_index=self.tokenizer.eos_token_id, pad_first=False
+            )
+            gathered_samples = _gpu_gather(padded_samples)
+            gathered_prompts = _gpu_gather(padded_prompts)
+            gathered_prompt_sizes = _gpu_gather(prompt_sizes)
+            metadata = gather_dict({k: v for k, v in batch.items() if k != "input_ids" and k != "attention_mask"})
+
+            if is_main_process:
+                all_str_samples, all_str_prompts, all_str_outputs = self.decode(
+                    gathered_prompts, gathered_samples, gathered_prompt_sizes, append_eos_token=True
+                )
+
+                rollout_score_time = time()
+                all_scores = torch.tensor(
+                    self.reward_fn(
+                        samples=all_str_samples, prompts=all_str_prompts, outputs=all_str_outputs, **metadata
+                    ),
+                    dtype=torch.float,
+                    device=device,
+                )
+                stats["time/rollout_score"] = time() - rollout_score_time
+
+                all_scores = list(all_scores.reshape(world_size, -1).unbind())
+            else:
+                all_scores = None
+
+            if dist.is_initialized():
+                scores = torch.empty(len(samples), device=device)
+                dist.scatter(scores, all_scores)
+            else:
+                scores = all_scores[0].clone().detach()
+
+            str_samples, str_prompts, str_outputs = self.decode(prompt_tensors, samples, append_eos_token=True)
+
+            # Pad the sample outputs
+            outputs = self.tokenizer(str_outputs).input_ids
+            if self.ppo_config.model_arch_type == "seq2seq":
+                # add <pad> to the start of the output
+                for i in range(len(outputs)):
+                    outputs[i] = [self.tokenizer.pad_token_id] + outputs[i]
+
+            outputs = list(map(torch.LongTensor, outputs))
+            maxsize = max(map(len, outputs))
+            outputs = [
+                F.pad(
+                    output,
+                    (0, maxsize - len(output)),
+                    value=self.tokenizer.pad_token_id,
+                )
+                for output in outputs
+            ]
+            sample_outputs = torch.vstack(outputs).to(device)
+
+            if self.ppo_config.cliprange_reward:
+                scores = torch.clip(scores, -self.ppo_config.cliprange_reward, self.ppo_config.cliprange_reward)
+
+            # store statistics of the initial rollout as reference
+            if self.ref_mean is None:
+                self.ref_mean, self.ref_std = scores.mean(), scores.std()
+            all_scores_mean, all_scores_std = self.running_moments.update(scores)
+            stats["rollout_scores/mean"] = all_scores_mean.item()
+            stats["rollout_scores/std"] = all_scores_std.item()
+            stats["rollout_scores/running_mean"] = self.running_moments.mean.item()
+            stats["rollout_scores/running_std"] = self.running_moments.std.item()
+
+            if self.ppo_config.scale_reward == "running":
+                scores /= self.running_moments.std
+            elif self.ppo_config.scale_reward == "ref":
+                scores /= self.ref_std
+
+            # Precompute logprobs, values
+            if self.ppo_config.model_arch_type == "seq2seq":
+                attention_mask = batch['attention_mask'].to(device)
+                prompt_tensors = batch['input_ids'].to(device)
+                decoder_attention_mask = sample_outputs.not_equal(self.tokenizer.pad_token_id)
+                decoder_attention_mask[:, 0] = 1
+                with torch.no_grad():
+                    outputs = model(
+                        input_ids=prompt_tensors,
+                        attention_mask=attention_mask,
+                        decoder_input_ids=sample_outputs,
+                        decoder_attention_mask=decoder_attention_mask,
+                    )
+                    logits = outputs.logits
+                    values = outputs.value
+                    if hasattr(model, "frozen_head"):
+                        ref_logits = model.forward_hydra(
+                            input_ids=prompt_tensors,
+                            attention_mask=attention_mask,
+                            decoder_input_ids=sample_outputs,
+                            decoder_attention_mask=decoder_attention_mask,
+                            return_dict=True,
+                        ).logits
+                    else:
+                        ref_logits = ref_model(
+                            input_ids=prompt_tensors,
+                            attention_mask=attention_mask,
+                            decoder_input_ids=sample_outputs,
+                            decoder_attention_mask=decoder_attention_mask,
+                            return_dict=True,
+                        ).logits
+            else:
+                all_tokens = torch.cat((prompt_tensors.to(device), sample_outputs), dim=1)
+                attention_mask = all_tokens.not_equal(self.tokenizer.pad_token_id).long().to(device)
+                with torch.no_grad():
+                    logits, *_, values = model(
+                        all_tokens,
+                        attention_mask=attention_mask,
+                    )
+
+                    ref_logits = ref_model(
+                        all_tokens,
+                        attention_mask=attention_mask,
+                        return_dict=True,
+                    ).logits
+                    ref_logits = ref_logits.to(device)
+
+            if self.ppo_config.model_arch_type == "seq2seq":
+                logprobs = logprobs_of_labels(logits[:, :-1, :], sample_outputs[:, 1:])
+                ref_logprobs = logprobs_of_labels(ref_logits[:, :-1, :], sample_outputs[:, 1:])
+            else:
+                logprobs = logprobs_of_labels(logits[:, :-1, :], all_tokens[:, 1:])
+                ref_logprobs = logprobs_of_labels(ref_logits[:, :-1, :], all_tokens[:, 1:])
+
+            n_samples: int = samples.shape[0]
+
+            # Estimate the KL divergence between the model and reference model
+            if self.ppo_config.model_arch_type == "seq2seq":
+                attention_mask = sample_outputs != self.tokenizer.pad_token_id
+                start = 0
+            else:
+                start = prompt_tensors.shape[1] - 1
+
+            log_ratio = (logprobs - ref_logprobs) * attention_mask[:, :-1]
+            kl = log_ratio.exp() - 1 - log_ratio
+            mean_kl_per_token = kl.mean()
+            mean_kl = kl.sum(1).mean()
+
+            logprobs = logprobs.cpu()
+            ref_logprobs = ref_logprobs.cpu()
+            prompt_tensors = prompt_tensors.cpu()
+            sample_outputs = sample_outputs.cpu()
+            values = values.cpu()[:, :-1]
+
+            # Get the logprobs and values, for tokens that are not padding,
+            # from the start of the prompt up to the <eos> token, while also including the latter
+            # (these are taken from the student model and not the reference model)
+            ends = start + attention_mask[:, start:].sum(1) + 1
+            all_values = [values[ix, start: ends[ix]] for ix in range(n_samples)]
+            all_logprobs = [logprobs[ix, start: ends[ix]] for ix in range(n_samples)]
+
+            kl_penalty = self.kl_ctl.value * -log_ratio.cpu()
+            kl_penalty = [xs[start: ends[ix]] for ix, xs in enumerate(kl_penalty)]
+
+            rollout_count = 0
+
+            for sample_idx in range(n_samples):
+                rewards = kl_penalty[sample_idx]
+                rewards[-1] += scores[sample_idx].cpu()
+
+                ppo_rl_elements.append(
+                    PPORLElement(
+                        query_tensor=prompt_tensors[sample_idx],
+                        response_tensor=sample_outputs[sample_idx],
+                        logprobs=all_logprobs[sample_idx],
+                        values=all_values[sample_idx],
+                        rewards=rewards,
+                    )
+                )
+
+                rollout_count += 1
+
+            if dist.is_initialized():
+                dist.all_reduce(mean_kl, dist.ReduceOp.AVG)
+
+            stats["time/rollout_time"] = clock.tick()
+            stats["policy/sqrt_kl"] = torch.sqrt(mean_kl).item()
+            stats["policy/kl_per_token"] = torch.sqrt(mean_kl_per_token).item()
+            accumulated_stats.append(stats)
+
+            tbar.set_description(f"[rollout {len(ppo_rl_elements)} / {num_rollouts}]")
+            tbar.update(min(rollout_count, num_rollouts))
+        tbar.close()
+
+        stats = {k: sum([xs[k] for xs in accumulated_stats]) / len(accumulated_stats) for k in stats}
+        stats["kl_ctl_value"] = self.kl_ctl.value
+        self.mean_kl = stats["policy/sqrt_kl"] ** 2
+
+        self.fabric.logger.log_metrics(stats,self.global_step)
+
+        # Push samples and rewards to trainer's rollout storage
+        self.store.push(ppo_rl_elements)

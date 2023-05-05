@@ -15,64 +15,64 @@
  - 基于 lightning.fabric 封装RL ppo 进行中...
 
 ## update
-- <strong>2023年05月02</strong>
+- <strong>2023-05-02</strong>
   - 0.1.4 增加 prompt_tuning,p_tuning,prefix_tuning,adaption_prompt
 
-- <strong>2023年04月28</strong>
+- <strong>2023-04-28</strong>
   - 0.1.3@post0 新版本基于lightning
   - pytorch-lightning 更名 lightning
   - 分离numpy-io模块
 
-- <strong>2023年04月21</strong>
+- <strong>2023-04-21</strong>
   - 0.1.3rc0 增加 moss chat模型 完整训练参考 [moss_finetuning](https://github.com/ssbuild/moss_finetuning)
   - moss 量化int4 int8推理
 
-- <strong>2023年04月11</strong>
+- <strong>2023-04-11</strong>
   - 0.1.2 重构lora v2, 增加adalora
   - 0.1.2@post0 fix lova v1,lova v2 load_in_8bit
-- <strong>2023年04月07</strong>
+- <strong>2023-04-07</strong>
   - deep_training 0.1.1 同步更新chatglm 词表配置信息 
-- <strong>2023年04月02</strong>
+- <strong>2023-04-02</strong>
   - release 0.1.0 and lightning >= 2
-- <strong>2023年03月15</strong>
+- <strong>2023-03-15</strong>
   - 增加ChatGLM模型(稳定版>=0.0.18@post7) 完整训练参考 [chatglm_finetuning](https://github.com/ssbuild/chatglm_finetuning)
   - 0.0.18@post8 解决deepspeed进程数据平衡 
   - 0.0.18@post9 增加流式输出接口stream_chat接口
   - 0.0.20 ChatGLM lora 加载权重继续训练 ， 修改数据数据编码 ，权重自适应
   - 0.0.21@post0 fix ChatGLM deepspeed stage 3 权重加载
-- <strong>2023年03月09</strong>
+- <strong>2023-03-09</strong>
   - 增加LLaMA 模型(并行版) 完整训练参考 [llama_finetuning](https://github.com/ssbuild/llama_finetuning)
-- <strong>2023年03月08</strong>
+- <strong>2023-03-08</strong>
   - 增加LLaMA 模型(非模型并行版) 完整训练参考 [poetry_training](https://github.com/ssbuild/poetry_training)
-- <strong>2023年03月02</strong>
+- <strong>2023-03-02</strong>
   - 增加loRA 训练 , lion,lamb优化器 , 完整训练参考 [chatyuan_finetuning](https://github.com/ssbuild/chatyuan_finetuning)
-- <strong>2023年02月15</strong>
+- <strong>2023-02-15</strong>
   - 增加诗歌PaLM预训练模型 
-- <strong>2023年02月13</strong>
+- <strong>2023-02-13</strong>
   - 增加中文语法纠错模型gector, seq2seq语法纠错模型 
-- <strong>2023年02月09</strong>
+- <strong>2023-02-09</strong>
   - 增加诗歌t5decoder预训练, 诗歌laMDA预训练模型 , t5encoder 预训练模型
-- <strong>2023年02月07</strong>
+- <strong>2023-02-07</strong>
   - 增加层次分解位置编码选项，让transformer可以处理超长文本
-- <strong>2023年01月24</strong>
+- <strong>2023-01-24</strong>
   - 增加诗歌gpt2预训练,诗歌t5预训练，诗歌unilm预训练
-- <strong>2023年01月20</strong>
+- <strong>2023-01-20</strong>
   - 增加对抗训练 FGM, FGSM_Local,FreeAT, PGD, FGSM,FreeAT_Local, 其中FreeAT推荐使用FreeAT_Local,FGSM 推荐使用 FGSM_Local
-- <strong>2023年01月19</strong>
+- <strong>2023-01-19</strong>
   - 增加promptbertcse监督和非监督模型
-- <strong>2023年01月16</strong>
+- <strong>2023-01-16</strong>
   - 增加diffcse 监督和非监督模型
-- <strong>2023年01月13</strong>
+- <strong>2023-01-13</strong>
   - 增加ESimcse 模型
-- <strong>2023年01月11</strong>
+- <strong>2023-01-11</strong>
   - 增加TSDAE句向量模型
-- <strong>2023年01月09</strong>
+- <strong>2023-01-09</strong>
   - 增加infonce监督和非监督,simcse监督和非监督,SPN4RE关系模型抽取
-- <strong>2023年01月06</strong>
+- <strong>2023-01-06</strong>
   - 增加onerel关系模型抽取，prgc关系模型抽取，pure实体模型提取
-- <strong>2022年12月24</strong>
+- <strong>2022-12-24</strong>
   - 增加unilm模型蒸馏和事件抽取模型
-- <strong>2022年12月16</strong>
+- <strong>2022-12-16</strong>
   - crf_cascad crf级联抽取实体
   - span ner 可重叠多标签，非重叠多标签两种实现方式抽取实体
   - mhs_ner 多头选择实体抽取模型
@@ -82,23 +82,23 @@
   - tplinkerplus 关系抽取模型
   - mhslinker 多头选择关系抽取模型
 
-- <strong>2022年11月17</strong>: 
+- <strong>2022-11-17</strong>: 
   - simcse-unilm 系列
   - simcse-bert-wwm 系列 
   - tnews circle loss
   - afqmc siamese net similar
-- <strong>2022年11月15</strong>: 
+- <strong>2022-11-15</strong>: 
   - unilm autotitle seq2seq autotitle
   - 普通分类,指针提取命名实体,crf提取命名实体
   - prefixtuning 分类 , prefixtuning 分类 , prefixtuning 指针提取命名实体 , prefixtuning crf 提取命名实体
-- <strong>2022年11月12</strong>: 
+- <strong>2022-11-12</strong>: 
   - gplinker (全局指针提取)
   - casrel (A Novel Cascade Binary Tagging Framework for Relational Triple Extraction 参考 https://github.com/weizhepei/CasRel)
   - spliner (指针提取关系 sigmoid pointer or simple pointer)
-- <strong>2022年11月11</strong>: 
+- <strong>2022-11-11</strong>: 
   - cluener_pointer 中文命名实体提取 和 cluener crf 中文命名实体提取
   - tnews 中文分类
-- <strong>2022年11月06</strong>: 
+- <strong>2022-11-06</strong>: 
   - mlm,gpt2,t5等模型预训练任务
 
 

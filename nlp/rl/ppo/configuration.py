@@ -84,4 +84,5 @@ class PPOConfig(MethodConfig):
     cliprange_reward: float
     gen_kwargs: dict
     gen_experience_kwargs: Optional[dict] = None
+    model_arch_type: Optional[str] = "causal" # one of causal , seq2seq
 
