@@ -26,10 +26,11 @@ from lightning.fabric.wrappers import _unwrap_objects, _FabricModule
 
 from .ppo_dataset import PPORolloutStore, MiniBatchIterator
 from .utils import logprobs_of_labels, Clock, gather_dict, RunningMoments, pad_across_processes, _gpu_gather, \
-    PPORLElement
+    PPORLElement,logger
 from ...layers.ppo import AdaptiveKLController, FixedKLController
+from .configuration import PPOConfig
 
-logger = logging.get_logger(__name__)
+
 
 
 class PPOTrainer:
@@ -155,14 +156,12 @@ class PPOTrainer:
         model: L.LightningModule,
         ref_model: Optional[L.LightningModule],
         train_loader: DataLoader,
-        val_loader: DataLoader,
         tokenizer,
         reward_fn: Callable,
         ppo_config,
+        val_loader: Optional[DataLoader] = None,
         stop_sequences=None,
-        generate_kwargs=None or {},
         ckpt_path: Optional[str] = None,
-
     ):
         """The main entrypoint of the trainer, triggering the actual training.
 
@@ -180,10 +179,9 @@ class PPOTrainer:
         self.config = model.config
         self.tokenizer = tokenizer
         self.reward_fn = reward_fn
-        self.ppo_config = ppo_config
+        self.ppo_config: PPOConfig  = ppo_config
 
         self.stop_sequences = stop_sequences
-        self.generate_kwargs = generate_kwargs
 
         # Setup stats tracker
         self.running_moments = RunningMoments()
@@ -642,7 +640,7 @@ class PPOTrainer:
         input_ids = input_ids.to(model.device)
         if attention_mask is not None:
             attention_mask = attention_mask.to(model.device)
-        kwargs = dict(self.generate_kwargs, **kwargs)
+        kwargs = dict(self.ppo_config.gen_kwargs, **kwargs)
         return model.generate(
             input_ids=input_ids, attention_mask=attention_mask, **kwargs
         )

@@ -6,11 +6,7 @@ from typing import Tuple, Optional
 import torch
 from torch import nn
 from .configuration import PPOConfig
-from .utils import logprobs_of_labels, get_tensor_stats, flatten_dict, whiten, PPORLBatch
-
-logger = logging.get_logger(__name__)
-
-
+from .utils import logprobs_of_labels, get_tensor_stats, flatten_dict, whiten, PPORLBatch,logger
 
 
 class PPOLLMAbstract:

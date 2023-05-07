@@ -16,9 +16,9 @@ from typing import Any, Callable, Dict, Iterable
 from torch.utils.data import DataLoader, Dataset
 from .utils import logprobs_of_labels, Clock, gather_dict, RunningMoments, pad_across_processes, _gpu_gather, \
     PPORLElement, RLElement, PPORLBatch
-from ....nlp.layers.ppo import AdaptiveKLController, FixedKLController
 
-logger = logging.get_logger(__name__)
+
+
 
 
 
