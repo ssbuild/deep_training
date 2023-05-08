@@ -2,7 +2,7 @@
 # @Time    : 2023/5/3 14:19
 # @Author  : tk
 # @FileName: ppo_trainner
-import logging
+from .utils import logging, infinite_dataloader
 import os
 
 import numpy as np
@@ -236,6 +236,7 @@ class PPOTrainer:
                 if self.max_epochs is not None and self.current_epoch >= self.max_epochs:
                     self.should_stop = True
 
+        train_loader = infinite_dataloader(train_loader)
         self.make_experience(model,ref_model,train_loader)
 
         while not self.should_stop:

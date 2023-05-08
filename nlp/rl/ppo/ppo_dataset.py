@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/4/24 9:34
 import json
-import logging
+from .utils import logging
 import os
 from abc import abstractmethod
 from dataclasses import is_dataclass

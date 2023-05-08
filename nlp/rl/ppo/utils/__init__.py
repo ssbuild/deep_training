@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/4/23 14:15
-import logging
+from itertools import repeat
+
+from .logging import get_logger
 import time
 from dataclasses import dataclass
 from typing import Dict, MutableMapping, Union, Tuple, Mapping, Iterable
@@ -11,7 +13,7 @@ import torch
 import torch.distributed as dist
 from torch import nn
 from torch.nn import functional as F
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 @dataclass
 class RLElement:
@@ -390,3 +392,12 @@ def pad_across_processes(tensor, dim=0, pad_index=0, pad_first=False):
     return recursively_apply(
         _pad_across_processes, tensor, error_on_other_type=True, dim=dim, pad_index=pad_index, pad_first=pad_first
     )
+
+
+
+def infinite_dataloader(dataloader: Iterable) -> Iterable:
+    """
+    Returns a cyclic infinite dataloader from a finite dataloader
+    """
+    for _ in repeat(dataloader):
+        yield from dataloader
