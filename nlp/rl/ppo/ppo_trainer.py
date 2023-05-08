@@ -140,7 +140,10 @@ class PPOTrainer:
 
         self.mb_count = 0
 
-        self.fabric.launch()
+
+
+
+
 
 
     @property
@@ -174,8 +177,9 @@ class PPOTrainer:
             ckpt_path: Path to previous checkpoints to resume training from.
                 If specified, will always look for the latest checkpoint within the given directory.
         """
-       
-    
+
+        self.fabric.launch()
+
         self.config = model.config
         self.tokenizer = tokenizer
         self.reward_fn = reward_fn
@@ -221,7 +225,7 @@ class PPOTrainer:
             optimizer, scheduler_cfg = self._parse_optimizers_schedulers(model.configure_optimizers())
             assert optimizer is not None
             model, optimizer = self.fabric.setup(model, optimizer)
-            ref_model = self.fabric.setup(ref_model)
+            # ref_model = self.fabric.setup(ref_model)
 
         # assemble state (current epoch and global step will be added in save)
         state = {"model": model, "optim": optimizer, "scheduler": scheduler_cfg}
@@ -744,16 +748,20 @@ class PPOTrainer:
             prompt_tensors = batch['input_ids']
             device = samples.device
 
+            print(samples)
+
             prompt_sizes = torch.tensor([prompt_tensors.shape[1]] * len(prompt_tensors), device=device)
+
+
             padded_samples = pad_across_processes(
-                samples, dim=1, pad_index=self.tokenizer.eos_token_id, pad_first=False
+                samples,world_size, dim=1, pad_index=self.tokenizer.eos_token_id, pad_first=False
             )
             padded_prompts = pad_across_processes(
-                prompt_tensors, dim=1, pad_index=self.tokenizer.eos_token_id, pad_first=False
+                prompt_tensors, world_size,dim=1, pad_index=self.tokenizer.eos_token_id, pad_first=False
             )
-            gathered_samples = _gpu_gather(padded_samples)
-            gathered_prompts = _gpu_gather(padded_prompts)
-            gathered_prompt_sizes = _gpu_gather(prompt_sizes)
+            gathered_samples = _gpu_gather(padded_samples,world_size)
+            gathered_prompts = _gpu_gather(padded_prompts,world_size)
+            gathered_prompt_sizes = _gpu_gather(prompt_sizes,world_size)
             metadata = gather_dict({k: v for k, v in batch.items() if k != "input_ids" and k != "attention_mask"})
 
             if is_main_process:

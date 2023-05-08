@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/4/23 14:15
 from itertools import repeat
-
 from .logging import get_logger
 import time
 from dataclasses import dataclass
@@ -164,8 +163,8 @@ def gather_dict(obj: Dict,
     if not torch.distributed.is_initialized():
         return obj
 
-    objs = [None] * torch.distributed.get_world_size()
-    torch.distributed.all_gather_object(objs, obj)
+    objs = [None] * dist.get_world_size()
+    dist.all_gather_object(objs, obj)
 
     acc, *objs = objs
     for obj in objs:
@@ -335,12 +334,12 @@ def recursively_apply(func, data, *args, test_type=is_torch_tensor, error_on_oth
     return data
 
 
-def _gpu_gather(tensor):
+def _gpu_gather(tensor,world_size):
     def _gpu_gather_one(tensor):
         if tensor.ndim == 0:
             tensor = tensor.clone()[None]
-        output_tensors = [tensor.clone() for _ in range(torch.distributed.get_world_size())]
-        torch.distributed.all_gather(output_tensors, tensor)
+        output_tensors = [tensor.clone() for _ in range(world_size)]
+        dist.all_gather(output_tensors, tensor)
         return torch.cat(output_tensors, dim=0)
 
     return recursively_apply(_gpu_gather_one, tensor, error_on_other_type=True)
@@ -348,7 +347,7 @@ def _gpu_gather(tensor):
 
 _cpu_gather = _gpu_gather
 
-def pad_across_processes(tensor, dim=0, pad_index=0, pad_first=False):
+def pad_across_processes(tensor,world_size, dim=0, pad_index=0, pad_first=False):
     """
     Recursively pad the tensors in a nested list/tuple/dictionary of tensors from all devices to the same size so they
     can safely be gathered.
@@ -370,7 +369,7 @@ def pad_across_processes(tensor, dim=0, pad_index=0, pad_first=False):
 
         # Gather all sizes
         size = torch.tensor(tensor.shape, device=tensor.device)[None]
-        sizes = _cpu_gather(size).cpu()
+        sizes = _gpu_gather(size,world_size).cpu()
         # Then pad to the maximum size
         max_size = max(s[dim] for s in sizes)
         if max_size == tensor.shape[dim]:

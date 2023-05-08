@@ -61,6 +61,7 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         self.base_model = LORA_TYPE_TO_MODEL_MAPPING[lora_config_v2.lora_type](
             self.base_model, self.lora_config_v2, adapter_name
         )
+        self.set_additional_trainable_modules(lora_config_v2, adapter_name)
 
     def save_pretrained(self, save_directory, **kwargs):
         r"""
@@ -188,8 +189,11 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
                 f"Found {self.lora_type} and {lora_config.lora_type}."
             )
         self.lora_config_v2[adapter_name] = lora_config
-
         self.base_model.add_adapter(adapter_name, lora_config)
+        self.set_additional_trainable_modules(lora_config, adapter_name)
+
+
+    def set_additional_trainable_modules(self, lora_config, adapter_name):
         if getattr(lora_config, "modules_to_save", None) is not None:
             if self.modules_to_save is None:
                 self.modules_to_save = set(lora_config.modules_to_save)
