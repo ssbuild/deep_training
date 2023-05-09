@@ -134,7 +134,7 @@ class PPOConfig(PPOConfigMixin):
     gen_kwargs: dict = field(default_factory=_default_gen_kwargs, metadata={"help": "Additioanl kwargs for the generation"})
     gen_experience_kwargs: Optional[dict] = field(default=None, metadata={"help": "Additioanl kwargs for the gen_experience_kwargs"})
     model_arch_type: Optional[str] = "causal"  # one of causal , seq2seq
-
+    minibatch_size: Optional[int] =  field(default=None, metadata={"help": "minibatch_size"})
 
 
 

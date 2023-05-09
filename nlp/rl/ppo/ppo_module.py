@@ -7,45 +7,41 @@ import torch
 from torch import nn
 from .configuration import PPOConfig
 from .utils import logprobs_of_labels, get_tensor_stats, flatten_dict, whiten, PPORLBatch,logger
-
+from transformers import PretrainedConfig
 
 class PPOLLMAbstract:
 
-    def forward_llm_value_and_logits(self,  input_ids,
-                attention_mask,
-                **kwargs):
-        outputs = self.model(input_ids=input_ids, attention_mask=attention_mask, return_dict=True,**kwargs)
+    def forward_llm_value_and_logits(self,input_ids,**kwargs):
+        outputs = self.forward_logits_values(input_ids=input_ids,
+                                             **kwargs)
         logits = outputs.logits
         values_pred = outputs.value
         return (logits,values_pred)
 
 class PPOSEQ2SEQAbstract:
 
-    def forward_seq2seq_value_and_logits(self,  input_ids,
-                attention_mask,
-                decoder_input_ids,
-                decoder_attention_mask,
-                **kwargs):
-        outputs = self.model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            decoder_input_ids=decoder_input_ids,
-            decoder_attention_mask=decoder_attention_mask,
-            **kwargs
-        )
+    def forward_seq2seq_value_and_logits(self,
+                                         input_ids,attention_mask,
+                                         decoder_input_ids,decoder_attention_mask,
+                                         **kwargs):
+        outputs = self.forward_logits_values(input_ids=input_ids,
+                                             attention_mask=attention_mask,
+                                             decoder_input_ids=decoder_input_ids,
+                                             decoder_attention_mask=decoder_attention_mask,
+                                             **kwargs)
         logits = outputs.logits
         values_pred = outputs.value
-        return (logits,values_pred)
+        return (logits, values_pred)
 
-class PPOModelBase(nn.Module,PPOLLMAbstract,PPOSEQ2SEQAbstract):
-
-    def forward_ppo_loss(self,batch: PPORLBatch,device):
+class PPOModelLoss(nn.Module, PPOLLMAbstract, PPOSEQ2SEQAbstract):
+    def forward_ppo_loss(self,batch: PPORLBatch, device):
         """Forward pass & loss
 
               Args:
                   batch: Previous batch of episodes
               """
         # Move `batch` data to `accelerator` device
+
         query_tensors = batch.query_tensors.to(device)
         response_tensors = batch.response_tensors.to(device)
         old_logprobs = batch.logprobs.to(device)
@@ -70,6 +66,7 @@ class PPOModelBase(nn.Module,PPOLLMAbstract,PPOSEQ2SEQAbstract):
                 attention_mask=attention_mask,
                 decoder_input_ids=decoder_input_ids,
                 decoder_attention_mask=decoder_attention_mask,
+                return_dict=True,
             )
 
             logprobs = logprobs_of_labels(logits[:, :-1, :], decoder_input_ids[:, 1:])
@@ -84,7 +81,9 @@ class PPOModelBase(nn.Module,PPOLLMAbstract,PPOSEQ2SEQAbstract):
         else:
             tokens = torch.cat((query_tensors, response_tensors), dim=1)
             attention_mask = tokens.not_equal(self.config.pad_token_id).long().to(tokens.device)
-            logits,values_pred = self.forward_llm_value_and_logits(input_ids=tokens, attention_mask=attention_mask)
+            logits,values_pred = self.forward_llm_value_and_logits(input_ids=tokens,
+                                                                   attention_mask=attention_mask,
+                                                                   return_dict=True)
             values_pred = values_pred[:, :-1]
             logprobs = logprobs_of_labels(logits[:, :-1, :], tokens[:, 1:])
 
@@ -105,7 +104,10 @@ class PPOModelBase(nn.Module,PPOLLMAbstract,PPOSEQ2SEQAbstract):
             returns=returns,
             mask=mask,
         )
-        return loss, stats
+        return {
+            'loss': loss,
+            'stats': stats
+        }
 
     def get_advantages_and_returns(
             self,

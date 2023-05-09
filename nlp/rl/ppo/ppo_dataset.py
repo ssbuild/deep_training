@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/4/24 9:34
+
 import json
-from .utils import logging
 import os
 from abc import abstractmethod
 from dataclasses import is_dataclass
@@ -16,13 +16,7 @@ from typing import Any, Callable, Dict, Iterable
 from torch.utils.data import DataLoader, Dataset
 from .utils import logprobs_of_labels, Clock, gather_dict, RunningMoments, pad_across_processes, _gpu_gather, \
     PPORLElement, RLElement, PPORLBatch
-
-
-
-
-
-
-
+from .utils import logging, logger
 
 
 class BaseRolloutStore(Dataset):
@@ -140,7 +134,7 @@ class PPORolloutStore(BaseRolloutStore):
 
         self.pad_token_id = pad_token_id
         self.padding_side = padding_side
-        self.history: Iterable[PPORLElement] = []
+        self.history: Iterable[PPORLElement] = [None]
 
     def push(self, exps: Iterable[PPORLElement]):
         self.history += exps

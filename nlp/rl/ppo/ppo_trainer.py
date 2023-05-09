@@ -30,7 +30,7 @@ from .utils import logprobs_of_labels, Clock, gather_dict, RunningMoments, pad_a
 from ...layers.ppo import AdaptiveKLController, FixedKLController
 from .configuration import PPOConfig
 
-
+from lightning.fabric.loggers.tensorboard import TensorBoardLogger
 
 
 class PPOTrainer:
@@ -104,6 +104,10 @@ class PPOTrainer:
             callbacks written for the lightning trainer (especially making assumptions on the trainer), won't work!
         """
 
+        if loggers is None:
+            loggers = TensorBoardLogger(root_dir=checkpoint_dir,name='lightning_logs')
+
+        self.loggers = loggers
         self.fabric = L.Fabric(
             accelerator=accelerator,
             strategy=strategy,
@@ -140,10 +144,7 @@ class PPOTrainer:
 
         self.mb_count = 0
 
-
-
-
-
+        self.fabric.launch()
 
 
     @property
@@ -178,12 +179,12 @@ class PPOTrainer:
                 If specified, will always look for the latest checkpoint within the given directory.
         """
 
-        self.fabric.launch()
+
 
         self.config = model.config
         self.tokenizer = tokenizer
         self.reward_fn = reward_fn
-        self.ppo_config: PPOConfig  = ppo_config
+        self.ppo_config: PPOConfig = ppo_config
 
         self.stop_sequences = stop_sequences
 
@@ -192,13 +193,15 @@ class PPOTrainer:
         self.ref_mean = self.ppo_config.ref_mean
         self.ref_std = self.ppo_config.ref_std
 
-
-
-
-
         self.store = PPORolloutStore(self.tokenizer.pad_token_id, self.tokenizer.padding_side)
 
         self.mb_count = 0
+
+        if self.ppo_config.minibatch_size:
+            assert model.training_args.train_batch_size % self.ppo_config.minibatch_size == 0, "Minibatch size must divide batch size"
+            self.mb_size = self.ppo_config.minibatch_size
+        else:
+            self.mb_size = model.training_args.train_batch_size
 
 
         # self.fabric.barrier()
@@ -240,10 +243,13 @@ class PPOTrainer:
                 if self.max_epochs is not None and self.current_epoch >= self.max_epochs:
                     self.should_stop = True
 
+        ref_model = ref_model.to(model.device)
         train_loader = infinite_dataloader(train_loader)
         self.make_experience(model,ref_model,train_loader)
 
         while not self.should_stop:
+
+            print('*' * 30,self.current_epoch)
             self.train_loop(
                 model, ref_model, optimizer, limit_batches=self.limit_train_batches, scheduler_cfg=scheduler_cfg
             )
@@ -285,18 +291,26 @@ class PPOTrainer:
                 Have a look at :meth:`lightning.pytorch.LightninModule.configure_optimizers` for supported values.
         """
 
-        num_mb = self.ppo_config.batch_size // self.ppo_config.mb_size
 
-        train_loader = self.fabric.setup_dataloaders(self.store.create_loader(self.ppo_config.batch_size,shuffle=True),
+        num_mb =  model.training_args.train_batch_size // self.mb_size
+
+
+
+
+
+        train_loader = self.fabric.setup_dataloaders(self.store.create_loader(model.training_args.train_batch_size,shuffle=True),
                                                      use_distributed_sampler=False)
 
-        #
+        mbs = MiniBatchIterator(train_loader, self.mb_size, num_mb)
+
 
 
         self.fabric.call("on_train_epoch_start")
         iterable = self.progbar_wrapper(
-            train_loader, total=min(len(train_loader), limit_batches), desc=f"Epoch {self.current_epoch}"
+            mbs, total=num_mb, desc=f"Epoch {self.current_epoch}"
         )
+
+
 
 
         for batch_idx, batch in enumerate(iterable):
@@ -307,7 +321,6 @@ class PPOTrainer:
 
             self.fabric.call("on_train_batch_start", batch, batch_idx)
 
-            mbs = MiniBatchIterator(batch, self.ppo_config.mb_size, num_mb)
             # For each update per batch
             for _ in range(self.ppo_config.ppo_epochs):
                 # Note that whereas standard policy gradient methods perform one
@@ -318,27 +331,31 @@ class PPOTrainer:
                 backward_time = 0
                 stats_accum = []
                 loss_accum = []
-                for mb in mbs:
+                for mb in batch:
                     self.mb_count += 1
-
+                    print('*' * 10,self.mb_count)
                     should_sync = self.mb_count % self.accumulate_grad_batches == 0
-
                     with self.fabric.no_backward_sync(model,enabled=not should_sync):
                         forward_time -= time()
                         outputs = self.training_step(model=model, batch = mb, batch_idx = batch_idx)
-                        loss,stats = outputs['loss'],outputs['stats']
+                        loss = outputs['loss'].cpu()
+                        # loss, stats = outputs['loss'].cpu(), outputs['stats']
                         loss_accum.append(loss)
                         # forward_time += time()
                         # backward_time -= time()
                         # backward_time += time()
-                        stats_accum.append(stats)
+                        # stats_accum.append(stats)
 
-                self.fabric.logger.log_metrics(np.average(loss_accum),step=self.global_step)
+                metrics = {
+                    "loss": torch.mean(torch.stack(loss_accum)),
+                    # "stats": stats
+                }
+                self.fabric.logger.log_metrics(metrics,step=self.global_step)
                 forward_time /= num_mb
                 backward_time /= num_mb
                 # TODO(Dahoas): Best way to combine stats between mbs?
                 # How does accelerate do it?
-                stats = {key: sum([stats[key] for stats in stats_accum]) / self.num_mb for key in stats_accum[0]}
+                # stats = {key: sum([stats[key] for stats in stats_accum]) / num_mb for key in stats_accum[0]}
 
                 optimizer.step()
                 optimizer.zero_grad()
@@ -348,8 +365,7 @@ class PPOTrainer:
                 self.fabric.call("on_before_zero_grad", optimizer)
                 optimizer.zero_grad()
                 self.step_scheduler(model, scheduler_cfg, level="step", current_value=self.global_step)
-
-                self.fabric.call("on_train_batch_end", self._current_train_return, batch, batch_idx)
+                # self.fabric.call("on_train_batch_end", self._current_train_return, batch, batch_idx)
 
                 # only increase global step if optimizer stepped
                 self.global_step += 1
@@ -358,10 +374,8 @@ class PPOTrainer:
                 if self.max_steps is not None and self.global_step >= self.max_steps:
                     self.should_stop = True
                     break
-
             # add output values to progress bar
             self._format_iterable(iterable, self._current_train_return, "train")
-
 
         self.fabric.call("on_train_epoch_end")
 
@@ -432,10 +446,12 @@ class PPOTrainer:
             batch_idx: index of the current batch w.r.t the current epoch
         """
 
+        outputs: Union[torch.Tensor, Mapping[str, Any]] = model.training_step(batch,device=self.fabric.device)
 
-
-        outputs: Union[torch.Tensor, Mapping[str, Any]] = model.training_step(batch, batch_idx=batch_idx)
-
+        valid_keys = list(outputs.keys())
+        valid_keys.remove('loss')
+        for k in valid_keys:
+            outputs.pop(k)
         loss = outputs if isinstance(outputs, torch.Tensor) else outputs["loss"]
 
         self.fabric.call("on_before_backward", loss)
@@ -634,8 +650,11 @@ class PPOTrainer:
                 postfix_str += f" {prefix}_loss: {float_candidates:.3f}"
             elif isinstance(candidates, Mapping):
                 for k, v in float_candidates.items():
-                    postfix_str += f" {prefix}_{k}: {v:.3f}"
-
+                    if isinstance(v, Mapping):
+                        for sub_k,sub_v in v.items():
+                            postfix_str += f" {prefix}_{k}/{sub_k}: {sub_v:.3f}"
+                    else:
+                        postfix_str += f" {prefix}_{k}: {v:.3f}"
             if postfix_str:
                 prog_bar.set_postfix_str(postfix_str)
 
@@ -649,8 +668,6 @@ class PPOTrainer:
         return model.generate(
             input_ids=input_ids, attention_mask=attention_mask, **kwargs
         )
-
-
 
     #
     def decode(
@@ -721,7 +738,7 @@ class PPOTrainer:
         logger.info("Collecting rollouts")
         tbar = logging.tqdm(
             total=num_rollouts,
-            disable=is_main_process !=0 ,
+            disable=not is_main_process,
             desc=f"[rollout 0 / {num_rollouts}]",
             # Lower progress bar by 1 if we're in WARNING mode or above to avoid hiding high priority progress
             # bars (e.g. loss progress in trainers)
@@ -729,6 +746,8 @@ class PPOTrainer:
             # Leave progress bar if we're in INFO mode or lower to avoid spamming in suppressed verbosity levels
             leave=logging.get_verbosity() < logging.WARNING,
         )
+
+        self.store.clear_history()
 
         clock = Clock()
         ppo_rl_elements = []
@@ -748,10 +767,7 @@ class PPOTrainer:
             prompt_tensors = batch['input_ids']
             device = samples.device
 
-            print(samples)
-
             prompt_sizes = torch.tensor([prompt_tensors.shape[1]] * len(prompt_tensors), device=device)
-
 
             padded_samples = pad_across_processes(
                 samples,world_size, dim=1, pad_index=self.tokenizer.eos_token_id, pad_first=False
@@ -763,6 +779,7 @@ class PPOTrainer:
             gathered_prompts = _gpu_gather(padded_prompts,world_size)
             gathered_prompt_sizes = _gpu_gather(prompt_sizes,world_size)
             metadata = gather_dict({k: v for k, v in batch.items() if k != "input_ids" and k != "attention_mask"})
+
 
             if is_main_process:
                 all_str_samples, all_str_prompts, all_str_outputs = self.decode(
@@ -862,13 +879,13 @@ class PPOTrainer:
                 all_tokens = torch.cat((prompt_tensors.to(device), sample_outputs), dim=1)
                 attention_mask = all_tokens.not_equal(self.tokenizer.pad_token_id).long().to(device)
                 with torch.no_grad():
-                    logits, *_, values = model(
-                        all_tokens,
+                    logits, *_, values = model.forward_logits_values(
+                        input_ids=all_tokens,
                         attention_mask=attention_mask,
                     )
 
-                    ref_logits = ref_model(
-                        all_tokens,
+                    ref_logits = ref_model.forward_logits_values(
+                        input_ids=all_tokens,
                         attention_mask=attention_mask,
                         return_dict=True,
                     ).logits
