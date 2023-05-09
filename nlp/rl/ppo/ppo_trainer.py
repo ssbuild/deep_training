@@ -193,6 +193,7 @@ class PPOTrainer:
         self.ref_mean = self.ppo_config.ref_mean
         self.ref_std = self.ppo_config.ref_std
 
+
         self.store = PPORolloutStore(self.tokenizer.pad_token_id, self.tokenizer.padding_side)
 
         self.mb_count = 0
@@ -249,13 +250,12 @@ class PPOTrainer:
 
         while not self.should_stop:
 
-            print('*' * 30,self.current_epoch)
             self.train_loop(
                 model, ref_model, optimizer, limit_batches=self.limit_train_batches, scheduler_cfg=scheduler_cfg
             )
 
-            # if self.should_validate:
-            #     self.val_loop(model,ref_model, val_loader, limit_batches=self.limit_val_batches)
+            if self.should_validate:
+                self.val_loop(model,ref_model, val_loader, limit_batches=self.limit_val_batches)
 
             self.step_scheduler(model, scheduler_cfg, level="epoch", current_value=self.current_epoch)
 
@@ -265,7 +265,8 @@ class PPOTrainer:
             if self.max_epochs is not None and self.current_epoch >= self.max_epochs:
                 self.should_stop = True
 
-            self.save(state)
+            self.make_experience(model, ref_model, train_loader)
+            # self.save(state)
 
         # reset for next fit call
         self.should_stop = False
@@ -307,10 +308,8 @@ class PPOTrainer:
 
         self.fabric.call("on_train_epoch_start")
         iterable = self.progbar_wrapper(
-            mbs, total=num_mb, desc=f"Epoch {self.current_epoch}"
+            mbs, total=32, desc=f"Epoch {self.current_epoch}"
         )
-
-
 
 
         for batch_idx, batch in enumerate(iterable):
@@ -319,7 +318,8 @@ class PPOTrainer:
                 self.fabric.call("on_train_epoch_end")
                 return
 
-            self.fabric.call("on_train_batch_start", batch, batch_idx)
+
+            self.fabric.call("on_train_batch_start", mbs, batch_idx)
 
             # For each update per batch
             for _ in range(self.ppo_config.ppo_epochs):
@@ -331,53 +331,54 @@ class PPOTrainer:
                 backward_time = 0
                 stats_accum = []
                 loss_accum = []
+
                 for mb in batch:
                     self.mb_count += 1
-                    print('*' * 10,self.mb_count)
                     should_sync = self.mb_count % self.accumulate_grad_batches == 0
                     with self.fabric.no_backward_sync(model,enabled=not should_sync):
                         forward_time -= time()
                         outputs = self.training_step(model=model, batch = mb, batch_idx = batch_idx)
-                        loss = outputs['loss'].cpu()
-                        # loss, stats = outputs['loss'].cpu(), outputs['stats']
-                        loss_accum.append(loss)
-                        # forward_time += time()
-                        # backward_time -= time()
-                        # backward_time += time()
-                        # stats_accum.append(stats)
+                        loss, stats = outputs['loss'], outputs['stats']
+                    loss_accum.append(loss)
+                    stats_accum.append(stats)
+                    # forward_time += time()
+                    # backward_time -= time()
+                    # backward_time += time()
 
+                stats = {key: sum([stats[key] for stats in stats_accum]) / num_mb for key in stats_accum[0]}
                 metrics = {
                     "loss": torch.mean(torch.stack(loss_accum)),
-                    # "stats": stats
                 }
+                metrics.update(stats)
                 self.fabric.logger.log_metrics(metrics,step=self.global_step)
                 forward_time /= num_mb
                 backward_time /= num_mb
                 # TODO(Dahoas): Best way to combine stats between mbs?
                 # How does accelerate do it?
-                # stats = {key: sum([stats[key] for stats in stats_accum]) / num_mb for key in stats_accum[0]}
-
-                optimizer.step()
-                optimizer.zero_grad()
+                # currently only supports a single optimizer
                 self.fabric.call("on_before_optimizer_step", optimizer, 0)
+
                 # optimizer step runs train step internally through closure
                 optimizer.step()
                 self.fabric.call("on_before_zero_grad", optimizer)
                 optimizer.zero_grad()
+
                 self.step_scheduler(model, scheduler_cfg, level="step", current_value=self.global_step)
-                # self.fabric.call("on_train_batch_end", self._current_train_return, batch, batch_idx)
+                self.fabric.call("on_train_batch_end", self._current_train_return, batch, batch_idx)
 
                 # only increase global step if optimizer stepped
                 self.global_step += 1
 
                 # stopping criterion on step level
-                if self.max_steps is not None and self.global_step >= self.max_steps:
+                if  self.max_steps is not None and self.max_steps >= 0 and self.global_step >= self.max_steps:
                     self.should_stop = True
                     break
+
             # add output values to progress bar
             self._format_iterable(iterable, self._current_train_return, "train")
 
         self.fabric.call("on_train_epoch_end")
+
 
     def val_loop(
         self,
@@ -447,11 +448,6 @@ class PPOTrainer:
         """
 
         outputs: Union[torch.Tensor, Mapping[str, Any]] = model.training_step(batch,device=self.fabric.device)
-
-        valid_keys = list(outputs.keys())
-        valid_keys.remove('loss')
-        for k in valid_keys:
-            outputs.pop(k)
         loss = outputs if isinstance(outputs, torch.Tensor) else outputs["loss"]
 
         self.fabric.call("on_before_backward", loss)
