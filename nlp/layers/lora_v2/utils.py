@@ -120,6 +120,7 @@ class ModulesToSaveWrapper(torch.nn.Module):
     def update(self, adapter_name):
         self.modules_to_save.update(torch.nn.ModuleDict({adapter_name: copy.deepcopy(self.original_module)}))
 
+
     def forward(self, *args, **kwargs):
         if self.active_adapter not in self.modules_to_save:
             return self.original_module(*args, **kwargs)
@@ -151,6 +152,11 @@ def _set_trainable(model, adapter_name):
                 for param in target.parameters():
                     param.requires_grad = True
                 setattr(parent, target_name, ModulesToSaveWrapper(target, adapter_name))
+
+    for k, n in model.named_modules():
+        if isinstance(n,ModulesToSaveWrapper):
+            for p in n.original_module.parameters():
+                p.requires_grad = False
 
 
 def _set_adapter(model, adapter_name):
