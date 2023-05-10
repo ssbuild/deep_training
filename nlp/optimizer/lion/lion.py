@@ -1,7 +1,7 @@
 # @Time    : 2023/3/1 22:37
 # @Author  : tk
 # @FileName: lion.py
-
+from functools import partial
 from typing import Tuple, Optional, Callable
 
 import torch
@@ -41,35 +41,40 @@ class Lion(Optimizer):
         lr: float = 1e-4,
         betas: Tuple[float, float] = (0.9, 0.99),
         weight_decay: float = 0.0,
-        use_triton: bool = False
+        use_triton: bool = False,
+        triton_block_size: int = 1024
     ):
         assert lr > 0.
         assert all([0. <= beta <= 1. for beta in betas])
 
         defaults = dict(
-            lr = lr,
-            betas = betas,
-            weight_decay = weight_decay
+            lr=lr,
+            betas=betas,
+            weight_decay=weight_decay
         )
 
         super().__init__(params, defaults)
 
         self.update_fn = update_fn
+        self.use_triton = use_triton
+        self.took_first_step = False
 
         if use_triton:
             from .triton import update_fn as triton_update_fn
-            self.update_fn = triton_update_fn
+            self.update_fn = partial(triton_update_fn, BLOCK_SIZE=triton_block_size)
 
     @torch.no_grad()
     def step(
-        self,
-        closure: Optional[Callable] = None
+            self,
+            closure: Optional[Callable] = None
     ):
 
         loss = None
         if exists(closure):
             with torch.enable_grad():
                 loss = closure()
+
+        # update all parameters
 
         for group in self.param_groups:
             for p in filter(lambda p: exists(p.grad), group['params']):

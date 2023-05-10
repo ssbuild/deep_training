@@ -1,16 +1,26 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/4/20 11:05
-
+from dataclasses import dataclass
 from typing import Tuple, Optional
-
 import torch
 from torch import nn
+from transformers.utils import ModelOutput
+
 from .configuration import PPOConfig
-from .utils import logprobs_of_labels, get_tensor_stats, flatten_dict, whiten, PPORLBatch,logger
+from .utils import logprobs_of_labels, get_tensor_stats, flatten_dict, whiten, PPORLBatch
 from transformers import PretrainedConfig
 
-class PPOLLMAbstract:
+@dataclass
+class CausalLMOutputWithValue(ModelOutput):
+    loss: Optional[torch.FloatTensor] = None
+    logits: Optional[torch.FloatTensor] = None
+    past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None
+    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    attentions: Optional[Tuple[torch.FloatTensor]] = None
+    cross_attentions: Optional[Tuple[torch.FloatTensor]] = None
+    value: Optional[torch.FloatTensor] = None
 
+class PPOLLMAbstract:
     def forward_llm_value_and_logits(self,input_ids,**kwargs):
         outputs = self.forward_logits_values(input_ids=input_ids,
                                              **kwargs)
@@ -19,7 +29,6 @@ class PPOLLMAbstract:
         return (logits,values_pred)
 
 class PPOSEQ2SEQAbstract:
-
     def forward_seq2seq_value_and_logits(self,
                                          input_ids,attention_mask,
                                          decoder_input_ids,decoder_attention_mask,
@@ -36,11 +45,9 @@ class PPOSEQ2SEQAbstract:
 class PPOModelLoss(nn.Module, PPOLLMAbstract, PPOSEQ2SEQAbstract):
     def forward_ppo_loss(self,batch: PPORLBatch, device):
         """Forward pass & loss
-
-              Args:
-                  batch: Previous batch of episodes
-              """
-        # Move `batch` data to `accelerator` device
+          Args:
+              batch: Previous batch of episodes
+          """
 
         query_tensors = batch.query_tensors.to(device)
         response_tensors = batch.response_tensors.to(device)

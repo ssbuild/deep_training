@@ -12,9 +12,12 @@
 
 
 ## state
- - 基于 lightning.fabric 封装RL ppo 进行中...
+ - ppo 完善中...
 
 ## update
+- <strong>2023-05-10</strong>
+  - fix lora v2 modules_to_save 自定义额外训练模块
+  - 0.1.5 rc0  增加reward ppo  llm 模块，完整训练待开放中...
 - <strong>2023-05-02</strong>
   - 0.1.4 增加 prompt_tuning,p_tuning,prefix_tuning,adaption_prompt
 

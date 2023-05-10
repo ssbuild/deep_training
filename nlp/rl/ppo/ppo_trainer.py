@@ -2,9 +2,9 @@
 # @Time    : 2023/5/3 14:19
 # @Author  : tk
 # @FileName: ppo_trainner
+
 from .utils import logging, infinite_dataloader
 import os
-
 import numpy as np
 from tqdm import tqdm
 from time import time
@@ -15,7 +15,6 @@ import torch
 import torch.distributed as dist
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
-# from lightning_utilities import apply_to_collection, is_overridden
 from lightning_utilities import is_overridden
 from lightning_utilities.core.apply_func import apply_to_collection
 import lightning as L
@@ -245,9 +244,8 @@ class PPOTrainer:
                     self.should_stop = True
 
         ref_model = ref_model.to(model.device)
-        train_loader = infinite_dataloader(train_loader)
-        self.make_experience(model,ref_model,train_loader)
-
+        self.prompt_train_loader: Iterable = infinite_dataloader(train_loader)
+        self.make_experience(model,ref_model)
         while not self.should_stop:
 
             self.train_loop(
@@ -265,11 +263,26 @@ class PPOTrainer:
             if self.max_epochs is not None and self.current_epoch >= self.max_epochs:
                 self.should_stop = True
 
-            self.make_experience(model, ref_model, train_loader)
             # self.save(state)
 
         # reset for next fit call
         self.should_stop = False
+
+    def post_backward_callback(self,model):
+        self.kl_ctl.update(self.mean_kl, n_steps=model.training_args.train_batch_size)
+
+    def post_epoch_callback(self,*agrs,**kwargs):
+        """Post epoch callback
+
+        Clears the store and creates `num_rollouts` new episodes.
+        """
+        if not self.should_stop:
+            model = kwargs['model']
+            ref_model = kwargs['ref_model']
+            self.store.clear_history()
+            # Collect more rollouts for training
+            self.make_experience(model, ref_model)
+
 
     def train_loop(
         self,
@@ -293,31 +306,19 @@ class PPOTrainer:
         """
 
 
-        num_mb =  model.training_args.train_batch_size // self.mb_size
-
-
-
-
-
+        num_mb = model.training_args.train_batch_size // self.mb_size
         train_loader = self.fabric.setup_dataloaders(self.store.create_loader(model.training_args.train_batch_size,shuffle=True),
                                                      use_distributed_sampler=False)
-
         mbs = MiniBatchIterator(train_loader, self.mb_size, num_mb)
-
-
-
         self.fabric.call("on_train_epoch_start")
         iterable = self.progbar_wrapper(
-            mbs, total=32, desc=f"Epoch {self.current_epoch}"
+            mbs, total=len(train_loader) * num_mb , desc=f"Epoch {self.current_epoch}"
         )
-
-
         for batch_idx, batch in enumerate(iterable):
             # end epoch if stopping training completely or max batches for this epoch reached
             if self.should_stop or batch_idx >= limit_batches:
                 self.fabric.call("on_train_epoch_end")
                 return
-
 
             self.fabric.call("on_train_batch_start", mbs, batch_idx)
 
@@ -327,8 +328,7 @@ class PPOTrainer:
                 # gradient update per batch, PPO for example commonly performs
                 # multiple gradient updates on the same batch of data.
                 # https://arxiv.org/pdf/1707.06347.pdf
-                forward_time = 0
-                backward_time = 0
+
                 stats_accum = []
                 loss_accum = []
 
@@ -336,23 +336,21 @@ class PPOTrainer:
                     self.mb_count += 1
                     should_sync = self.mb_count % self.accumulate_grad_batches == 0
                     with self.fabric.no_backward_sync(model,enabled=not should_sync):
-                        forward_time -= time()
+
                         outputs = self.training_step(model=model, batch = mb, batch_idx = batch_idx)
                         loss, stats = outputs['loss'], outputs['stats']
                     loss_accum.append(loss)
                     stats_accum.append(stats)
-                    # forward_time += time()
-                    # backward_time -= time()
-                    # backward_time += time()
+
 
                 stats = {key: sum([stats[key] for stats in stats_accum]) / num_mb for key in stats_accum[0]}
+
                 metrics = {
                     "loss": torch.mean(torch.stack(loss_accum)),
                 }
                 metrics.update(stats)
                 self.fabric.logger.log_metrics(metrics,step=self.global_step)
-                forward_time /= num_mb
-                backward_time /= num_mb
+
                 # TODO(Dahoas): Best way to combine stats between mbs?
                 # How does accelerate do it?
                 # currently only supports a single optimizer
@@ -375,9 +373,11 @@ class PPOTrainer:
                     break
 
             # add output values to progress bar
-            self._format_iterable(iterable, self._current_train_return, "train")
-
+            self._format_iterable(iterable,{"loss": self._current_train_return['loss'],},"train")
+            self.post_backward_callback(model)
         self.fabric.call("on_train_epoch_end")
+
+        self.post_epoch_callback(model=model,ref_model=ref_model)
 
 
     def val_loop(
@@ -446,17 +446,22 @@ class PPOTrainer:
             batch: the batch to run the forward on
             batch_idx: index of the current batch w.r.t the current epoch
         """
-
+        forward_time,backward_time = 0,0
+        forward_time -= time()
         outputs: Union[torch.Tensor, Mapping[str, Any]] = model.training_step(batch,device=self.fabric.device)
         loss = outputs if isinstance(outputs, torch.Tensor) else outputs["loss"]
+        forward_time += time()
 
         self.fabric.call("on_before_backward", loss)
+        backward_time -= time()
         self.fabric.backward(loss)
+        backward_time += time()
         self.fabric.call("on_after_backward")
 
         # avoid gradients in stored/accumulated values -> prevents potential OOM
         self._current_train_return = apply_to_collection(outputs, dtype=torch.Tensor, function=lambda x: x.detach())
-
+        self._current_train_return['time/forward'] = forward_time
+        self._current_train_return['time/backward'] = backward_time
         return self._current_train_return
 
     def step_scheduler(
@@ -717,7 +722,7 @@ class PPOTrainer:
 
         return str_samples, str_prompts, str_outputs
 
-    def make_experience(self, model, ref_model, prompt_iterator,**kwargs):  # noqa:
+    def make_experience(self, model, ref_model,**kwargs):  # noqa:
         """Make experiences
 
         Takes `chunk_size` number of prompts from `prompt_iterator`, samples
@@ -748,7 +753,7 @@ class PPOTrainer:
         clock = Clock()
         ppo_rl_elements = []
         accumulated_stats = []
-
+        prompt_iterator : Iterable = self.prompt_train_loader
         while len(ppo_rl_elements) < num_rollouts:
             stats = {}
             # Get next batch in prompt dataset
@@ -758,7 +763,7 @@ class PPOTrainer:
 
             # Generate samples from the language model (similar to using HuggingFace `generate` method)
             samples = self.generate(model , batch["input_ids"], batch["attention_mask"], **kwargs)
-            stats["time/rollout_generate"] = time() - rollout_generate_time
+            stats["rollout/time/generate"] = time() - rollout_generate_time
 
             prompt_tensors = batch['input_ids']
             device = samples.device
@@ -783,14 +788,12 @@ class PPOTrainer:
                 )
 
                 rollout_score_time = time()
-                all_scores = torch.tensor(
-                    self.reward_fn(
-                        samples=all_str_samples, prompts=all_str_prompts, outputs=all_str_outputs, **metadata
-                    ),
-                    dtype=torch.float,
-                    device=device,
+
+                all_scores = self.reward_fn(
+                    samples=all_str_samples, prompts=all_str_prompts, outputs=all_str_outputs, **metadata
                 )
-                stats["time/rollout_score"] = time() - rollout_score_time
+                all_scores = all_scores.clone().detach().float().to(device)
+                stats["rollout/time/score"] = time() - rollout_score_time
 
                 all_scores = list(all_scores.reshape(world_size, -1).unbind())
             else:
@@ -830,10 +833,10 @@ class PPOTrainer:
             if self.ref_mean is None:
                 self.ref_mean, self.ref_std = scores.mean(), scores.std()
             all_scores_mean, all_scores_std = self.running_moments.update(scores)
-            stats["rollout_scores/mean"] = all_scores_mean.item()
-            stats["rollout_scores/std"] = all_scores_std.item()
-            stats["rollout_scores/running_mean"] = self.running_moments.mean.item()
-            stats["rollout_scores/running_std"] = self.running_moments.std.item()
+            stats["rollout/scores/mean"] = all_scores_mean.item()
+            stats["rollout/scores/std"] = all_scores_std.item()
+            stats["rollout/scores/running_mean"] = self.running_moments.mean.item()
+            stats["rollout/scores/running_std"] = self.running_moments.std.item()
 
             if self.ppo_config.scale_reward == "running":
                 scores /= self.running_moments.std
@@ -945,9 +948,9 @@ class PPOTrainer:
             if dist.is_initialized():
                 dist.all_reduce(mean_kl, dist.ReduceOp.AVG)
 
-            stats["time/rollout_time"] = clock.tick()
-            stats["policy/sqrt_kl"] = torch.sqrt(mean_kl).item()
-            stats["policy/kl_per_token"] = torch.sqrt(mean_kl_per_token).item()
+            stats["rollout/time"] = clock.tick()
+            stats["rollout/policy/sqrt_kl"] = torch.sqrt(mean_kl).item()
+            stats["rollout/policy/kl_per_token"] = torch.sqrt(mean_kl_per_token).item()
             accumulated_stats.append(stats)
 
             tbar.set_description(f"[rollout {len(ppo_rl_elements)} / {num_rollouts}]")
@@ -955,8 +958,8 @@ class PPOTrainer:
         tbar.close()
 
         stats = {k: sum([xs[k] for xs in accumulated_stats]) / len(accumulated_stats) for k in stats}
-        stats["kl_ctl_value"] = self.kl_ctl.value
-        self.mean_kl = stats["policy/sqrt_kl"] ** 2
+        stats["rollout/kl_ctl_value"] = self.kl_ctl.value
+        self.mean_kl = stats["rollout/policy/sqrt_kl"] ** 2
 
         self.fabric.logger.log_metrics(stats,self.global_step)
 

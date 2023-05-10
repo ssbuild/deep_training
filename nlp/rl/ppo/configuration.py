@@ -5,7 +5,6 @@ import os
 import warnings
 from dataclasses import field, dataclass, asdict
 from typing import Optional, Dict, Any
-
 import numpy as np
 from transformers.utils import flatten_dict, PushToHubMixin
 
@@ -105,19 +104,13 @@ class PPOConfigMixin(PushToHubMixin):
 
 
 
-def _default_gen_kwargs():
-    return dict(
-            max_new_tokens=40,
-            top_k=0,
-            top_p=1.0,
-            do_sample=True,
-        ),
+
 
 @dataclass
 class PPOConfig(PPOConfigMixin):
     ppo_epochs: int = field(default=4, metadata={"help": "Number of updates per batch"})
     num_rollouts: int = field(default=128, metadata={"help": "Number  of experiences to observe before learning"})
-    chunk_size: int = field(default=128, metadata={"help": "Number of chunk_size of training"})
+    chunk_size: int = field(default=128, metadata={"help": "Number of chunk_size of generate"})
     init_kl_coef: float = field(default=0.001, metadata={"help": "Initial value for KL coefficient"})
     target: Optional[float] = field(default=None, metadata={"help": "Target value for KL coefficient"})
     horizon: int = field(default=10000, metadata={"help": "Number of steps for KL coefficient to reach target"})
@@ -131,12 +124,20 @@ class PPOConfig(PPOConfigMixin):
     ref_mean: Optional[float] = field(default=None, metadata={"help": "Number of updates per batch"})
     ref_std: Optional[float] = field(default=None, metadata={"help": "Number of updates per batch"})
     cliprange_reward: int = field(default=10, metadata={"help": "Additioanl kwargs for the generation"})
-    gen_kwargs: dict = field(default_factory=_default_gen_kwargs, metadata={"help": "Additioanl kwargs for the generation"})
+    gen_kwargs: dict = field(default=None,
+                             metadata={"help": "Additioanl kwargs for the generation"})
     gen_experience_kwargs: Optional[dict] = field(default=None, metadata={"help": "Additioanl kwargs for the gen_experience_kwargs"})
     model_arch_type: Optional[str] = "causal"  # one of causal , seq2seq
     minibatch_size: Optional[int] =  field(default=None, metadata={"help": "minibatch_size"})
 
-
+    def __post_init__(self):
+        if self.gen_kwargs is None:
+            self.gen_kwargs = dict(
+            max_new_tokens=40,
+            top_k=0,
+            top_p=1.0,
+            do_sample=True,
+        )
 
 
 @dataclass
