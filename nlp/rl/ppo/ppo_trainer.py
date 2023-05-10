@@ -141,6 +141,9 @@ class PPOTrainer:
         self.checkpoint_dir = checkpoint_dir
         self.checkpoint_frequency = checkpoint_frequency
         self.mb_count = 0
+
+        self._callback_metrics: dict = {}
+        self._state : Optional[dict] = {}
         self.fabric.launch()
 
 
@@ -224,7 +227,7 @@ class PPOTrainer:
 
         # assemble state (current epoch and global step will be added in save)
         state = {"model": model, "optim": optimizer, "scheduler": scheduler_cfg}
-
+        self._state.update(state)
         # load last checkpoint if available
         if ckpt_path is not None and os.path.isdir(ckpt_path):
             latest_checkpoint_path = self.get_latest_checkpoint(self.checkpoint_dir)
@@ -275,6 +278,9 @@ class PPOTrainer:
             # Collect more rollouts for training
             self.make_experience(model, ref_model)
 
+    @property
+    def callback_metrics(self):
+        return self._callback_metrics
 
     def train_loop(
         self,
@@ -302,17 +308,17 @@ class PPOTrainer:
         train_loader = self.fabric.setup_dataloaders(self.store.create_loader(model.training_args.train_batch_size,shuffle=True),
                                                      use_distributed_sampler=False)
         mbs = MiniBatchIterator(train_loader, self.mb_size, num_mb)
-        self.fabric.call("on_train_epoch_start")
+        self.fabric.call("on_train_epoch_start",self,model)
         iterable = self.progbar_wrapper(
             mbs, total=len(train_loader) * num_mb , desc=f"Epoch {self.current_epoch}"
         )
         for batch_idx, batch in enumerate(iterable):
             # end epoch if stopping training completely or max batches for this epoch reached
             if self.should_stop or batch_idx >= limit_batches:
-                self.fabric.call("on_train_epoch_end")
+                self.fabric.call("on_train_epoch_end",self,model)
                 return
 
-            self.fabric.call("on_train_batch_start", mbs, batch_idx)
+            self.fabric.call("on_train_batch_start",self,model,mbs, batch_idx)
             # For each update per batch
             for _ in range(self.ppo_config.ppo_epochs):
                 # Note that whereas standard policy gradient methods perform one
@@ -336,18 +342,19 @@ class PPOTrainer:
                 }
                 metrics.update(stats)
                 self.fabric.logger.log_metrics(metrics,step=self.global_step)
+                self._callback_metrics.update(metrics)
                 # TODO(Dahoas): Best way to combine stats between mbs?
                 # How does accelerate do it?
                 # currently only supports a single optimizer
-                self.fabric.call("on_before_optimizer_step", optimizer, 0)
+                self.fabric.call("on_before_optimizer_step" ,self,model,optimizer, 0)
 
                 # optimizer step runs train step internally through closure
                 optimizer.step()
-                self.fabric.call("on_before_zero_grad", optimizer)
+                self.fabric.call("on_before_zero_grad",self,model, optimizer)
                 optimizer.zero_grad()
 
                 self.step_scheduler(model, scheduler_cfg, level="step", current_value=self.global_step)
-                self.fabric.call("on_train_batch_end", self._current_train_return, batch, batch_idx)
+                self.fabric.call("on_train_batch_end",self,model, self._current_train_return, batch, batch_idx)
 
                 # only increase global step if optimizer stepped
                 self.global_step += 1
@@ -360,7 +367,7 @@ class PPOTrainer:
             # add output values to progress bar
             self._format_iterable(iterable, self._current_train_return['loss'] ,"train")
             self.post_backward_callback(model)
-        self.fabric.call("on_train_epoch_end")
+        self.fabric.call("on_train_epoch_end",self,model)
         self.post_epoch_callback(model=model,ref_model=ref_model)
 
 
@@ -391,34 +398,34 @@ class PPOTrainer:
             )
             return
 
-        self.fabric.call("on_validation_model_eval")  # calls `model.eval()`
+        self.fabric.call("on_validation_model_eval",self,model)  # calls `model.eval()`
 
         torch.set_grad_enabled(False)
 
-        self.fabric.call("on_validation_epoch_start")
+        self.fabric.call("on_validation_epoch_start",self,model)
 
         iterable = self.progbar_wrapper(val_loader, total=min(len(val_loader), limit_batches), desc="Validation")
 
         for batch_idx, batch in enumerate(iterable):
             # end epoch if stopping training completely or max batches for this epoch reached
             if self.should_stop or batch_idx >= limit_batches:
-                self.fabric.call("on_validation_epoch_end")
+                self.fabric.call("on_validation_epoch_end",self,model)
                 return
 
-            self.fabric.call("on_validation_batch_start", batch, batch_idx)
+            self.fabric.call("on_validation_batch_start",self,model, batch, batch_idx)
 
             out = model.validation_step(batch, batch_idx)
             # avoid gradients in stored/accumulated values -> prevents potential OOM
             out = apply_to_collection(out, torch.Tensor, lambda x: x.detach())
 
-            self.fabric.call("on_validation_batch_end", out, batch, batch_idx)
+            self.fabric.call("on_validation_batch_end",self,model, out, batch, batch_idx)
             self._current_val_return = out
 
             self._format_iterable(iterable, self._current_val_return, "val")
 
-        self.fabric.call("on_validation_epoch_end")
+        self.fabric.call("on_validation_epoch_end",self,model)
 
-        self.fabric.call("on_validation_model_train")
+        self.fabric.call("on_validation_model_train",self,model)
         torch.set_grad_enabled(True)
 
     def training_step(self, model: L.LightningModule, batch: Any, batch_idx: int) -> torch.Tensor:
@@ -436,11 +443,11 @@ class PPOTrainer:
         loss = outputs if isinstance(outputs, torch.Tensor) else outputs["loss"]
         forward_time += time()
 
-        self.fabric.call("on_before_backward", loss)
+        self.fabric.call("on_before_backward",self,model, loss)
         backward_time -= time()
         self.fabric.backward(loss)
         backward_time += time()
-        self.fabric.call("on_after_backward")
+        self.fabric.call("on_after_backward",self,model)
 
         # avoid gradients in stored/accumulated values -> prevents potential OOM
         self._current_train_return = apply_to_collection(outputs, dtype=torch.Tensor, function=lambda x: x.detach())
@@ -535,18 +542,18 @@ class PPOTrainer:
         if remainder:
             raise RuntimeError(f"Unused Checkpoint Values: {remainder}")
 
-    def save(self, state: Optional[Mapping]) -> None:
+    def save_checkpoint(self, filepath,weights_only) -> None:
         """Saves a checkpoint to the ``checkpoint_dir``
 
         Args:
             state: A mapping containing model, optimizer and lr scheduler.
         """
-        if state is None:
-            state = {}
-
+        state = self._state
         state.update(global_step=self.global_step, current_epoch=self.current_epoch)
+        if weights_only:
+            state = {"model": state['model']}
 
-        self.fabric.save(os.path.join(self.checkpoint_dir, f"epoch-{self.current_epoch:04d}.ckpt"), state)
+        self.fabric.save(filepath, state)
 
     @staticmethod
     def get_latest_checkpoint(checkpoint_dir: str) -> Optional[str]:
@@ -750,7 +757,6 @@ class PPOTrainer:
             # Generate samples from the language model (similar to using HuggingFace `generate` method)
             samples = self.generate(model , batch["input_ids"], batch["attention_mask"], **kwargs)
             stats["rollout/time/generate"] = time() - rollout_generate_time
-
             prompt_tensors = batch['input_ids']
             device = samples.device
 
