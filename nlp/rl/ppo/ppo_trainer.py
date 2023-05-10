@@ -140,9 +140,7 @@ class PPOTrainer:
 
         self.checkpoint_dir = checkpoint_dir
         self.checkpoint_frequency = checkpoint_frequency
-
         self.mb_count = 0
-
         self.fabric.launch()
 
 
@@ -177,9 +175,6 @@ class PPOTrainer:
             ckpt_path: Path to previous checkpoints to resume training from.
                 If specified, will always look for the latest checkpoint within the given directory.
         """
-
-
-
         self.config = model.config
         self.tokenizer = tokenizer
         self.reward_fn = reward_fn
@@ -192,9 +187,7 @@ class PPOTrainer:
         self.ref_mean = self.ppo_config.ref_mean
         self.ref_std = self.ppo_config.ref_std
 
-
         self.store = PPORolloutStore(self.tokenizer.pad_token_id, self.tokenizer.padding_side)
-
         self.mb_count = 0
 
         if self.ppo_config.minibatch_size:
@@ -205,7 +198,6 @@ class PPOTrainer:
 
 
         # self.fabric.barrier()
-        
         # Setup the KL controller
         # This helps prevent large divergences in the controller (policy)
         if self.ppo_config.target is not None:
@@ -263,7 +255,7 @@ class PPOTrainer:
             if self.max_epochs is not None and self.current_epoch >= self.max_epochs:
                 self.should_stop = True
 
-            # self.save(state)
+            self.save(state)
 
         # reset for next fit call
         self.should_stop = False
@@ -321,36 +313,29 @@ class PPOTrainer:
                 return
 
             self.fabric.call("on_train_batch_start", mbs, batch_idx)
-
             # For each update per batch
             for _ in range(self.ppo_config.ppo_epochs):
                 # Note that whereas standard policy gradient methods perform one
                 # gradient update per batch, PPO for example commonly performs
                 # multiple gradient updates on the same batch of data.
                 # https://arxiv.org/pdf/1707.06347.pdf
-
                 stats_accum = []
                 loss_accum = []
-
                 for mb in batch:
                     self.mb_count += 1
                     should_sync = self.mb_count % self.accumulate_grad_batches == 0
                     with self.fabric.no_backward_sync(model,enabled=not should_sync):
-
                         outputs = self.training_step(model=model, batch = mb, batch_idx = batch_idx)
                         loss, stats = outputs['loss'], outputs['stats']
                     loss_accum.append(loss)
                     stats_accum.append(stats)
 
-
                 stats = {key: sum([stats[key] for stats in stats_accum]) / num_mb for key in stats_accum[0]}
-
                 metrics = {
                     "loss": torch.mean(torch.stack(loss_accum)),
                 }
                 metrics.update(stats)
                 self.fabric.logger.log_metrics(metrics,step=self.global_step)
-
                 # TODO(Dahoas): Best way to combine stats between mbs?
                 # How does accelerate do it?
                 # currently only supports a single optimizer
@@ -373,10 +358,9 @@ class PPOTrainer:
                     break
 
             # add output values to progress bar
-            self._format_iterable(iterable,{"loss": self._current_train_return['loss'],},"train")
+            self._format_iterable(iterable, self._current_train_return['loss'] ,"train")
             self.post_backward_callback(model)
         self.fabric.call("on_train_epoch_end")
-
         self.post_epoch_callback(model=model,ref_model=ref_model)
 
 
@@ -460,8 +444,10 @@ class PPOTrainer:
 
         # avoid gradients in stored/accumulated values -> prevents potential OOM
         self._current_train_return = apply_to_collection(outputs, dtype=torch.Tensor, function=lambda x: x.detach())
-        self._current_train_return['time/forward'] = forward_time
-        self._current_train_return['time/backward'] = backward_time
+
+        stats = self._current_train_return['stats']
+        stats['time/forward'] = forward_time
+        stats['time/backward'] = backward_time
         return self._current_train_return
 
     def step_scheduler(

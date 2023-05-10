@@ -5,7 +5,6 @@ from typing import Tuple, Optional
 import torch
 from torch import nn
 from transformers.utils import ModelOutput
-
 from .configuration import PPOConfig
 from .utils import logprobs_of_labels, get_tensor_stats, flatten_dict, whiten, PPORLBatch
 from transformers import PretrainedConfig
@@ -22,8 +21,7 @@ class CausalLMOutputWithValue(ModelOutput):
 
 class PPOLLMAbstract:
     def forward_llm_value_and_logits(self,input_ids,**kwargs):
-        outputs = self.forward_logits_values(input_ids=input_ids,
-                                             **kwargs)
+        outputs = self.forward_logits_values(input_ids=input_ids,**kwargs)
         logits = outputs.logits
         values_pred = outputs.value
         return (logits,values_pred)
@@ -47,8 +45,7 @@ class PPOModelLoss(nn.Module, PPOLLMAbstract, PPOSEQ2SEQAbstract):
         """Forward pass & loss
           Args:
               batch: Previous batch of episodes
-          """
-
+        """
         query_tensors = batch.query_tensors.to(device)
         response_tensors = batch.response_tensors.to(device)
         old_logprobs = batch.logprobs.to(device)
@@ -57,7 +54,6 @@ class PPOModelLoss(nn.Module, PPOLLMAbstract, PPOSEQ2SEQAbstract):
         response_length = old_rewards.shape[1]
 
         advantages, returns = self.get_advantages_and_returns(old_values, old_rewards, response_length)
-
         if self.ppo_config.model_arch_type == "seq2seq":
             input_ids = query_tensors
             decoder_input_ids = response_tensors
@@ -214,7 +210,4 @@ class PPOModelLoss(nn.Module, PPOLLMAbstract, PPOSEQ2SEQAbstract):
             ratio=(ratio * mask).sum() / n,
             padding_percentage=n / mask.numel(),
         )
-
         return loss, flatten_dict(stats)
-
-
