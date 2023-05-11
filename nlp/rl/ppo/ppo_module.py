@@ -40,7 +40,15 @@ class PPOSEQ2SEQAbstract:
         values_pred = outputs.value
         return (logits, values_pred)
 
-class PPOModelLoss(nn.Module, PPOLLMAbstract, PPOSEQ2SEQAbstract):
+class PPOPrefixLMAbstract:
+    def forward_prefix_value_and_logits(self,input_ids,**kwargs):
+        outputs = self.forward_logits_values(input_ids=input_ids, **kwargs)
+        logits = outputs.logits
+        values_pred = outputs.value
+        return (logits, values_pred)
+
+
+class PPOModelLoss(nn.Module, PPOLLMAbstract, PPOSEQ2SEQAbstract,PPOPrefixLMAbstract):
     def forward_ppo_loss(self,batch: PPORLBatch, device):
         """Forward pass & loss
           Args:
@@ -81,6 +89,8 @@ class PPOModelLoss(nn.Module, PPOLLMAbstract, PPOSEQ2SEQAbstract):
                 values_pred[:, start:end],
                 mask[:, start:end],
             )
+        elif self.ppo_config.model_arch_type == "prefixlm":
+            ...
         else:
             tokens = torch.cat((query_tensors, response_tensors), dim=1)
             attention_mask = tokens.not_equal(self.config.pad_token_id).long().to(tokens.device)

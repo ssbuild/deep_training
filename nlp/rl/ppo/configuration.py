@@ -138,6 +138,9 @@ class PPOConfig(PPOConfigMixin):
             top_p=1.0,
             do_sample=True,
         )
+        assert self.model_arch_type is not None,ValueError('ppo args model_arch_type can not be None')
+        self.model_arch_type = self.model_arch_type.lower()
+
 
 
 @dataclass
