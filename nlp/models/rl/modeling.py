@@ -29,7 +29,7 @@ class AutoModelForCausalLMWithValueHead(TransformerForCausalLM):
         if not return_dict:
             inputs.update({"return_dict": True})
         inputs["output_hidden_states"] = True
-        outputs = self.model(*args, **inputs, output_hidden_states=True)
+        outputs = self.model(*args, **inputs)
         value = self.score(outputs.hidden_states[-1]).squeeze(-1)
         if not return_dict:
             outputs = (outputs.logits,) + outputs[1:] + (value,)
