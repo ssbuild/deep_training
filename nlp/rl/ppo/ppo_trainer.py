@@ -2,6 +2,7 @@
 # @Time    : 2023/5/3 14:19
 # @Author  : tk
 # @FileName: ppo_trainner
+import typing
 
 from .utils import logging, infinite_dataloader
 import os
@@ -239,7 +240,7 @@ class PPOTrainer:
                     self.should_stop = True
 
         ref_model = ref_model.to(model.device)
-        self.prompt_train_loader: Iterable = infinite_dataloader(train_loader)
+        self.prompt_train_loader: typing.Iterator = infinite_dataloader(train_loader)
         self.make_experience(model,ref_model)
         while not self.should_stop:
 
@@ -708,6 +709,8 @@ class PPOTrainer:
 
             if self.ppo_config.model_arch_type == "seq2seq":
                 sample = str_prompt + self.tokenizer.sep_token + str_output
+            elif self.ppo_config.model_arch_type == "prefixlm":
+                sample = str_prompt + self.tokenizer.gmask_token + self.tokenizer.bos_token + str_output
             else:
                 sample = str_prompt + str_output
 
@@ -746,7 +749,7 @@ class PPOTrainer:
         clock = Clock()
         ppo_rl_elements = []
         accumulated_stats = []
-        prompt_iterator : Iterable = self.prompt_train_loader
+        prompt_iterator : typing.Iterator = self.prompt_train_loader
         while len(ppo_rl_elements) < num_rollouts:
             stats = {}
             # Get next batch in prompt dataset
@@ -754,8 +757,12 @@ class PPOTrainer:
 
             rollout_generate_time = time()
 
+            if self.ppo_config.model_arch_type == "prefixlm":
+                attention_mask = None
+            else:
+                attention_mask = batch.get('attention_mask', None)
             # Generate samples from the language model (similar to using HuggingFace `generate` method)
-            samples = self.generate(model , batch["input_ids"], batch["attention_mask"], **kwargs)
+            samples = self.generate(model , batch["input_ids"], attention_mask , **kwargs)
             stats["rollout/time/generate"] = time() - rollout_generate_time
             prompt_tensors = batch['input_ids']
             device = samples.device
@@ -868,7 +875,10 @@ class PPOTrainer:
                         ).logits
             else:
                 all_tokens = torch.cat((prompt_tensors.to(device), sample_outputs), dim=1)
-                attention_mask = all_tokens.not_equal(self.tokenizer.pad_token_id).long().to(device)
+                if self.ppo_config.model_arch_type == "causal":
+                    attention_mask = all_tokens.not_equal(self.tokenizer.pad_token_id).long().to(device)
+                else:
+                    attention_mask = None
                 with torch.no_grad():
                     logits, *_, values = model.forward_logits_values(
                         input_ids=all_tokens,
@@ -881,6 +891,8 @@ class PPOTrainer:
                         return_dict=True,
                     ).logits
                     ref_logits = ref_logits.to(device)
+                if attention_mask is None:
+                    attention_mask = all_tokens.not_equal(self.tokenizer.pad_token_id).long().to(device)
 
             if self.ppo_config.model_arch_type == "seq2seq":
                 logprobs = logprobs_of_labels(logits[:, :-1, :], sample_outputs[:, 1:])
@@ -897,6 +909,7 @@ class PPOTrainer:
                 start = 0
             else:
                 start = prompt_tensors.shape[1] - 1
+
 
             log_ratio = (logprobs - ref_logprobs) * attention_mask[:, :-1]
             kl = log_ratio.exp() - 1 - log_ratio

@@ -10,6 +10,7 @@ from torch import nn
 from transformers.utils import ModelOutput
 from .utils import CausalLMOutputWithValue, Seq2SeqLMOutputWithValue, hf_get_decoder_blocks, hf_get_decoder_final_norm, \
     hf_get_lm_head, hf_get_hidden_size, hf_get_num_hidden_layers, CausalPrefixLMOutputWithValue
+from ..chatglm import ChatGLMForConditionalGeneration, TransformerChatGlmLMHeadModel
 from ..transformer import TransformerForCausalLM,TransformerForSeq2SeqLM
 
 class AutoModelForCausalLMWithValueHead(TransformerForCausalLM):
@@ -80,13 +81,37 @@ class AutoModelForCausalPrefixLMWithValueHead(TransformerForCausalLM):
         if not return_dict:
             inputs.update({"return_dict": True})
         inputs["output_hidden_states"] = True
-        outputs = self.model(*args, **inputs, output_hidden_states=True)
+        outputs = self.model(*args, **inputs)
         value = self.score(outputs.hidden_states[-1]).squeeze(-1)
         if not return_dict:
             outputs = (outputs.logits,) + outputs[1:] + (value,)
             return outputs
         return CausalPrefixLMOutputWithValue(**outputs, value=value)
 
+
+class ChatglmModelForCausalPrefixLMWithValueHead(TransformerChatGlmLMHeadModel):
+    def __init__(self, *args, **kwargs):
+        super(ChatglmModelForCausalPrefixLMWithValueHead, self).__init__(*args, **kwargs)
+        # base_model_prefix = self.base_model_prefix[:-1] if self.base_model_prefix.endswith(
+        #     '_') else self.base_model_prefix
+        # self.transformer_bone = getattr(self.model, base_model_prefix, None)
+        # assert self.transformer_bone is not None
+        self.score = nn.Linear(self.config.hidden_size, self.config.num_labels)
+
+    def generate(self, *args, **kwargs) -> Union[ModelOutput, torch.LongTensor]:
+        return self.model.generate(*args, **kwargs)
+
+    def forward(self, *args, **inputs):
+        return_dict = inputs.get('return_dict', False)
+        if not return_dict:
+            inputs.update({"return_dict": True})
+        inputs["output_hidden_states"] = True
+        outputs = self.model(*args, **inputs)
+        value = self.score(outputs.hidden_states[-1].permute(1,0,2)).squeeze(-1)
+        if not return_dict:
+            outputs = (outputs.logits,) + outputs[1:] + (value,)
+            return outputs
+        return CausalPrefixLMOutputWithValue(**outputs, value=value)
 
 # class AutoModelForCausalLMWithHydraValueHead(AutoModelForCausalLMWithValueHead):
 #     def __init__(self, *args, num_layers_unfrozen=-1, **kwargs):

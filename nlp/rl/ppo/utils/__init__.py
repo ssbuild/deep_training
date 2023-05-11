@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/4/23 14:15
+import typing
 from itertools import repeat
 from .logging import get_logger
 import time
@@ -394,7 +395,7 @@ def pad_across_processes(tensor,world_size, dim=0, pad_index=0, pad_first=False)
 
 
 
-def infinite_dataloader(dataloader: Iterable) -> Iterable:
+def infinite_dataloader(dataloader: Iterable) -> typing.Iterator:
     """
     Returns a cyclic infinite dataloader from a finite dataloader
     """

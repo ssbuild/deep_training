@@ -108,6 +108,7 @@ class PPOConfigMixin(PushToHubMixin):
 
 @dataclass
 class PPOConfig(PPOConfigMixin):
+    model_arch_type: Optional[str] = "causal"  # one of causal, prefixlm,seq2seq
     ppo_epochs: int = field(default=4, metadata={"help": "Number of updates per batch"})
     num_rollouts: int = field(default=128, metadata={"help": "Number  of experiences to observe before learning"})
     chunk_size: int = field(default=128, metadata={"help": "Number of chunk_size of generate"})
@@ -127,7 +128,7 @@ class PPOConfig(PPOConfigMixin):
     gen_kwargs: dict = field(default=None,
                              metadata={"help": "Additioanl kwargs for the generation"})
     gen_experience_kwargs: Optional[dict] = field(default=None, metadata={"help": "Additioanl kwargs for the gen_experience_kwargs"})
-    model_arch_type: Optional[str] = "causal"  # one of causal, prefixlm,seq2seq
+
     minibatch_size: Optional[int] =  field(default=None, metadata={"help": "minibatch_size"})
 
     def __post_init__(self):

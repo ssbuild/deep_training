@@ -90,7 +90,19 @@ class PPOModelLoss(nn.Module, PPOLLMAbstract, PPOSEQ2SEQAbstract,PPOPrefixLMAbst
                 mask[:, start:end],
             )
         elif self.ppo_config.model_arch_type == "prefixlm":
-            ...
+            tokens = torch.cat((query_tensors, response_tensors), dim=1)
+            attention_mask = tokens.not_equal(self.config.pad_token_id).long().to(tokens.device)
+            logits, values_pred = self.forward_prefix_value_and_logits(input_ids=tokens,return_dict=True)
+            values_pred = values_pred[:, :-1]
+            logprobs = logprobs_of_labels(logits[:, :-1, :], tokens[:, 1:])
+
+            start = query_tensors.shape[1] - 1
+            end = start + response_length
+            logprobs, values_pred, mask = (
+                logprobs[:, start:end],
+                values_pred[:, start:end],
+                attention_mask[:, start:end],
+            )
         else:
             tokens = torch.cat((query_tensors, response_tensors), dim=1)
             attention_mask = tokens.not_equal(self.config.pad_token_id).long().to(tokens.device)
