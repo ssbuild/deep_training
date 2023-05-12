@@ -17,6 +17,7 @@
 
 ## update
 - <strong>2023-05-10</strong>
+  - 0.1.5 release
   - fix lora v2 modules_to_save 自定义额外训练模块
   - 增加reward ppo  llm 完整训练 [rlhf_llm](https://github.com/ssbuild/rlhf_llm)
   - 增加reward ppo  chatglm 完整训练 [rlhf_chatglm](https://github.com/ssbuild/rlhf_chatglm)
