@@ -13,14 +13,15 @@
 
 
 ## state
- - ppo 完善中...
+ - Reinforcement learning...
 
 ## update
 - <strong>2023-05-10</strong>
   - fix lora v2 modules_to_save 自定义额外训练模块
-  - 0.1.5 rc0  增加reward ppo  llm 完整训练 [llm_rlhf_training](https://github.com/ssbuild/llm_rlhf_training)
-  - 0.1.5 rc1  增加reward ppo  chatglm 完整训练 [chatglm_rlhf_training](https://github.com/ssbuild/chatglm_rlhf_training)
-  - 0.1.5 rc2  增加reward ppo  chatglm 完整训练 [chatyuan_rlhf_training](https://github.com/ssbuild/chatyuan_rlhf_training)
+  - 增加reward ppo  llm 完整训练 [rlhf_llm](https://github.com/ssbuild/rlhf_llm)
+  - 增加reward ppo  chatglm 完整训练 [rlhf_chatglm](https://github.com/ssbuild/rlhf_chatglm)
+  - 增加reward ppo  chatyuan 完整训练 [rlhf_chatyuan](https://github.com/ssbuild/rlhf_chatyuan)
+  
 - <strong>2023-05-02</strong>
   - 0.1.4 增加 prompt_tuning,p_tuning,prefix_tuning,adaption_prompt
 
