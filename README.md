@@ -1,6 +1,7 @@
 
 ## transformer is all you need.
 - Upstream and downstream training framework based on lightning and transformers
+- pure code
 
 ## install and download
 - pip install -U deep_training
