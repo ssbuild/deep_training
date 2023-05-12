@@ -259,8 +259,6 @@ class PPOTrainer:
             if self.max_epochs is not None and self.current_epoch >= self.max_epochs:
                 self.should_stop = True
 
-            self.save(state)
-
         # reset for next fit call
         self.should_stop = False
 
