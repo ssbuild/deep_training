@@ -51,7 +51,7 @@ class AutoModelForSeq2SeqLMWithValueHead(TransformerForSeq2SeqLM):
         if not return_dict:
             inputs.update({"return_dict": True})
         inputs["output_hidden_states"] = True
-        outputs = self.forward(**inputs)
+        outputs = self.model(**inputs)
         last_hidden_state = outputs.decoder_hidden_states[-1]
         value = self.score(last_hidden_state).squeeze(-1)
         if not return_dict:

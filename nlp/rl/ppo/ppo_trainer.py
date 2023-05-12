@@ -705,8 +705,13 @@ class PPOTrainer:
             str_prompts.append(str_prompt)
             str_outputs.append(str_output)
 
+
+
             if self.ppo_config.model_arch_type == "seq2seq":
-                sample = str_prompt + self.tokenizer.sep_token + str_output
+                if hasattr(self.tokenizer,'_sep_token') and self.tokenizer._sep_token is not None:
+                    sample = str_prompt + self.tokenizer.sep_token + str_output
+                else:
+                    sample = str_prompt + str_output
             elif self.ppo_config.model_arch_type == "prefixlm":
                 sample = str_prompt + self.tokenizer.gmask_token + self.tokenizer.bos_token + str_output
             else:
@@ -766,7 +771,6 @@ class PPOTrainer:
             device = samples.device
 
             prompt_sizes = torch.tensor([prompt_tensors.shape[1]] * len(prompt_tensors), device=device)
-
             padded_samples = pad_across_processes(
                 samples,world_size, dim=1, pad_index=self.tokenizer.eos_token_id, pad_first=False
             )
@@ -785,13 +789,11 @@ class PPOTrainer:
                 )
 
                 rollout_score_time = time()
-
                 all_scores = self.reward_fn(
                     samples=all_str_samples, prompts=all_str_prompts, outputs=all_str_outputs, **metadata
                 )
                 all_scores = all_scores.clone().detach().float().to(device)
                 stats["rollout/time/score"] = time() - rollout_score_time
-
                 all_scores = list(all_scores.reshape(world_size, -1).unbind())
             else:
                 all_scores = None
@@ -847,11 +849,12 @@ class PPOTrainer:
                 decoder_attention_mask = sample_outputs.not_equal(self.tokenizer.pad_token_id)
                 decoder_attention_mask[:, 0] = 1
                 with torch.no_grad():
-                    outputs = model(
+                    outputs = model.forward_logits_values(
                         input_ids=prompt_tensors,
                         attention_mask=attention_mask,
                         decoder_input_ids=sample_outputs,
                         decoder_attention_mask=decoder_attention_mask,
+                        return_dict=True,
                     )
                     logits = outputs.logits
                     values = outputs.value
@@ -864,7 +867,7 @@ class PPOTrainer:
                             return_dict=True,
                         ).logits
                     else:
-                        ref_logits = ref_model(
+                        ref_logits = ref_model.forward_logits_values(
                             input_ids=prompt_tensors,
                             attention_mask=attention_mask,
                             decoder_input_ids=sample_outputs,
