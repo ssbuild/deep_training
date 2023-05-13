@@ -12,8 +12,13 @@
   - [poetry_training](https://github.com/ssbuild/poetry_training)
 
 
-## state
- - Reinforcement learning...
+## dev plan
+ - Reinforcement learning
+   - ppo ok 
+   - ilql on the way
+   - rrhf on the way
+ - 支持 transformer Traner on the way
+ - 解耦 ligntning on the way
 
 ## update
 - <strong>2023-05-10</strong>
