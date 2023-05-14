@@ -2,25 +2,33 @@
 # @Time    : 2023/5/3 14:19
 # @Author  : tk
 # @FileName: ppo_trainner
+import typing
 import os
+import numpy as np
+from tqdm import tqdm
+from time import time
 from collections.abc import Mapping
 from functools import partial
-from typing import Any, cast, Iterable, List, Literal, Optional, Tuple, Union
-
+from typing import Any, cast, Iterable, List, Literal, Optional, Tuple, Union, Callable
 import torch
-# from lightning_utilities import apply_to_collection, is_overridden
+from torch.utils.data import DataLoader
 from lightning_utilities import is_overridden
 from lightning_utilities.core.apply_func import apply_to_collection
-from tqdm import tqdm
-
 import lightning as L
 from lightning.fabric.accelerators import Accelerator
 from lightning.fabric.loggers import Logger
 from lightning.fabric.strategies import Strategy
-from lightning.fabric.wrappers import _unwrap_objects
+from lightning.fabric.wrappers import _unwrap_objects, _FabricModule
+
+from .ilql_dataset import ILQLSeq2SeqRolloutStorage, ILQLRolloutStorage, tokenize_dialogue
+from ..rl_base.rl_dataset import MiniBatchIterator, logger
+from ..utils import  RunningMoments, pad_across_processes, _gpu_gather, infinite_dataloader, logging
+from .configuration import ILQLConfig
+
+from lightning.fabric.loggers.tensorboard import TensorBoardLogger
 
 
-class PPOTrainer:
+class ILQLTrainer:
     def __init__(
         self,
         accelerator: Union[str, Accelerator] = "auto",
@@ -32,7 +40,7 @@ class PPOTrainer:
         loggers: Optional[Union[Logger, List[Logger]]] = None,
         max_epochs: Optional[int] = 1000,
         max_steps: Optional[int] = None,
-        grad_accum_steps: int = 1,
+        accumulate_grad_batches: int = 1,
         limit_train_batches: Union[int, float] = float("inf"),
         limit_val_batches: Union[int, float] = float("inf"),
         validation_frequency: int = 1,
@@ -76,7 +84,7 @@ class PPOTrainer:
 
             max_epochs: The maximum number of epochs to train
             max_steps: The maximum number of (optimizer) steps to train
-            grad_accum_steps: How many batches to process before each optimizer step
+            accumulate_grad_batches: How many batches to process before each optimizer step
             limit_train_batches: Limits the number of train batches per epoch
                 If greater than number of batches in the dataloader, this has no effect.
             limit_val_batches: Limits the number of validation batches per epoch.
@@ -91,6 +99,10 @@ class PPOTrainer:
             callbacks written for the lightning trainer (especially making assumptions on the trainer), won't work!
         """
 
+        if loggers is None:
+            loggers = TensorBoardLogger(root_dir=checkpoint_dir,name='lightning_logs')
+
+        self.loggers = loggers
         self.fabric = L.Fabric(
             accelerator=accelerator,
             strategy=strategy,
@@ -101,7 +113,7 @@ class PPOTrainer:
             loggers=loggers,
         )
         self.global_step = 0
-        self.grad_accum_steps: int = grad_accum_steps
+        self.accumulate_grad_batches: int = accumulate_grad_batches
         self.current_epoch = 0
 
         self.max_epochs = max_epochs
@@ -124,26 +136,79 @@ class PPOTrainer:
 
         self.checkpoint_dir = checkpoint_dir
         self.checkpoint_frequency = checkpoint_frequency
+        self.mb_count = 0
+
+        self._callback_metrics: dict = {}
+        self._state : Optional[dict] = {}
+        self.fabric.launch()
+
+
+    @property
+    def world_size(self):
+        return self.fabric.world_size
+
+    @property
+    def global_rank(self):
+        return self.fabric.global_rank
+
+    @property
+    def local_rank(self):
+        return self.fabric.local_rank
+
+
+    #model,tokenizer,reward_fn,ilql_config,stop_sequences
+    def prepare_fit(self, model: L.LightningModule,
+        tokenizer,
+        reward_fn: Callable,
+        ilql_config,
+        stop_sequences=None,**kwargs):
+
+        self.config = model.config
+        self.tokenizer = tokenizer
+        self.reward_fn = reward_fn
+        self.ilql_config: ILQLConfig = ilql_config
+
+        self.stop_sequences = stop_sequences
+
+        # Setup stats tracker
+        self.running_moments = RunningMoments()
+        self.ref_mean = self.ilql_config.ref_mean
+        self.ref_std = self.ilql_config.ref_std
+
+        self.mb_count = 0
+
+        if self.ilql_config.minibatch_size:
+            assert model.training_args.train_batch_size % self.ilql_config.minibatch_size == 0, "Minibatch size must divide batch size"
+            self.mb_size = self.ilql_config.minibatch_size
+        else:
+            self.mb_size = model.training_args.train_batch_size
+
+
 
     def fit(
         self,
         model: L.LightningModule,
-        train_loader: torch.utils.data.DataLoader,
-        val_loader: torch.utils.data.DataLoader,
+        train_loader: DataLoader,
+        tokenizer,
+        reward_fn: Callable,
+        ilql_config,
+        val_loader: Optional[DataLoader] = None,
+        stop_sequences=None,
         ckpt_path: Optional[str] = None,
     ):
         """The main entrypoint of the trainer, triggering the actual training.
 
         Args:
             model: the LightningModule to train.
-                Can have the same hooks as :attr:`callbacks` (see :meth:`MyCustomTrainer.__init__`).
+                Can have the same hooks as :attr:`callbacks` (see :meth:`PPPTrainer.__init__`).
             train_loader: the training dataloader. Has to be an iterable returning batches.
             val_loader: the validation dataloader. Has to be an iterable returning batches.
                 If not specified, no validation will run.
             ckpt_path: Path to previous checkpoints to resume training from.
                 If specified, will always look for the latest checkpoint within the given directory.
         """
-        self.fabric.launch()
+
+        self.prepare_fit(model,tokenizer,reward_fn,ilql_config,stop_sequences)
 
         # setup dataloaders
         train_loader = self.fabric.setup_dataloaders(train_loader, use_distributed_sampler=self.use_distributed_sampler)
@@ -162,7 +227,7 @@ class PPOTrainer:
 
         # assemble state (current epoch and global step will be added in save)
         state = {"model": model, "optim": optimizer, "scheduler": scheduler_cfg}
-
+        self._state.update(state)
         # load last checkpoint if available
         if ckpt_path is not None and os.path.isdir(ckpt_path):
             latest_checkpoint_path = self.get_latest_checkpoint(self.checkpoint_dir)
@@ -173,9 +238,15 @@ class PPOTrainer:
                 if self.max_epochs is not None and self.current_epoch >= self.max_epochs:
                     self.should_stop = True
 
+
+
+        self.make_experience(model)
+        train_dataloader = self.store.create_loader(self.config.train.batch_size)
+
         while not self.should_stop:
+
             self.train_loop(
-                model, optimizer, train_loader, limit_batches=self.limit_train_batches, scheduler_cfg=scheduler_cfg
+                model, optimizer,train_dataloader, limit_batches=self.limit_train_batches, scheduler_cfg=scheduler_cfg
             )
 
             if self.should_validate:
@@ -189,16 +260,25 @@ class PPOTrainer:
             if self.max_epochs is not None and self.current_epoch >= self.max_epochs:
                 self.should_stop = True
 
-            self.save(state)
-
         # reset for next fit call
         self.should_stop = False
 
+    def post_backward_callback(self,model):
+        if self.iter_count % self.config.method.steps_for_target_q_sync == 0:
+            self.accelerator.unwrap_model(self.model).sync_target_q_heads()
+
+    def post_epoch_callback(self,*agrs,**kwargs):
+        ...
+
+    @property
+    def callback_metrics(self):
+        return self._callback_metrics
+
     def train_loop(
         self,
-        model: L.LightningModule,
+        model: _FabricModule,
         optimizer: torch.optim.Optimizer,
-        train_loader: torch.utils.data.DataLoader,
+        train_loader: DataLoader,
         limit_batches: Union[int, float] = float("inf"),
         scheduler_cfg: Optional[Mapping[str, Union[L.fabric.utilities.types.LRScheduler, bool, str, int]]] = None,
     ):
@@ -213,60 +293,79 @@ class PPOTrainer:
             scheduler_cfg: The learning rate scheduler configuration.
                 Have a look at :meth:`lightning.pytorch.LightninModule.configure_optimizers` for supported values.
         """
-        self.fabric.call("on_train_epoch_start")
-        iterable = self.progbar_wrapper(
-            train_loader, total=min(len(train_loader), limit_batches), desc=f"Epoch {self.current_epoch}"
-        )
 
+
+        num_mb = model.training_args.train_batch_size // self.mb_size
+        train_loader = self.fabric.setup_dataloaders(self.store.create_loader(model.training_args.train_batch_size,shuffle=True),
+                                                     use_distributed_sampler=False)
+        mbs = MiniBatchIterator(train_loader, self.mb_size, num_mb)
+        self.fabric.call("on_train_epoch_start",self,model)
+        iterable = self.progbar_wrapper(
+            mbs, total=len(train_loader) * num_mb , desc=f"Epoch {self.current_epoch}"
+        )
         for batch_idx, batch in enumerate(iterable):
             # end epoch if stopping training completely or max batches for this epoch reached
             if self.should_stop or batch_idx >= limit_batches:
-                self.fabric.call("on_train_epoch_end")
+                self.fabric.call("on_train_epoch_end",self,model)
                 return
 
+            self.fabric.call("on_train_batch_start",self,model,mbs, batch_idx)
+            # For each update per batch
+            for _ in range(self.ilql_config.ppo_epochs):
+                # Note that whereas standard policy gradient methods perform one
+                # gradient update per batch, PPO for example commonly performs
+                # multiple gradient updates on the same batch of data.
+                # https://arxiv.org/pdf/1707.06347.pdf
+                stats_accum = []
+                loss_accum = []
+                for mb in batch:
+                    self.mb_count += 1
+                    should_sync = self.mb_count % self.accumulate_grad_batches == 0
+                    with self.fabric.no_backward_sync(model,enabled=not should_sync):
+                        outputs = self.training_step(model=model, batch = mb, batch_idx = batch_idx)
+                        loss, stats = outputs['loss'], outputs['stats']
+                    loss_accum.append(loss)
+                    stats_accum.append(stats)
 
-
-            self.fabric.call("on_train_batch_start", batch, batch_idx)
-
-            # check if optimizer should step in gradient accumulation
-            should_optim_step = self.global_step % self.grad_accum_steps == 0
-            if should_optim_step:
+                stats = {key: sum([stats[key] for stats in stats_accum]) / num_mb for key in stats_accum[0]}
+                metrics = {
+                    "loss": torch.mean(torch.stack(loss_accum)),
+                }
+                metrics.update(stats)
+                self.fabric.logger.log_metrics(metrics,step=self.global_step)
+                self._callback_metrics.update(metrics)
+                # TODO(Dahoas): Best way to combine stats between mbs?
+                # How does accelerate do it?
                 # currently only supports a single optimizer
-                self.fabric.call("on_before_optimizer_step", optimizer, 0)
+                self.fabric.call("on_before_optimizer_step" ,self,model,optimizer, 0)
 
                 # optimizer step runs train step internally through closure
-                optimizer.step(partial(self.training_step, model=model, batch=batch, batch_idx=batch_idx))
-                self.fabric.call("on_before_zero_grad", optimizer)
-
+                optimizer.step()
+                self.fabric.call("on_before_zero_grad",self,model, optimizer)
                 optimizer.zero_grad()
 
-            else:
-                # gradient accumulation -> no optimizer step
-                self.training_step(model=model, batch=batch, batch_idx=batch_idx)
-
-            self.fabric.call("on_train_batch_end", self._current_train_return, batch, batch_idx)
-
-            # this guard ensures, we only step the scheduler once per global step
-            if should_optim_step:
                 self.step_scheduler(model, scheduler_cfg, level="step", current_value=self.global_step)
+                self.fabric.call("on_train_batch_end",self,model, self._current_train_return, batch, batch_idx)
+
+                # only increase global step if optimizer stepped
+                self.global_step += 1
+
+                # stopping criterion on step level
+                if  self.max_steps is not None and self.max_steps >= 0 and self.global_step >= self.max_steps:
+                    self.should_stop = True
+                    break
 
             # add output values to progress bar
-            self._format_iterable(iterable, self._current_train_return, "train")
+            self._format_iterable(iterable, self._current_train_return['loss'] ,"train")
+            self.post_backward_callback(model)
+        self.fabric.call("on_train_epoch_end",self,model)
+        self.post_epoch_callback(model=model)
 
-            # only increase global step if optimizer stepped
-            self.global_step += int(should_optim_step)
-
-            # stopping criterion on step level
-            if self.max_steps is not None and self.global_step >= self.max_steps:
-                self.should_stop = True
-                break
-
-        self.fabric.call("on_train_epoch_end")
 
     def val_loop(
         self,
-        model: L.LightningModule,
-        val_loader: Optional[torch.utils.data.DataLoader],
+        model: _FabricModule,
+        val_loader: Optional[DataLoader],
         limit_batches: Union[int, float] = float("inf"),
     ):
         """The validation loop ruunning a single validation epoch.
@@ -289,34 +388,34 @@ class PPOTrainer:
             )
             return
 
-        self.fabric.call("on_validation_model_eval")  # calls `model.eval()`
+        self.fabric.call("on_validation_model_eval",self,model)  # calls `model.eval()`
 
         torch.set_grad_enabled(False)
 
-        self.fabric.call("on_validation_epoch_start")
+        self.fabric.call("on_validation_epoch_start",self,model)
 
         iterable = self.progbar_wrapper(val_loader, total=min(len(val_loader), limit_batches), desc="Validation")
 
         for batch_idx, batch in enumerate(iterable):
             # end epoch if stopping training completely or max batches for this epoch reached
             if self.should_stop or batch_idx >= limit_batches:
-                self.fabric.call("on_validation_epoch_end")
+                self.fabric.call("on_validation_epoch_end",self,model)
                 return
 
-            self.fabric.call("on_validation_batch_start", batch, batch_idx)
+            self.fabric.call("on_validation_batch_start",self,model, batch, batch_idx)
 
             out = model.validation_step(batch, batch_idx)
             # avoid gradients in stored/accumulated values -> prevents potential OOM
             out = apply_to_collection(out, torch.Tensor, lambda x: x.detach())
 
-            self.fabric.call("on_validation_batch_end", out, batch, batch_idx)
+            self.fabric.call("on_validation_batch_end",self,model, out, batch, batch_idx)
             self._current_val_return = out
 
             self._format_iterable(iterable, self._current_val_return, "val")
 
-        self.fabric.call("on_validation_epoch_end")
+        self.fabric.call("on_validation_epoch_end",self,model)
 
-        self.fabric.call("on_validation_model_train")
+        self.fabric.call("on_validation_model_train",self,model)
         torch.set_grad_enabled(True)
 
     def training_step(self, model: L.LightningModule, batch: Any, batch_idx: int) -> torch.Tensor:
@@ -328,18 +427,25 @@ class PPOTrainer:
             batch: the batch to run the forward on
             batch_idx: index of the current batch w.r.t the current epoch
         """
-        outputs: Union[torch.Tensor, Mapping[str, Any]] = model.training_step(batch, batch_idx=batch_idx)
-
+        forward_time,backward_time = 0,0
+        forward_time -= time()
+        outputs: Union[torch.Tensor, Mapping[str, Any]] = model.training_step(batch,device=self.fabric.device)
         loss = outputs if isinstance(outputs, torch.Tensor) else outputs["loss"]
+        forward_time += time()
 
-        self.fabric.call("on_before_backward", loss)
+        self.fabric.call("on_before_backward",self,model, loss)
+        backward_time -= time()
         self.fabric.backward(loss)
-        self.fabric.call("on_after_backward")
+        backward_time += time()
+        self.fabric.call("on_after_backward",self,model)
 
         # avoid gradients in stored/accumulated values -> prevents potential OOM
         self._current_train_return = apply_to_collection(outputs, dtype=torch.Tensor, function=lambda x: x.detach())
 
-        return loss
+        stats = self._current_train_return['stats']
+        stats['time/forward'] = forward_time
+        stats['time/backward'] = backward_time
+        return self._current_train_return
 
     def step_scheduler(
         self,
@@ -426,18 +532,18 @@ class PPOTrainer:
         if remainder:
             raise RuntimeError(f"Unused Checkpoint Values: {remainder}")
 
-    def save(self, state: Optional[Mapping]) -> None:
+    def save_checkpoint(self, filepath,weights_only) -> None:
         """Saves a checkpoint to the ``checkpoint_dir``
 
         Args:
             state: A mapping containing model, optimizer and lr scheduler.
         """
-        if state is None:
-            state = {}
-
+        state = self._state
         state.update(global_step=self.global_step, current_epoch=self.current_epoch)
+        if weights_only:
+            state = {"model": state['model']}
 
-        self.fabric.save(os.path.join(self.checkpoint_dir, f"epoch-{self.current_epoch:04d}.ckpt"), state)
+        self.fabric.save(filepath, state)
 
     @staticmethod
     def get_latest_checkpoint(checkpoint_dir: str) -> Optional[str]:
@@ -528,7 +634,233 @@ class PPOTrainer:
                 postfix_str += f" {prefix}_loss: {float_candidates:.3f}"
             elif isinstance(candidates, Mapping):
                 for k, v in float_candidates.items():
-                    postfix_str += f" {prefix}_{k}: {v:.3f}"
-
+                    if isinstance(v, Mapping):
+                        for sub_k,sub_v in v.items():
+                            postfix_str += f" {prefix}_{k}/{sub_k}: {sub_v:.3f}"
+                    else:
+                        postfix_str += f" {prefix}_{k}: {v:.3f}"
             if postfix_str:
                 prog_bar.set_postfix_str(postfix_str)
+
+    @torch.no_grad()
+    def generate(self, model, input_ids, attention_mask=None, **kwargs):
+        """Wraps hf's `generate` adding some specific method's defaults"""
+        input_ids = input_ids.to(model.device)
+        if attention_mask is not None:
+            attention_mask = attention_mask.to(model.device)
+        kwargs = dict(self.ilql_config.gen_kwargs, **kwargs)
+        return model.generate(
+            input_ids=input_ids, attention_mask=attention_mask, **kwargs
+        )
+
+    #
+    def decode(
+            self,
+            prompts: List[torch.LongTensor],
+            samples: List[torch.LongTensor],
+            prompt_sizes: torch.LongTensor = None,
+            append_eos_token: bool = False,
+    ) -> Tuple[List[str], List[str], List[str]]:
+        """
+        Decode tensor generations into lists of strings (`samples`: List[str], `prompts`: List[str], `outputs`: List[str])
+        """
+        if prompt_sizes is None:
+            # Assuming prompts were left-padded
+            prompt_sizes = [prompts.shape[1]] * len(prompts)
+
+        str_samples, str_prompts, str_outputs = [], [], []
+        for prompt, sample, prompt_size in zip(prompts, samples, prompt_sizes):
+            if self.ilql_config.model_arch_type == "seq2seq":
+                output_start_ix = 0
+            else:
+                output_start_ix = prompt_size
+
+            str_prompt = self.tokenizer.decode(prompt[:prompt_size], skip_special_tokens=True)
+            str_output = self.tokenizer.decode(sample[output_start_ix:], skip_special_tokens=True)
+            # Trim outputs up to `self.stop_sequences` if any are present
+            trimmed = False
+            if self.stop_sequences:
+                for stop in self.stop_sequences:
+                    stop_ix = str_output.find(stop)
+                    if stop_ix >= 0:
+                        str_output = str_output[:stop_ix].rstrip()
+                        trimmed = True
+
+            # Recover the last <eos> if it was present in the original sample
+            # or add one if it was trimmed with `self.stop_sequences`.
+            # Only in cases when a generation ended due to `max_new_tokens` exhaustion,
+            # <eos> token would not be present in the original sample
+            if append_eos_token and (trimmed or sample[-1] == self.tokenizer.eos_token_id):
+                str_output += self.tokenizer.eos_token
+
+            str_prompts.append(str_prompt)
+            str_outputs.append(str_output)
+
+
+
+            if self.ilql_config.model_arch_type == "seq2seq":
+                if hasattr(self.tokenizer,'_sep_token') and self.tokenizer._sep_token is not None:
+                    sample = str_prompt + self.tokenizer.sep_token + str_output
+                else:
+                    sample = str_prompt + str_output
+            elif self.ilql_config.model_arch_type == "prefixlm":
+                sample = str_prompt + self.tokenizer.gmask_token + self.tokenizer.bos_token + str_output
+            else:
+                sample = str_prompt + str_output
+
+            str_samples.append(sample)
+
+        return str_samples, str_prompts, str_outputs
+
+
+
+
+
+    def make_experience(self, samples, rewards, max_length=2048):
+        """
+        Tokenizes samples and shapes rewards into proper tensors and then inserts the resulting dataset into the trainer
+        """
+
+        if self.config.model.model_arch_type == "seq2seq":
+            self.store = self.make_experience_seq2seq(samples, rewards, max_length)
+        else:
+            self.store = self.make_causal_experience(samples, rewards, self.tokenizer, max_length=max_length, verbose=True)
+
+    def make_experience_seq2seq(self, samples, rewards, max_length=2048):
+        """
+        Tokenizes samples and shapes rewards into proper tensors and then inserts the resulting dataset into the trainer
+        """
+        logger.info("Collecting rollouts")
+        if self.tokenizer:
+            samples = [tokenize_dialogue(s, self.tokenizer, max_length) for s in samples]
+
+        all_input_ids = []
+        all_output_ids = []
+        all_actions_ixs = []
+        all_states_ixs = []
+        all_dones = []
+        for sample in samples:
+            all_input_ids.append(torch.tensor(sample[0].tokens))
+            all_output_ids.append(torch.tensor(sample[1].tokens))
+            actions_ixs = []
+            length = 0
+            for phrase in sample:
+                if phrase.is_output:
+                    length = len(phrase.tokens)
+                    actions_ixs.append(torch.arange(0, length - 1))
+            states_ixs = torch.hstack((*actions_ixs, torch.tensor(length - 1)))
+            all_dones.append(torch.tensor([1] * (len(states_ixs) - 1) + [0], dtype=int))
+            all_actions_ixs.append(torch.hstack(actions_ixs))
+            all_states_ixs.append(states_ixs)
+
+        # if self.tokenizer and os.environ.get("RANK", "0") == "0":
+        #     logger.info("Logging sample example")
+        #     prompt = self.tokenizer.decode(all_input_ids[0])
+        #     response = self.tokenizer.decode(all_output_ids[0])
+        #     columns = ["Prompt", "Response", "Reward"]
+        #     table = Table(*columns, title="Sample Example", show_lines=True)
+        #     table.add_row(prompt, response, str(rewards[0]))
+        #     Console().print(table)
+
+        sample_lengths = np.array(list(map(len, all_input_ids))) + np.array(list(map(len, all_output_ids)))
+        output_lengths = np.array(list(map(len, all_output_ids)))
+        prompt_lengths = sample_lengths - output_lengths
+        returns = torch.tensor(rewards, dtype=float)
+
+        # if os.environ.get("RANK", "0") == "0":
+        #     logger.info("Logging experience string statistics")
+        #     columns = ["Prompt Length", "Output Length", "Sample Length"]
+        #     table = Table(*columns, title="Experience String Stats (mean ∈ \[min, max])", show_lines=True)
+        #     row = []
+        #     for lengths in [prompt_lengths, output_lengths, sample_lengths]:
+        #         row.append(f"{lengths.mean():.2f} ∈ [{min(lengths)}, {max(lengths)}]")
+        #     table.add_row(*row)
+        #     Console().print(table)
+
+        returns = (returns - returns.mean()) / (returns.std() + torch.finfo(returns.dtype).eps)
+        rewards = [torch.zeros(len(x)) for x in all_actions_ixs]
+        for rs, ret in zip(rewards, returns):
+            rs[-1] = ret
+
+        attention_mask = [torch.ones(len(x), dtype=int) for x in all_input_ids]
+        return ILQLSeq2SeqRolloutStorage(
+            all_input_ids,
+            attention_mask,
+            all_output_ids,
+            rewards,
+            all_states_ixs,
+            all_actions_ixs,
+            all_dones,
+        )
+
+    def make_causal_experience(self,samples, rewards, tokenizer=None, max_length=2048, verbose=True):  # noqa: C901
+        """
+        Tokenizes samples and shapes rewards into proper tensors and then inserts the resulting dataset into the trainer
+        """
+
+        if verbose:
+            logger.info("Collecting rollouts")
+        if tokenizer is not None:
+            samples = [tokenize_dialogue(s, tokenizer, max_length) for s in samples]
+
+        all_input_ids = []
+        all_actions_ixs = []
+        all_states_ixs = []
+        all_dones = []
+        for sample in samples:
+            length = 0
+            all_input_ids.append(torch.tensor(sum((s.tokens for s in sample), ())))
+            actions_ixs = []
+            for dm in sample:
+                if dm.is_output:
+                    actions_ixs.append(torch.arange(length - 1, length + len(dm.tokens) - 1))
+
+                length += len(dm.tokens)
+
+            states_ixs = torch.hstack((*actions_ixs, torch.tensor(length - 1)))
+            all_dones.append(torch.tensor([1] * (len(states_ixs) - 1) + [0], dtype=int))
+            all_actions_ixs.append(torch.hstack(actions_ixs))
+            all_states_ixs.append(states_ixs)
+
+        # if tokenizer is not None and os.environ.get("RANK", "0") == "0" and verbose:
+        #     logger.info("Logging sample example")
+        #     prompt = tokenizer.decode(all_input_ids[0][: all_states_ixs[0][1]])
+        #     response = tokenizer.decode(all_input_ids[0][all_states_ixs[0][1]:])
+        #     columns = ["Prompt", "Response", "Reward"]
+        #     table = Table(*columns, title="Sample Example", show_lines=True)
+        #     table.add_row(prompt, response, str(rewards[0]))
+        #     Console().print(table)
+
+        sample_lengths = np.array(list(map(len, all_input_ids)))
+        output_lengths = np.array(list(map(len, all_actions_ixs)))
+        prompt_lengths = sample_lengths - output_lengths
+        returns = torch.tensor(rewards, dtype=float)
+
+        # if os.environ.get("RANK", "0") == "0" and verbose:
+        #     logger.info("Logging experience string statistics")
+        #     columns = ["Prompt Length", "Output Length", "Sample Length"]
+        #     table = Table(*columns, title="Experience String Stats (mean ∈ \[min, max])", show_lines=True)
+        #     row = []
+        #     for lengths in [prompt_lengths, output_lengths, sample_lengths]:
+        #         row.append(f"{lengths.mean():.2f} ∈ [{min(lengths)}, {max(lengths)}]")
+        #     table.add_row(*row)
+        #     Console().print(table)
+
+        returns = returns - returns.mean()
+        std_returns = returns.std()
+        if not torch.isnan(std_returns):
+            returns = returns / (std_returns + torch.finfo(returns.dtype).eps)
+        rewards = [torch.zeros(len(x)) for x in all_actions_ixs]
+        for rs, ret in zip(rewards, returns):
+            rs[-1] = ret
+
+        attention_mask = [torch.ones(len(x), dtype=int) for x in all_input_ids]
+
+        return ILQLRolloutStorage(
+            all_input_ids,
+            attention_mask,
+            rewards,
+            all_states_ixs,
+            all_actions_ixs,
+            all_dones,
+        )

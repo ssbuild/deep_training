@@ -3,8 +3,6 @@
 # @Author  : tk
 # @FileName: ppo_trainner
 import typing
-
-from .utils import logging, infinite_dataloader
 import os
 import numpy as np
 from tqdm import tqdm
@@ -23,10 +21,10 @@ from lightning.fabric.accelerators import Accelerator
 from lightning.fabric.loggers import Logger
 from lightning.fabric.strategies import Strategy
 from lightning.fabric.wrappers import _unwrap_objects, _FabricModule
-
-from .ppo_dataset import PPORolloutStore, MiniBatchIterator
-from .utils import logprobs_of_labels, Clock, gather_dict, RunningMoments, pad_across_processes, _gpu_gather, \
-    PPORLElement,logger
+from .ppo_dataset import PPORolloutStore
+from .data_define import PPORLElement,logger,logging
+from ..rl_base.rl_dataset import MiniBatchIterator
+from ..utils import logprobs_of_labels, Clock, gather_dict, RunningMoments, pad_across_processes, _gpu_gather, infinite_dataloader
 from ...layers.ppo import AdaptiveKLController, FixedKLController
 from .configuration import PPOConfig
 
@@ -156,6 +154,49 @@ class PPOTrainer:
     def global_rank(self):
         return self.fabric.global_rank
 
+    @property
+    def local_rank(self):
+        return self.fabric.local_rank
+
+
+
+    #model,tokenizer,reward_fn,ppo_config,stop_sequences
+    def prepare_fit(self, model: L.LightningModule,
+        tokenizer,
+        reward_fn: Callable,
+        ppo_config,
+        stop_sequences=None,**kwargs):
+
+        self.config = model.config
+        self.tokenizer = tokenizer
+        self.reward_fn = reward_fn
+        self.ppo_config: PPOConfig = ppo_config
+
+        self.stop_sequences = stop_sequences
+
+        # Setup stats tracker
+        self.running_moments = RunningMoments()
+        self.ref_mean = self.ppo_config.ref_mean
+        self.ref_std = self.ppo_config.ref_std
+
+        self.store = PPORolloutStore(self.tokenizer.pad_token_id, self.tokenizer.padding_side)
+        self.mb_count = 0
+
+        if self.ppo_config.minibatch_size:
+            assert model.training_args.train_batch_size % self.ppo_config.minibatch_size == 0, "Minibatch size must divide batch size"
+            self.mb_size = self.ppo_config.minibatch_size
+        else:
+            self.mb_size = model.training_args.train_batch_size
+
+        # self.fabric.barrier()
+        # Setup the KL controller
+        # This helps prevent large divergences in the controller (policy)
+        if self.ppo_config.target is not None:
+            self.kl_ctl = AdaptiveKLController(self.ppo_config.init_kl_coef, self.ppo_config.target,
+                                               self.ppo_config.horizon)
+        else:
+            self.kl_ctl = FixedKLController(self.ppo_config.init_kl_coef)
+
     def fit(
         self,
         model: L.LightningModule,
@@ -179,36 +220,8 @@ class PPOTrainer:
             ckpt_path: Path to previous checkpoints to resume training from.
                 If specified, will always look for the latest checkpoint within the given directory.
         """
-        self.config = model.config
-        self.tokenizer = tokenizer
-        self.reward_fn = reward_fn
-        self.ppo_config: PPOConfig = ppo_config
 
-        self.stop_sequences = stop_sequences
-
-        # Setup stats tracker
-        self.running_moments = RunningMoments()
-        self.ref_mean = self.ppo_config.ref_mean
-        self.ref_std = self.ppo_config.ref_std
-
-        self.store = PPORolloutStore(self.tokenizer.pad_token_id, self.tokenizer.padding_side)
-        self.mb_count = 0
-
-        if self.ppo_config.minibatch_size:
-            assert model.training_args.train_batch_size % self.ppo_config.minibatch_size == 0, "Minibatch size must divide batch size"
-            self.mb_size = self.ppo_config.minibatch_size
-        else:
-            self.mb_size = model.training_args.train_batch_size
-
-
-        # self.fabric.barrier()
-        # Setup the KL controller
-        # This helps prevent large divergences in the controller (policy)
-        if self.ppo_config.target is not None:
-            self.kl_ctl = AdaptiveKLController(self.ppo_config.init_kl_coef, self.ppo_config.target, self.ppo_config.horizon)
-        else:
-            self.kl_ctl = FixedKLController(self.ppo_config.init_kl_coef)
-
+        self.prepare_fit(model,tokenizer,reward_fn,ppo_config,stop_sequences)
 
         # setup dataloaders
         train_loader = self.fabric.setup_dataloaders(train_loader, use_distributed_sampler=self.use_distributed_sampler)
