@@ -11,8 +11,14 @@ import numpy as np
 from typing import Optional, Tuple
 
 from .utils import make_head, hf_get_hidden_size, hf_get_lm_head
+from ..chatglm import TransformerChatGlmLMHeadModel
 from ..transformer import TransformerForCausalLM, TransformerForSeq2SeqLM
 
+__all__ = [
+    'ILQLHeads',
+    'AutoModelForCausalLMWithILQLHeads',
+    'AutoModelForSeq2SeqLMWithILQLHeads',
+]
 
 def topk_mask(xs: torch.FloatTensor, k: int):
     if k > xs.shape[-1]:
@@ -65,13 +71,12 @@ class ILQLHeads(nn.Module):
         actions_ixs: Optional[torch.Tensor] = None, #  Optional[TensorType["batch", "actions_seq_len"]] = None,
         **kwargs,
     ) -> Tuple[
-        # Tuple[TensorType["batch", "actions_seq_len", "hidden"]],
-        # Tuple[TensorType["batch", "actions_seq_len", "hidden"]],
-        # TensorType["batch", "states_seq_len", "hidden"],
         Tuple[torch.Tensor],
         Tuple[torch.Tensor],
         torch.Tensor
-    ]:
+    ]:  # Tuple[TensorType["batch", "actions_seq_len", "hidden"]],
+        # Tuple[TensorType["batch", "actions_seq_len", "hidden"]],
+        # TensorType["batch", "states_seq_len", "hidden"]
         if states_ixs is not None:
             states_hs = batched_index_select(hs, states_ixs, 1)
             actions_hs = batched_index_select(hs, actions_ixs, 1)
@@ -98,8 +103,6 @@ class ILQLHeads(nn.Module):
 
     def sync_target_q_heads(self):
         self._sync_target_q_heads(self.alpha)
-
-
 
 class AutoModelForCausalLMWithILQLHeads(TransformerForCausalLM):
     """An `AutoModel` class wrapper for `transformers` causal models wtih a language
@@ -139,7 +142,7 @@ class AutoModelForCausalLMWithILQLHeads(TransformerForCausalLM):
         qs, target_qs, vs = self.ilql_heads(outputs.hidden_states[-1], states_ixs=states_ixs, actions_ixs=actions_ixs)
         return outputs.logits, qs, target_qs, vs, outputs.past_key_values
 
-    def generate(
+    def generate_ilql(
         self,
         input_ids,
         attention_mask=None,
@@ -240,6 +243,9 @@ class AutoModelForCausalLMWithILQLHeads(TransformerForCausalLM):
     #     gc.collect()
 
 
+
+
+
 class AutoModelForSeq2SeqLMWithILQLHeads(TransformerForSeq2SeqLM):
     """This is a wrapper around huggingface AutoModelForSeq2Seq with two additional scalar heads"""
 
@@ -303,7 +309,7 @@ class AutoModelForSeq2SeqLMWithILQLHeads(TransformerForSeq2SeqLM):
         encoder_outputs = (out.encoder_last_hidden_state, out.encoder_hidden_states, out.encoder_attentions)
         return logits, qs, target_qs, vs, out.past_key_values, encoder_outputs
 
-    def generate(
+    def generate_ilql(
         self,
         input_ids,
         attention_mask=None,
@@ -366,3 +372,145 @@ class AutoModelForSeq2SeqLMWithILQLHeads(TransformerForSeq2SeqLM):
                 break
 
         return samples
+
+
+
+
+
+class ChatglmModelForCausalLMWithILQLHeads(TransformerChatGlmLMHeadModel):
+    """An `AutoModel` class wrapper for `transformers` causal models wtih a language
+    modeling head and ILQL heads.
+
+    References:
+        [1] Snell et al., "Offline RL for Natural Language Generation with Implicit Language Q Learning",
+            https://arxiv.org/abs/2206.11871, 2022
+    """
+
+
+    def __init__(
+        self, *args,
+        two_qs: bool = True,
+        alpha: float = 0.99,
+        **kwargs,
+    ):
+        super(ChatglmModelForCausalLMWithILQLHeads,self).__init__(*args, **kwargs)
+        config = self.model.config
+        hidden_size = hf_get_hidden_size(config)
+        vocab_size = self.config.vocab_size
+        dtype = next(hf_get_lm_head(self.model).parameters()).dtype
+        self.two_qs = two_qs
+        self.alpha = alpha
+        self.ilql_heads = ILQLHeads(hidden_size, vocab_size, self.two_qs, self.alpha, dtype=dtype,head_size=config.num_labels)
+
+    def forward(
+        self,
+        *args,
+        actions_ixs=None,
+        states_ixs=None,
+        **kwargs
+    ):
+        kwargs["output_hidden_states"] = True
+        kwargs["return_dict"] = True
+        outputs = self.model(*args,**kwargs)
+        qs, target_qs, vs = self.ilql_heads(outputs.hidden_states[-1], states_ixs=states_ixs, actions_ixs=actions_ixs)
+        return outputs.logits, qs, target_qs, vs, outputs.past_key_values
+
+    def generate_ilql(
+        self,
+        input_ids,
+        attention_mask=None,
+        position_ids=None,
+        past_key_values=None,
+        beta=1,
+        max_new_tokens=32,
+        max_length=1024,
+        temperature=1,
+        top_k=20,
+        logit_mask=None,
+        pad_token_id=None,
+        eos_token_id=None,
+    ):
+        """
+        Generates samples akin to hf's `.generate` but with custom logp prepossessing:
+        changing token probabilities as to how advantageous they would be
+        according to value functions estimations.
+        """
+        pad_token_id = pad_token_id if pad_token_id is not None else self.model.config.pad_token_id
+        eos_token_id = eos_token_id if eos_token_id is not None else self.model.config.eos_token_id
+
+        if attention_mask is None:
+            attention_mask = input_ids.not_equal(pad_token_id)
+
+        if position_ids is None:
+            position_ids = attention_mask.cumsum(-1) - 1
+            position_ids.masked_fill_(attention_mask.eq(0), 0)
+
+        samples = input_ids.clone()
+        max_new_tokens = min(max_new_tokens, max_length - input_ids.shape[1])
+
+        finished = torch.zeros(input_ids.shape[0], 1, dtype=torch.long, device=input_ids.device)
+        for _ in range(max_new_tokens):
+            out = self.forward(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+            )
+
+            logits, _, target_qs, vs, past_key_values = out
+            if self.two_qs:
+                qs = torch.minimum(target_qs[0][:, -1, :], target_qs[1][:, -1, :])
+            else:
+                qs = target_qs[:, -1, :]
+
+            logits = logits[:, -1, :]
+            vs = vs[:, -1, :]
+
+            if logit_mask is not None:
+                mask = logit_mask[input_ids[:, -1].squeeze().to(logit_mask.device)]
+                logits[torch.where(mask)] = -np.inf
+
+            adv = qs - vs
+            pi_beta = F.log_softmax(logits, -1)
+            pi_top_k = topk_mask(pi_beta + beta * adv, top_k)
+            pi = F.softmax(pi_top_k / temperature, -1)
+
+            input_ids = torch.multinomial(pi, num_samples=1)
+            input_ids = (1 - finished) * input_ids + finished * eos_token_id
+            finished = (input_ids == eos_token_id).long()
+
+            samples = torch.hstack((samples, input_ids))
+            attention_mask = torch.hstack((attention_mask, (input_ids != eos_token_id).long()))
+            position_ids = (position_ids[:, -1] + 1).view(-1, 1)
+
+            if os.environ.get("ACCELERATE_DEEPSPEED_ZERO_STAGE", "0") != "3" and torch.all(finished):
+                break
+
+        return samples
+
+    def sync_target_q_heads(self):
+        self.ilql_heads.sync_target_q_heads()
+
+    # def state_dict(self, *args, **kwargs):
+    #     """
+    #     Returns the state dictionary of the model. We add the state dictionary of the ilql heads
+    #     to the state dictionary of the wrapped model by prepending the key with `ilql_heads.`.
+    #     """
+    #     base_model_state_dict = self.model.state_dict(*args, **kwargs)
+    #     ilql_heads_state_dict = self.ilql_heads.state_dict(*args, **kwargs)
+    #     for k, v in ilql_heads_state_dict.items():
+    #         base_model_state_dict[f"ilql_heads.{k}"] = v
+    #     return base_model_state_dict
+
+    # def post_init(self, state_dict):
+    #     """
+    #     We add the state dictionary of the ilql heads to the state dictionary of the wrapped model
+    #     by preprending the key with `ilql_heads.`. This function removes the `ilql_heads.` prefix from the
+    #     keys of the value head state dictionary.
+    #     """
+    #     for k in list(state_dict.keys()):
+    #         if "ilql_heads." in k:
+    #             state_dict[k.replace("ilql_heads.", "")] = state_dict.pop(k)
+    #     self.ilql_heads.load_state_dict(state_dict, strict=False)
+    #     del state_dict
+    #     gc.collect()

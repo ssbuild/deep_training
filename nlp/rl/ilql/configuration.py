@@ -16,11 +16,10 @@ class ILQLConfig(RLConfigMixin):
     awac_scale: float = field(default=1, metadata={"help": ""})
     alpha: float = field(default=0.001, metadata={"help": ""})
     beta: float = field(default=0, metadata={"help": ""})
-    steps_for_target_q_sync: float = field(default=5., metadata={"help": ""})
+    steps_for_target_q_sync: int = field(default=5, metadata={"help": ""})
     two_qs: bool = field(default=True, metadata={"help": ""})
     gen_kwargs: dict = field(default=None,
-                             metadata={"help": "Additioanl kwargs for the generation"}) 
-
+                             metadata={"help": "Additioanl kwargs for the generation"})
 
 
     def __post_init__(self):
@@ -28,6 +27,7 @@ class ILQLConfig(RLConfigMixin):
             self.gen_kwargs = dict(max_new_tokens=56, top_k=20, beta=1, temperature=1.0)
         assert self.model_arch_type is not None,ValueError('ppo args model_arch_type can not be None')
         self.model_arch_type = self.model_arch_type.lower()
+        assert self.steps_for_target_q_sync >= 1
 
 
 

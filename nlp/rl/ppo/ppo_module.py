@@ -9,7 +9,7 @@ from transformers.utils import ModelOutput
 from .configuration import PPOConfig
 from ..utils import logprobs_of_labels, get_tensor_stats, flatten_dict, whiten
 from .data_define import PPORLBatch
-
+from ...models.rl.utils import CausalLMOutputWithValue
 
 
 

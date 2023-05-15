@@ -1,7 +1,7 @@
 # coding=utf8
 # @Time    : 2023/5/3 14:19
 # @Author  : tk
-# @FileName: ppo_trainner
+# @FileName: ilql_trainner
 import typing
 import os
 import numpy as np
@@ -22,7 +22,7 @@ from lightning.fabric.wrappers import _unwrap_objects, _FabricModule
 
 from .ilql_dataset import ILQLSeq2SeqRolloutStorage, ILQLRolloutStorage, tokenize_dialogue
 from ..rl_base.rl_dataset import MiniBatchIterator, logger
-from ..utils import  RunningMoments, pad_across_processes, _gpu_gather, infinite_dataloader, logging
+from ..utils import RunningMoments
 from .configuration import ILQLConfig
 
 from lightning.fabric.loggers.tensorboard import TensorBoardLogger
@@ -136,7 +136,8 @@ class ILQLTrainer:
 
         self.checkpoint_dir = checkpoint_dir
         self.checkpoint_frequency = checkpoint_frequency
-        self.mb_count = 0
+        self.train_mb_count = 0
+        self.train_item_count = 0
 
         self._callback_metrics: dict = {}
         self._state : Optional[dict] = {}
@@ -156,33 +157,24 @@ class ILQLTrainer:
         return self.fabric.local_rank
 
 
-    #model,tokenizer,reward_fn,ilql_config,stop_sequences
+    #model,tokenizer,reward_fn,ilql_config
     def prepare_fit(self, model: L.LightningModule,
         tokenizer,
         reward_fn: Callable,
         ilql_config,
-        stop_sequences=None,**kwargs):
+        **kwargs):
 
         self.config = model.config
         self.tokenizer = tokenizer
         self.reward_fn = reward_fn
         self.ilql_config: ILQLConfig = ilql_config
 
-        self.stop_sequences = stop_sequences
-
         # Setup stats tracker
         self.running_moments = RunningMoments()
-        self.ref_mean = self.ilql_config.ref_mean
-        self.ref_std = self.ilql_config.ref_std
 
-        self.mb_count = 0
 
-        if self.ilql_config.minibatch_size:
-            assert model.training_args.train_batch_size % self.ilql_config.minibatch_size == 0, "Minibatch size must divide batch size"
-            self.mb_size = self.ilql_config.minibatch_size
-        else:
-            self.mb_size = model.training_args.train_batch_size
-
+        self.train_mb_count = 0
+        self.train_item_count = 0
 
 
     def fit(
@@ -193,7 +185,6 @@ class ILQLTrainer:
         reward_fn: Callable,
         ilql_config,
         val_loader: Optional[DataLoader] = None,
-        stop_sequences=None,
         ckpt_path: Optional[str] = None,
     ):
         """The main entrypoint of the trainer, triggering the actual training.
@@ -208,7 +199,7 @@ class ILQLTrainer:
                 If specified, will always look for the latest checkpoint within the given directory.
         """
 
-        self.prepare_fit(model,tokenizer,reward_fn,ilql_config,stop_sequences)
+        self.prepare_fit(model,tokenizer,reward_fn,ilql_config)
 
         # setup dataloaders
         train_loader = self.fabric.setup_dataloaders(train_loader, use_distributed_sampler=self.use_distributed_sampler)
@@ -240,13 +231,10 @@ class ILQLTrainer:
 
 
 
-        self.make_experience(model)
-        train_dataloader = self.store.create_loader(self.config.train.batch_size)
-
         while not self.should_stop:
 
             self.train_loop(
-                model, optimizer,train_dataloader, limit_batches=self.limit_train_batches, scheduler_cfg=scheduler_cfg
+                model, optimizer,train_loader, limit_batches=self.limit_train_batches, scheduler_cfg=scheduler_cfg
             )
 
             if self.should_validate:
@@ -264,8 +252,8 @@ class ILQLTrainer:
         self.should_stop = False
 
     def post_backward_callback(self,model):
-        if self.iter_count % self.config.method.steps_for_target_q_sync == 0:
-            self.accelerator.unwrap_model(self.model).sync_target_q_heads()
+        if self.train_item_count % self.ilql_config.steps_for_target_q_sync == 0:
+            model.sync_target_q_heads()
 
     def post_epoch_callback(self,*agrs,**kwargs):
         ...
@@ -293,67 +281,61 @@ class ILQLTrainer:
             scheduler_cfg: The learning rate scheduler configuration.
                 Have a look at :meth:`lightning.pytorch.LightninModule.configure_optimizers` for supported values.
         """
-
-
-        num_mb = model.training_args.train_batch_size // self.mb_size
-        train_loader = self.fabric.setup_dataloaders(self.store.create_loader(model.training_args.train_batch_size,shuffle=True),
-                                                     use_distributed_sampler=False)
-        mbs = MiniBatchIterator(train_loader, self.mb_size, num_mb)
         self.fabric.call("on_train_epoch_start",self,model)
         iterable = self.progbar_wrapper(
-            mbs, total=len(train_loader) * num_mb , desc=f"Epoch {self.current_epoch}"
+            train_loader, total=len(train_loader)  , desc=f"Epoch {self.current_epoch}"
         )
         for batch_idx, batch in enumerate(iterable):
             # end epoch if stopping training completely or max batches for this epoch reached
             if self.should_stop or batch_idx >= limit_batches:
                 self.fabric.call("on_train_epoch_end",self,model)
                 return
+            num_mb = batch.size(0)
+            self.fabric.call("on_train_batch_start",self,model,batch, batch_idx)
+            # Note that whereas standard policy gradient methods perform one
+            # gradient update per batch, PPO for example commonly performs
+            # multiple gradient updates on the same batch of data.
+            # https://arxiv.org/pdf/1707.06347.pdf
+            stats_accum = []
+            loss_accum = []
+            for mb in batch:
+                self.train_mb_count += 1
+                should_sync = self.train_mb_count % self.accumulate_grad_batches == 0
+                with self.fabric.no_backward_sync(model,enabled=not should_sync):
+                    outputs = self.training_step(model=model, batch=mb, batch_idx = batch_idx)
+                    loss, stats = outputs['loss'], outputs['stats']
+                loss_accum.append(loss)
+                stats_accum.append(stats)
 
-            self.fabric.call("on_train_batch_start",self,model,mbs, batch_idx)
-            # For each update per batch
-            for _ in range(self.ilql_config.ppo_epochs):
-                # Note that whereas standard policy gradient methods perform one
-                # gradient update per batch, PPO for example commonly performs
-                # multiple gradient updates on the same batch of data.
-                # https://arxiv.org/pdf/1707.06347.pdf
-                stats_accum = []
-                loss_accum = []
-                for mb in batch:
-                    self.mb_count += 1
-                    should_sync = self.mb_count % self.accumulate_grad_batches == 0
-                    with self.fabric.no_backward_sync(model,enabled=not should_sync):
-                        outputs = self.training_step(model=model, batch = mb, batch_idx = batch_idx)
-                        loss, stats = outputs['loss'], outputs['stats']
-                    loss_accum.append(loss)
-                    stats_accum.append(stats)
+            # TODO(Dahoas): Best way to combine stats between mbs?
+            # How does accelerate do it?
+            # currently only supports a single optimizer
+            self.fabric.call("on_before_optimizer_step" ,self,model,optimizer, 0)
 
-                stats = {key: sum([stats[key] for stats in stats_accum]) / num_mb for key in stats_accum[0]}
-                metrics = {
-                    "loss": torch.mean(torch.stack(loss_accum)),
-                }
-                metrics.update(stats)
-                self.fabric.logger.log_metrics(metrics,step=self.global_step)
-                self._callback_metrics.update(metrics)
-                # TODO(Dahoas): Best way to combine stats between mbs?
-                # How does accelerate do it?
-                # currently only supports a single optimizer
-                self.fabric.call("on_before_optimizer_step" ,self,model,optimizer, 0)
+            # optimizer step runs train step internally through closure
+            optimizer.step()
+            self.fabric.call("on_before_zero_grad",self,model, optimizer)
+            optimizer.zero_grad()
 
-                # optimizer step runs train step internally through closure
-                optimizer.step()
-                self.fabric.call("on_before_zero_grad",self,model, optimizer)
-                optimizer.zero_grad()
+            self.step_scheduler(model, scheduler_cfg, level="step", current_value=self.global_step)
 
-                self.step_scheduler(model, scheduler_cfg, level="step", current_value=self.global_step)
-                self.fabric.call("on_train_batch_end",self,model, self._current_train_return, batch, batch_idx)
+            # only increase global step if optimizer stepped
+            self.global_step += 1
 
-                # only increase global step if optimizer stepped
-                self.global_step += 1
+            self.train_item_count += 1
+            stats = {key: sum([stats[key] for stats in stats_accum]) / num_mb for key in stats_accum[0]}
+            metrics = {
+                "loss": torch.mean(torch.stack(loss_accum)),
+            }
+            metrics.update(stats)
+            self.fabric.logger.log_metrics(metrics, step=self.global_step)
+            self._callback_metrics.update(metrics)
 
-                # stopping criterion on step level
-                if  self.max_steps is not None and self.max_steps >= 0 and self.global_step >= self.max_steps:
-                    self.should_stop = True
-                    break
+            self.fabric.call("on_train_batch_end", self, model, self._current_train_return, batch, batch_idx)
+            # stopping criterion on step level
+            if  self.max_steps is not None and self.max_steps >= 0 and self.global_step >= self.max_steps:
+                self.should_stop = True
+                break
 
             # add output values to progress bar
             self._format_iterable(iterable, self._current_train_return['loss'] ,"train")
@@ -441,7 +423,6 @@ class ILQLTrainer:
 
         # avoid gradients in stored/accumulated values -> prevents potential OOM
         self._current_train_return = apply_to_collection(outputs, dtype=torch.Tensor, function=lambda x: x.detach())
-
         stats = self._current_train_return['stats']
         stats['time/forward'] = forward_time
         stats['time/backward'] = backward_time
@@ -642,95 +623,25 @@ class ILQLTrainer:
             if postfix_str:
                 prog_bar.set_postfix_str(postfix_str)
 
-    @torch.no_grad()
-    def generate(self, model, input_ids, attention_mask=None, **kwargs):
-        """Wraps hf's `generate` adding some specific method's defaults"""
-        input_ids = input_ids.to(model.device)
-        if attention_mask is not None:
-            attention_mask = attention_mask.to(model.device)
-        kwargs = dict(self.ilql_config.gen_kwargs, **kwargs)
-        return model.generate(
-            input_ids=input_ids, attention_mask=attention_mask, **kwargs
-        )
-
-    #
-    def decode(
-            self,
-            prompts: List[torch.LongTensor],
-            samples: List[torch.LongTensor],
-            prompt_sizes: torch.LongTensor = None,
-            append_eos_token: bool = False,
-    ) -> Tuple[List[str], List[str], List[str]]:
-        """
-        Decode tensor generations into lists of strings (`samples`: List[str], `prompts`: List[str], `outputs`: List[str])
-        """
-        if prompt_sizes is None:
-            # Assuming prompts were left-padded
-            prompt_sizes = [prompts.shape[1]] * len(prompts)
-
-        str_samples, str_prompts, str_outputs = [], [], []
-        for prompt, sample, prompt_size in zip(prompts, samples, prompt_sizes):
-            if self.ilql_config.model_arch_type == "seq2seq":
-                output_start_ix = 0
-            else:
-                output_start_ix = prompt_size
-
-            str_prompt = self.tokenizer.decode(prompt[:prompt_size], skip_special_tokens=True)
-            str_output = self.tokenizer.decode(sample[output_start_ix:], skip_special_tokens=True)
-            # Trim outputs up to `self.stop_sequences` if any are present
-            trimmed = False
-            if self.stop_sequences:
-                for stop in self.stop_sequences:
-                    stop_ix = str_output.find(stop)
-                    if stop_ix >= 0:
-                        str_output = str_output[:stop_ix].rstrip()
-                        trimmed = True
-
-            # Recover the last <eos> if it was present in the original sample
-            # or add one if it was trimmed with `self.stop_sequences`.
-            # Only in cases when a generation ended due to `max_new_tokens` exhaustion,
-            # <eos> token would not be present in the original sample
-            if append_eos_token and (trimmed or sample[-1] == self.tokenizer.eos_token_id):
-                str_output += self.tokenizer.eos_token
-
-            str_prompts.append(str_prompt)
-            str_outputs.append(str_output)
 
 
 
-            if self.ilql_config.model_arch_type == "seq2seq":
-                if hasattr(self.tokenizer,'_sep_token') and self.tokenizer._sep_token is not None:
-                    sample = str_prompt + self.tokenizer.sep_token + str_output
-                else:
-                    sample = str_prompt + str_output
-            elif self.ilql_config.model_arch_type == "prefixlm":
-                sample = str_prompt + self.tokenizer.gmask_token + self.tokenizer.bos_token + str_output
-            else:
-                sample = str_prompt + str_output
-
-            str_samples.append(sample)
-
-        return str_samples, str_prompts, str_outputs
-
-
-
-
-
-    def make_experience(self, samples, rewards, max_length=2048):
+    def make_experience(self, samples, rewards, max_length=2048, verbose=True):
         """
         Tokenizes samples and shapes rewards into proper tensors and then inserts the resulting dataset into the trainer
         """
+        if verbose:
+            logger.info("Collecting rollouts")
 
-        if self.config.model.model_arch_type == "seq2seq":
+        if self.ilql_config.model_arch_type == "seq2seq":
             self.store = self.make_experience_seq2seq(samples, rewards, max_length)
         else:
-            self.store = self.make_causal_experience(samples, rewards, self.tokenizer, max_length=max_length, verbose=True)
+            self.store = self.make_causal_experience(samples, rewards, self.tokenizer, max_length=max_length)
 
     def make_experience_seq2seq(self, samples, rewards, max_length=2048):
         """
         Tokenizes samples and shapes rewards into proper tensors and then inserts the resulting dataset into the trainer
         """
-        logger.info("Collecting rollouts")
         if self.tokenizer:
             samples = [tokenize_dialogue(s, self.tokenizer, max_length) for s in samples]
 
@@ -749,7 +660,7 @@ class ILQLTrainer:
                     length = len(phrase.tokens)
                     actions_ixs.append(torch.arange(0, length - 1))
             states_ixs = torch.hstack((*actions_ixs, torch.tensor(length - 1)))
-            all_dones.append(torch.tensor([1] * (len(states_ixs) - 1) + [0], dtype=int))
+            all_dones.append(torch.tensor([1] * (len(states_ixs) - 1) + [0], dtype=torch.int32))
             all_actions_ixs.append(torch.hstack(actions_ixs))
             all_states_ixs.append(states_ixs)
 
@@ -765,7 +676,7 @@ class ILQLTrainer:
         sample_lengths = np.array(list(map(len, all_input_ids))) + np.array(list(map(len, all_output_ids)))
         output_lengths = np.array(list(map(len, all_output_ids)))
         prompt_lengths = sample_lengths - output_lengths
-        returns = torch.tensor(rewards, dtype=float)
+        returns = torch.tensor(rewards, dtype=torch.float32)
 
         # if os.environ.get("RANK", "0") == "0":
         #     logger.info("Logging experience string statistics")
@@ -782,7 +693,7 @@ class ILQLTrainer:
         for rs, ret in zip(rewards, returns):
             rs[-1] = ret
 
-        attention_mask = [torch.ones(len(x), dtype=int) for x in all_input_ids]
+        attention_mask = [torch.ones(len(x), dtype=torch.int32) for x in all_input_ids]
         return ILQLSeq2SeqRolloutStorage(
             all_input_ids,
             attention_mask,
@@ -793,13 +704,10 @@ class ILQLTrainer:
             all_dones,
         )
 
-    def make_causal_experience(self,samples, rewards, tokenizer=None, max_length=2048, verbose=True):  # noqa: C901
+    def make_causal_experience(self,samples, rewards, tokenizer=None, max_length=2048):  # noqa: C901
         """
         Tokenizes samples and shapes rewards into proper tensors and then inserts the resulting dataset into the trainer
         """
-
-        if verbose:
-            logger.info("Collecting rollouts")
         if tokenizer is not None:
             samples = [tokenize_dialogue(s, tokenizer, max_length) for s in samples]
 
@@ -818,7 +726,7 @@ class ILQLTrainer:
                 length += len(dm.tokens)
 
             states_ixs = torch.hstack((*actions_ixs, torch.tensor(length - 1)))
-            all_dones.append(torch.tensor([1] * (len(states_ixs) - 1) + [0], dtype=int))
+            all_dones.append(torch.tensor([1] * (len(states_ixs) - 1) + [0], dtype=torch.int32))
             all_actions_ixs.append(torch.hstack(actions_ixs))
             all_states_ixs.append(states_ixs)
 
@@ -834,7 +742,7 @@ class ILQLTrainer:
         sample_lengths = np.array(list(map(len, all_input_ids)))
         output_lengths = np.array(list(map(len, all_actions_ixs)))
         prompt_lengths = sample_lengths - output_lengths
-        returns = torch.tensor(rewards, dtype=float)
+        returns = torch.tensor(rewards, dtype=torch.float32)
 
         # if os.environ.get("RANK", "0") == "0" and verbose:
         #     logger.info("Logging experience string statistics")
@@ -854,7 +762,7 @@ class ILQLTrainer:
         for rs, ret in zip(rewards, returns):
             rs[-1] = ret
 
-        attention_mask = [torch.ones(len(x), dtype=int) for x in all_input_ids]
+        attention_mask = [torch.ones(len(x), dtype=torch.int32) for x in all_input_ids]
 
         return ILQLRolloutStorage(
             all_input_ids,

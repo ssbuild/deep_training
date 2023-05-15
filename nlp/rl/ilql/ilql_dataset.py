@@ -62,7 +62,7 @@ class ILQLRolloutStorage(BaseRolloutStore):
         )
 
 
-def ilql_seq2seq_collate_fn(elems: Iterable[ILQLElement]):
+def ilql_seq2seq_collate_fn(elems: Iterable[ILQLSeq2SeqElement]):
     return ILQLSeq2SeqBatch(
         pad_sequence([x.input_ids for x in elems], batch_first=True, padding_value=0),
         pad_sequence([x.attention_mask for x in elems], batch_first=True, padding_value=0),
@@ -90,7 +90,7 @@ class ILQLSeq2SeqRolloutStorage(BaseRolloutStore):
         self.actions_ixs = actions_ixs
         self.dones = dones
 
-    def __getitem__(self, ix: int) -> ILQLElement:
+    def __getitem__(self, ix: int) -> ILQLSeq2SeqElement:
         return ILQLSeq2SeqElement(
             self.input_ids[ix],
             self.attention_mask[ix],
@@ -104,21 +104,14 @@ class ILQLSeq2SeqRolloutStorage(BaseRolloutStore):
     def __len__(self) -> int:
         return len(self.input_ids)
 
-    def create_loader(self, batch_size: int):
+    def create_loader(self, batch_size: int,shuffle=True):
         return DataLoader(
             self,
             batch_size=batch_size,
-            shuffle=True,
+            shuffle=shuffle,
             collate_fn=ilql_seq2seq_collate_fn,
             drop_last=torch.distributed.is_initialized(),
         )
-
-
-
-
-
-
-
 
 
 

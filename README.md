@@ -18,7 +18,7 @@
    - ilql on the way
    - rrhf on the way
  - 支持 transformer Traner on the way
- - 解耦 ligntning on the way
+ - 解耦 lightning on the way
 
 ## update
 - <strong>2023-05-10</strong>

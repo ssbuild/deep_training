@@ -204,7 +204,7 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
         """
         Returns the virtual prompts to use for Prompt.
         """
-        prompt_config = self.active_peft_config
+        prompt_config = self.active_prompt_config
         prompt_encoder = self.prompt_encoder[self.active_adapter]
         prompt_tokens = self.prompt_tokens[self.active_adapter].unsqueeze(0).expand(batch_size, -1).to(self.device)
         if prompt_config.prompt_type == PromptType.PREFIX_TUNING:
@@ -294,7 +294,7 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
         Returns the base model.
         """
         return self.base_model.model
-        # return self.base_model if isinstance(self.active_peft_config, PromptLearningConfig) else self.base_model.model
+        # return self.base_model if isinstance(self.active_prompt_config, PromptLearningConfig) else self.base_model.model
 
     def add_adapter(self, adapter_name, prompt_config):
         if prompt_config.prompt_type != self.prompt_type:
@@ -362,7 +362,7 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
         _set_adapter(self, adapter_name)
 
     @property
-    def active_peft_config(self):
+    def active_prompt_config(self):
         return self.prompt_config[self.active_adapter]
 
 
@@ -433,7 +433,7 @@ class PromptModelForSequenceClassification(PromptModel):
         **kwargs,
     ):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        prompt_config = self.active_peft_config
+        prompt_config = self.active_prompt_config
         if not isinstance(prompt_config, PromptLearningConfig):
             return self.base_model(
                 input_ids=input_ids,
@@ -606,7 +606,7 @@ class PromptModelForCausalLM(PromptModel):
         return_dict=None,
         **kwargs,
     ):
-        prompt_config = self.active_peft_config
+        prompt_config = self.active_prompt_config
         if not isinstance(prompt_config, PromptLearningConfig):
             return self.base_model(
                 input_ids=input_ids,
@@ -657,7 +657,7 @@ class PromptModelForCausalLM(PromptModel):
             return self.base_model(inputs_embeds=inputs_embeds, **kwargs)
 
     def generate(self, **kwargs):
-        prompt_config = self.active_peft_config
+        prompt_config = self.active_prompt_config
         self.get_transformer_model().prepare_inputs_for_generation = self.prepare_inputs_for_generation
         try:
             if not isinstance(prompt_config, PromptLearningConfig):
@@ -698,7 +698,7 @@ class PromptModelForCausalLM(PromptModel):
             return outputs
 
     def prepare_inputs_for_generation(self, *args, **kwargs):
-        prompt_config = self.active_peft_config
+        prompt_config = self.active_prompt_config
         model_kwargs = self.base_model_prepare_inputs_for_generation(*args, **kwargs)
         if isinstance(prompt_config, PromptLearningConfig):
             if prompt_config.prompt_type == PromptType.PREFIX_TUNING:
@@ -797,7 +797,7 @@ class PromptModelForSeq2SeqLM(PromptModel):
         return_dict=None,
         **kwargs,
     ):
-        prompt_config = self.active_peft_config
+        prompt_config = self.active_prompt_config
         if not isinstance(prompt_config, PromptLearningConfig):
             return self.base_model(
                 input_ids=input_ids,
@@ -875,7 +875,7 @@ class PromptModelForSeq2SeqLM(PromptModel):
                 )
 
     def generate(self, **kwargs):
-        prompt_config = self.active_peft_config
+        prompt_config = self.active_prompt_config
         self.get_transformer_model().prepare_inputs_for_generation = self.prepare_inputs_for_generation
         self.get_transformer_model()._prepare_encoder_decoder_kwargs_for_generation = (
             self._prepare_encoder_decoder_kwargs_for_generation
@@ -915,7 +915,7 @@ class PromptModelForSeq2SeqLM(PromptModel):
             return outputs
 
     def prepare_inputs_for_generation(self, *args, **kwargs):
-        prompt_config = self.active_peft_config
+        prompt_config = self.active_prompt_config
         model_kwargs = self.base_model_prepare_inputs_for_generation(*args, **kwargs)
         if model_kwargs["past_key_values"] is None and prompt_config.prompt_type == PromptType.PREFIX_TUNING:
             batch_size = model_kwargs["decoder_input_ids"].shape[0]
@@ -1004,7 +1004,7 @@ class PromptModelForTokenClassification(PromptModel):
         return_dict=None,
         **kwargs,
     ):
-        prompt_config = self.active_peft_config
+        prompt_config = self.active_prompt_config
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if not isinstance(prompt_config, PromptLearningConfig):

@@ -139,7 +139,9 @@ class PPOTrainer:
 
         self.checkpoint_dir = checkpoint_dir
         self.checkpoint_frequency = checkpoint_frequency
-        self.mb_count = 0
+        self.train_mb_count = 0
+        self.train_item_count = 0
+
 
         self._callback_metrics: dict = {}
         self._state : Optional[dict] = {}
@@ -180,7 +182,8 @@ class PPOTrainer:
         self.ref_std = self.ppo_config.ref_std
 
         self.store = PPORolloutStore(self.tokenizer.pad_token_id, self.tokenizer.padding_side)
-        self.mb_count = 0
+        self.train_mb_count = 0
+        self.train_item_count = 0
 
         if self.ppo_config.minibatch_size:
             assert model.training_args.train_batch_size % self.ppo_config.minibatch_size == 0, "Minibatch size must divide batch size"
@@ -196,6 +199,37 @@ class PPOTrainer:
                                                self.ppo_config.horizon)
         else:
             self.kl_ctl = FixedKLController(self.ppo_config.init_kl_coef)
+        
+        if self.ppo_config.model_arch_type == "seq2seq":
+            self.generate_kwargs = dict(
+                self.ppo_config.gen_kwargs,
+                eos_token_id=self.tokenizer.eos_token_id,
+                pad_token_id=self.tokenizer.pad_token_id,
+            )
+            if self.ppo_config.gen_experience_kwargs is not None:
+                self.generate_experience_kwargs = dict(
+                    self.ppo_config.gen_experience_kwargs,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                    pad_token_id=self.tokenizer.pad_token_id,
+                )
+            else:
+                self.generate_experience_kwargs = None
+        else:
+            self.generate_kwargs = dict(
+                self.ppo_config.gen_kwargs,
+                eos_token_id=self.tokenizer.eos_token_id,
+                pad_token_id=self.tokenizer.eos_token_id,
+            )
+            if self.ppo_config.gen_experience_kwargs is not None:
+                self.generate_experience_kwargs = dict(
+                    self.ppo_config.gen_experience_kwargs,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                    pad_token_id=self.tokenizer.eos_token_id,
+                )
+            else:
+                self.generate_experience_kwargs = None
+                
+        self.n_updates_per_batch = self.ppo_config.ppo_epochs
 
     def fit(
         self,
@@ -332,7 +366,7 @@ class PPOTrainer:
 
             self.fabric.call("on_train_batch_start",self,model,mbs, batch_idx)
             # For each update per batch
-            for _ in range(self.ppo_config.ppo_epochs):
+            for _ in range(self.n_updates_per_batch):
                 # Note that whereas standard policy gradient methods perform one
                 # gradient update per batch, PPO for example commonly performs
                 # multiple gradient updates on the same batch of data.
@@ -340,21 +374,14 @@ class PPOTrainer:
                 stats_accum = []
                 loss_accum = []
                 for mb in batch:
-                    self.mb_count += 1
-                    should_sync = self.mb_count % self.accumulate_grad_batches == 0
+                    self.train_mb_count += 1
+                    should_sync = self.train_mb_count % self.accumulate_grad_batches == 0
                     with self.fabric.no_backward_sync(model,enabled=not should_sync):
                         outputs = self.training_step(model=model, batch = mb, batch_idx = batch_idx)
                         loss, stats = outputs['loss'], outputs['stats']
                     loss_accum.append(loss)
                     stats_accum.append(stats)
 
-                stats = {key: sum([stats[key] for stats in stats_accum]) / num_mb for key in stats_accum[0]}
-                metrics = {
-                    "loss": torch.mean(torch.stack(loss_accum)),
-                }
-                metrics.update(stats)
-                self.fabric.logger.log_metrics(metrics,step=self.global_step)
-                self._callback_metrics.update(metrics)
                 # TODO(Dahoas): Best way to combine stats between mbs?
                 # How does accelerate do it?
                 # currently only supports a single optimizer
@@ -366,10 +393,21 @@ class PPOTrainer:
                 optimizer.zero_grad()
 
                 self.step_scheduler(model, scheduler_cfg, level="step", current_value=self.global_step)
-                self.fabric.call("on_train_batch_end",self,model, self._current_train_return, batch, batch_idx)
+
 
                 # only increase global step if optimizer stepped
                 self.global_step += 1
+
+                self.train_item_count += 1
+                stats = {key: sum([stats[key] for stats in stats_accum]) / num_mb for key in stats_accum[0]}
+                metrics = {
+                    "loss": torch.mean(torch.stack(loss_accum)),
+                }
+                metrics.update(stats)
+                self.fabric.logger.log_metrics(metrics, step=self.global_step)
+                self._callback_metrics.update(metrics)
+
+                self.fabric.call("on_train_batch_end", self, model, self._current_train_return, batch, batch_idx)
 
                 # stopping criterion on step level
                 if  self.max_steps is not None and self.max_steps >= 0 and self.global_step >= self.max_steps:
@@ -670,7 +708,11 @@ class PPOTrainer:
         input_ids = input_ids.to(model.device)
         if attention_mask is not None:
             attention_mask = attention_mask.to(model.device)
-        kwargs = dict(self.ppo_config.gen_kwargs, **kwargs)
+
+        if self.generate_experience_kwargs is not None:
+            kwargs = dict(self.generate_experience_kwargs, **kwargs)
+        else:
+            kwargs = dict(self.generate_kwargs, **kwargs)
         return model.generate(
             input_ids=input_ids, attention_mask=attention_mask, **kwargs
         )
