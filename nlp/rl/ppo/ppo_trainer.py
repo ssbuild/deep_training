@@ -835,7 +835,7 @@ class PPOTrainer:
             gathered_samples = _gpu_gather(padded_samples,world_size)
             gathered_prompts = _gpu_gather(padded_prompts,world_size)
             gathered_prompt_sizes = _gpu_gather(prompt_sizes,world_size)
-            metadata = gather_dict({k: v for k, v in batch.items() if k != "input_ids" and k != "attention_mask"})
+            metadata = gather_dict({k: v for k, v in batch.items() if k != "input_ids" and k != "attention_mask" and k != "position_ids"})
 
 
             if is_main_process:
