@@ -44,9 +44,9 @@ class ILQLSEQ2SEQAbstract:
 
 class ILQLModelLoss(nn.Module, ILQLLLMAbstract, ILQLSEQ2SEQAbstract,ILQLPrefixLMAbstract):
 
-    def forward_ilql_loss(self,batch: Union[ILQLBatch, ILQLSeq2SeqBatch]):
-        # batch = to_device(batch, self.accelerator.device)
-        if self.config.model.model_arch_type == "seq2seq":
+    def forward_ilql_loss(self,batch: dict):
+        if self.ilql_config.model_arch_type == "seq2seq":
+            batch = ILQLSeq2SeqBatch(**batch)
             logits, qs, target_qs, vs = self.forward_seq2seq_value_and_logits(
                 input_ids=batch.input_ids,
                 attention_mask=batch.attention_mask,
@@ -54,7 +54,8 @@ class ILQLModelLoss(nn.Module, ILQLLLMAbstract, ILQLSEQ2SEQAbstract,ILQLPrefixLM
                 states_ixs=batch.states_ixs,
                 decoder_input_ids=batch.decoder_input_ids,
             )
-        elif self.config.model.model_arch_type == "prefixlm":
+        elif self.ilql_config.model_arch_type == "prefixlm":
+            batch = ILQLBatch(**batch)
             logits, qs, target_qs, vs = self.forward_prefix_value_and_logits(
                 input_ids=batch.input_ids,
                 attention_mask=batch.attention_mask,
@@ -62,14 +63,18 @@ class ILQLModelLoss(nn.Module, ILQLLLMAbstract, ILQLSEQ2SEQAbstract,ILQLPrefixLM
                 states_ixs=batch.states_ixs,
             )
         else:
+            batch = ILQLBatch(**batch)
             logits, qs, target_qs, vs = self.forward_llm_value_and_logits(
                 input_ids=batch.input_ids,
                 attention_mask=batch.attention_mask,
                 actions_ixs=batch.actions_ixs,
                 states_ixs=batch.states_ixs,
             )
-
-        return self.loss((logits, (qs, target_qs, vs)), batch)
+        loss,stats = self.loss((logits, (qs, target_qs, vs)), batch)
+        return {
+            'loss': loss,
+            'stats': stats
+        }
 
 
     def loss(self, outputs, labels):
@@ -81,6 +86,7 @@ class ILQLModelLoss(nn.Module, ILQLLLMAbstract, ILQLSEQ2SEQAbstract,ILQLPrefixLM
             actions = labels.input_ids[:, 1:].gather(dim=1, index=labels.actions_ixs).unsqueeze(-1)
         else:
             actions = labels.decoder_input_ids[:, 1:].unsqueeze(-1)
+        actions = actions.long()
         nactions = actions.shape[1]
         bsize, _, dsize = logits.shape
 

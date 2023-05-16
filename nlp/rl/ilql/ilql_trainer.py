@@ -172,9 +172,16 @@ class ILQLTrainer:
         # Setup stats tracker
         self.running_moments = RunningMoments()
 
-
         self.train_mb_count = 0
         self.train_item_count = 0
+
+        if self.ilql_config.minibatch_size:
+            assert model.training_args.train_batch_size % self.ilql_config.minibatch_size == 0, "Minibatch size must divide batch size"
+            self.mb_size = self.ilql_config.minibatch_size
+        else:
+            self.mb_size = model.training_args.train_batch_size
+
+
 
 
     def fit(
@@ -186,6 +193,7 @@ class ILQLTrainer:
         reward_fn = None,
         val_loader: Optional[DataLoader] = None,
         ckpt_path: Optional[str] = None,
+        stop_sequences = None,
     ):
         """The main entrypoint of the trainer, triggering the actual training.
 
@@ -200,14 +208,15 @@ class ILQLTrainer:
         """
 
         self.prepare_fit(model,tokenizer,ilql_config,reward_fn)
+        self.stop_sequences = stop_sequences
 
         # setup dataloaders
         train_loader = self.fabric.setup_dataloaders(train_loader,
                                                      use_distributed_sampler=self.use_distributed_sampler,
-                                                     move_to_device=True)
+                                                     move_to_device=False)
         if val_loader is not None:
             val_loader = self.fabric.setup_dataloaders(val_loader, use_distributed_sampler=self.use_distributed_sampler,
-                                                       move_to_device=True)
+                                                       move_to_device=False)
 
         # setup model and optimizer
         if isinstance(self.fabric.strategy, L.fabric.strategies.fsdp.FSDPStrategy):
@@ -254,9 +263,9 @@ class ILQLTrainer:
         # reset for next fit call
         self.should_stop = False
 
-    def post_backward_callback(self,model):
+    def post_backward_callback(self,model: _FabricModule):
         if self.train_item_count % self.ilql_config.steps_for_target_q_sync == 0:
-            model.sync_target_q_heads()
+            model.module.backbone.sync_target_q_heads()
 
     def post_epoch_callback(self,*agrs,**kwargs):
         ...
@@ -288,12 +297,13 @@ class ILQLTrainer:
         iterable = self.progbar_wrapper(
             train_loader, total=len(train_loader), desc=f"Epoch {self.current_epoch}"
         )
+
         for batch_idx, batch in enumerate(iterable):
             # end epoch if stopping training completely or max batches for this epoch reached
             if self.should_stop or batch_idx >= limit_batches:
                 self.fabric.call("on_train_epoch_end",self,model)
                 return
-            num_mb = batch.size(0)
+
             self.fabric.call("on_train_batch_start",self,model,batch, batch_idx)
             # Note that whereas standard policy gradient methods perform one
             # gradient update per batch, PPO for example commonly performs
@@ -301,8 +311,25 @@ class ILQLTrainer:
             # https://arxiv.org/pdf/1707.06347.pdf
             stats_accum = []
             loss_accum = []
-            for mb in batch:
+
+            bs = batch['input_ids'].size(0)
+            num_mb = bs // self.mb_size
+            if num_mb == 0:
+                num_mb = 1
+                mbs = [batch]
+            else:
+                batch_keys = batch.keys()
+                mbs = []
+                for i in range(num_mb):
+                    mb = {k: None for k in batch_keys}
+                    for k in batch_keys:
+                        mb[k] = batch[k][i * self.mb_size: (i + 1) * self.mb_size]
+                    mbs.append(mb)
+
+            for mb in mbs:
                 self.train_mb_count += 1
+                for k in mb:
+                    mb[k] = mb[k].to(self.fabric.device)
                 should_sync = self.train_mb_count % self.accumulate_grad_batches == 0
                 with self.fabric.no_backward_sync(model,enabled=not should_sync):
                     outputs = self.training_step(model=model, batch=mb, batch_idx = batch_idx)
@@ -414,7 +441,7 @@ class ILQLTrainer:
         """
         forward_time,backward_time = 0,0
         forward_time -= time()
-        outputs: Union[torch.Tensor, Mapping[str, Any]] = model.training_step(batch,device=self.fabric.device)
+        outputs: Union[torch.Tensor, Mapping[str, Any]] = model.training_step(batch)
         loss = outputs if isinstance(outputs, torch.Tensor) else outputs["loss"]
         forward_time += time()
 

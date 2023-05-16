@@ -20,7 +20,7 @@ class ILQLConfig(RLConfigMixin):
     two_qs: bool = field(default=True, metadata={"help": ""})
     gen_kwargs: dict = field(default=None,
                              metadata={"help": "Additioanl kwargs for the generation"})
-
+    minibatch_size: Optional[int] = field(default=None, metadata={"help": "minibatch_size"})
 
     def __post_init__(self):
         if self.gen_kwargs is None:
