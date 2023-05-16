@@ -20,6 +20,12 @@ class ILQLLLMAbstract:
         logits, qs, target_qs, vs, _ = outputs
         return (logits, qs, target_qs, vs)
 
+class ILQLPrefixLMAbstract:
+    def forward_prefix_value_and_logits(self,input_ids,**kwargs):
+        outputs = self.forward_logits_values(input_ids=input_ids, **kwargs)
+        logits, qs, target_qs, vs, _ = outputs
+        return (logits, qs, target_qs, vs)
+
 class ILQLSEQ2SEQAbstract:
     def forward_seq2seq_value_and_logits(self,
                                          input_ids,
@@ -33,11 +39,7 @@ class ILQLSEQ2SEQAbstract:
         logits, qs, target_qs, vs, _, _ = outputs
         return (logits, qs, target_qs, vs)
 
-class ILQLPrefixLMAbstract:
-    def forward_prefix_value_and_logits(self,input_ids,**kwargs):
-        outputs = self.forward_logits_values(input_ids=input_ids, **kwargs)
-        logits, qs, target_qs, vs, _ = outputs
-        return (logits, qs, target_qs, vs)
+
 
 
 class ILQLModelLoss(nn.Module, ILQLLLMAbstract, ILQLSEQ2SEQAbstract,ILQLPrefixLMAbstract):

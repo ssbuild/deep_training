@@ -258,9 +258,13 @@ class PPOTrainer:
         self.prepare_fit(model,tokenizer,reward_fn,ppo_config,stop_sequences)
 
         # setup dataloaders
-        train_loader = self.fabric.setup_dataloaders(train_loader, use_distributed_sampler=self.use_distributed_sampler)
+        train_loader = self.fabric.setup_dataloaders(train_loader,
+                                                     use_distributed_sampler=self.use_distributed_sampler,
+                                                     move_to_device=False)
         if val_loader is not None:
-            val_loader = self.fabric.setup_dataloaders(val_loader, use_distributed_sampler=self.use_distributed_sampler)
+            val_loader = self.fabric.setup_dataloaders(val_loader,
+                                                       use_distributed_sampler=self.use_distributed_sampler,
+                                                       move_to_device=False)
 
         # setup model and optimizer
         if isinstance(self.fabric.strategy, L.fabric.strategies.fsdp.FSDPStrategy):

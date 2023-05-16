@@ -160,8 +160,8 @@ class ILQLTrainer:
     #model,tokenizer,reward_fn,ilql_config
     def prepare_fit(self, model: L.LightningModule,
         tokenizer,
-        reward_fn: Callable,
         ilql_config,
+        reward_fn = None,
         **kwargs):
 
         self.config = model.config
@@ -182,8 +182,8 @@ class ILQLTrainer:
         model: L.LightningModule,
         train_loader: DataLoader,
         tokenizer,
-        reward_fn: Callable,
         ilql_config,
+        reward_fn = None,
         val_loader: Optional[DataLoader] = None,
         ckpt_path: Optional[str] = None,
     ):
@@ -199,12 +199,15 @@ class ILQLTrainer:
                 If specified, will always look for the latest checkpoint within the given directory.
         """
 
-        self.prepare_fit(model,tokenizer,reward_fn,ilql_config)
+        self.prepare_fit(model,tokenizer,ilql_config,reward_fn)
 
         # setup dataloaders
-        train_loader = self.fabric.setup_dataloaders(train_loader, use_distributed_sampler=self.use_distributed_sampler)
+        train_loader = self.fabric.setup_dataloaders(train_loader,
+                                                     use_distributed_sampler=self.use_distributed_sampler,
+                                                     move_to_device=False)
         if val_loader is not None:
-            val_loader = self.fabric.setup_dataloaders(val_loader, use_distributed_sampler=self.use_distributed_sampler)
+            val_loader = self.fabric.setup_dataloaders(val_loader, use_distributed_sampler=self.use_distributed_sampler,
+                                                       move_to_device=False)
 
         # setup model and optimizer
         if isinstance(self.fabric.strategy, L.fabric.strategies.fsdp.FSDPStrategy):
@@ -283,7 +286,7 @@ class ILQLTrainer:
         """
         self.fabric.call("on_train_epoch_start",self,model)
         iterable = self.progbar_wrapper(
-            train_loader, total=len(train_loader)  , desc=f"Epoch {self.current_epoch}"
+            train_loader, total=len(train_loader), desc=f"Epoch {self.current_epoch}"
         )
         for batch_idx, batch in enumerate(iterable):
             # end epoch if stopping training completely or max batches for this epoch reached
