@@ -20,6 +20,9 @@ __all__ = [
     'AutoModelForSeq2SeqLMWithILQLHeads',
 ]
 
+from ...layers.lora_v2.utils import ModulesToSaveWrapper
+
+
 def topk_mask(xs: torch.FloatTensor, k: int):
     if k > xs.shape[-1]:
         return xs
@@ -59,9 +62,9 @@ class ILQLHeads(nn.Module):
 
         n_qs = 2 if self.two_qs else 1
         self.q_heads = nn.ModuleList(make_head(self.hidden_size, self.vocab_size, dtype) for _ in range(n_qs))
-        self.target_q_heads = nn.ModuleList(copy.deepcopy(q_head) for q_head in self.q_heads)
+        self.q_heads_target = nn.ModuleList(copy.deepcopy(q_head) for q_head in self.q_heads)
 
-        for target_q_head in self.target_q_heads:
+        for target_q_head in self.q_heads_target:
             target_q_head.requires_grad_(False)
 
     def forward(
@@ -83,13 +86,18 @@ class ILQLHeads(nn.Module):
         else:
             states_hs = actions_hs = hs
 
-        qs = tuple(q_head(actions_hs) for q_head in self.q_heads)
-        target_qs = tuple(q_head(actions_hs) for q_head in self.target_q_heads)
+
+        if isinstance(self.q_heads,ModulesToSaveWrapper) and self.q_heads.active_adapter in self.q_heads.modules_to_save:
+            q_heads = self.q_heads.modules_to_save[self.q_heads.active_adapter]
+        else:
+            q_heads = self.q_heads
+        qs = tuple(q_head(actions_hs) for q_head in q_heads)
+        target_qs = tuple(q_head(actions_hs) for q_head in self.q_heads_target)
         vs = self.score(states_hs)
         return (qs, target_qs, vs)
 
     def _sync_target_q_heads(self, alpha):
-        for target_q_head, q_head in zip(self.target_q_heads, self.q_heads):
+        for target_q_head, q_head in zip(self.q_heads_target, self.q_heads):
             for target_param, copy_param in zip(target_q_head.parameters(), q_head.parameters()):
                 target_param.data.copy_((alpha * copy_param.data) + (1.0 - alpha) * target_param.data)
 
