@@ -97,7 +97,13 @@ class ILQLHeads(nn.Module):
         return (qs, target_qs, vs)
 
     def _sync_target_q_heads(self, alpha):
-        for target_q_head, q_head in zip(self.q_heads_target, self.q_heads):
+        if isinstance(self.q_heads,
+                      ModulesToSaveWrapper) and self.q_heads.active_adapter in self.q_heads.modules_to_save:
+            q_heads = self.q_heads.modules_to_save[self.q_heads.active_adapter]
+        else:
+            q_heads = self.q_heads
+
+        for target_q_head, q_head in zip(self.q_heads_target, q_heads):
             for target_param, copy_param in zip(target_q_head.parameters(), q_head.parameters()):
                 target_param.data.copy_((alpha * copy_param.data) + (1.0 - alpha) * target_param.data)
 
