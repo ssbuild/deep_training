@@ -204,10 +204,10 @@ class ILQLTrainer:
         # setup dataloaders
         train_loader = self.fabric.setup_dataloaders(train_loader,
                                                      use_distributed_sampler=self.use_distributed_sampler,
-                                                     move_to_device=False)
+                                                     move_to_device=True)
         if val_loader is not None:
             val_loader = self.fabric.setup_dataloaders(val_loader, use_distributed_sampler=self.use_distributed_sampler,
-                                                       move_to_device=False)
+                                                       move_to_device=True)
 
         # setup model and optimizer
         if isinstance(self.fabric.strategy, L.fabric.strategies.fsdp.FSDPStrategy):
