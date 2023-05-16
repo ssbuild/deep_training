@@ -27,6 +27,9 @@
   - 增加reward ppo  llm 完整训练 [rlhf_llm](https://github.com/ssbuild/rlhf_llm)
   - 增加reward ppo  chatglm 完整训练 [rlhf_chatglm](https://github.com/ssbuild/rlhf_chatglm)
   - 增加reward ppo  chatyuan 完整训练 [rlhf_chatyuan](https://github.com/ssbuild/rlhf_chatyuan)
+  - 0.1.5@post0 release
+  - fix prompt modules_to_save 自定义额外训练模块
+  - 增加 ilql 离线模式训练 完整训练 [rlhf_llm](https://github.com/ssbuild/rlhf_llm)
   
 - <strong>2023-05-02</strong>
   - 0.1.4 增加 prompt_tuning,p_tuning,prefix_tuning,adaption_prompt
