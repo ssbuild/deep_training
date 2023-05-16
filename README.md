@@ -15,7 +15,7 @@
 ## dev plan
  - Reinforcement learning
    - ppo ok 
-   - ilql on the way
+   - ilql ok
    - rrhf on the way
  - 支持 transformer Traner on the way
  - 解耦 lightning on the way
@@ -27,7 +27,7 @@
   - 增加reward ppo  llm 完整训练 [rlhf_llm](https://github.com/ssbuild/rlhf_llm)
   - 增加reward ppo  chatglm 完整训练 [rlhf_chatglm](https://github.com/ssbuild/rlhf_chatglm)
   - 增加reward ppo  chatyuan 完整训练 [rlhf_chatyuan](https://github.com/ssbuild/rlhf_chatyuan)
-  - 0.1.5@post1 release
+  - 0.1.5@post2 release
   - fix prompt modules_to_save 自定义额外训练模块
   - 增加 ilql 离线模式训练 ilql  完整训练 [rlhf_llm](https://github.com/ssbuild/rlhf_llm)
   

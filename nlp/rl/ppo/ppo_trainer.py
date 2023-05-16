@@ -50,6 +50,7 @@ class PPOTrainer:
         use_distributed_sampler: bool = True,
         checkpoint_dir: str = "./checkpoints",
         checkpoint_frequency: int = 1,
+        max_grad_norm=None,
     ) -> None:
         """Exemplary Trainer with Fabric. This is a very simple trainer focused on readablity but with reduced
         featureset. As a trainer with more included features, we recommend using the
@@ -139,6 +140,7 @@ class PPOTrainer:
 
         self.checkpoint_dir = checkpoint_dir
         self.checkpoint_frequency = checkpoint_frequency
+        self.max_grad_norm = max_grad_norm
         self.train_mb_count = 0
         self.train_item_count = 0
 
@@ -260,11 +262,11 @@ class PPOTrainer:
         # setup dataloaders
         train_loader = self.fabric.setup_dataloaders(train_loader,
                                                      use_distributed_sampler=self.use_distributed_sampler,
-                                                     move_to_device=False)
+                                                     move_to_device=True)
         if val_loader is not None:
             val_loader = self.fabric.setup_dataloaders(val_loader,
                                                        use_distributed_sampler=self.use_distributed_sampler,
-                                                       move_to_device=False)
+                                                       move_to_device=True)
 
         # setup model and optimizer
         if isinstance(self.fabric.strategy, L.fabric.strategies.fsdp.FSDPStrategy):
@@ -391,6 +393,8 @@ class PPOTrainer:
                 # currently only supports a single optimizer
                 self.fabric.call("on_before_optimizer_step" ,self,model,optimizer, 0)
 
+                if self.max_grad_norm is not None:
+                    self.fabric.clip_gradients(model, optimizer, max_norm=self.max_grad_norm)
                 # optimizer step runs train step internally through closure
                 optimizer.step()
                 self.fabric.call("on_before_zero_grad",self,model, optimizer)
