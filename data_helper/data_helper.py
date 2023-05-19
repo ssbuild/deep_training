@@ -161,9 +161,10 @@ class DataHelper(DataPreprocessHelper):
             if task_params is not None:
                 task_specific_params.update(task_params)
 
-            task_specific_params['learning_rate'] = training_args.learning_rate
-            task_specific_params['learning_rate_for_task'] = training_args.learning_rate_for_task \
-                if training_args.learning_rate_for_task is not None else training_args.learning_rate
+            if training_args is not None:
+                task_specific_params['learning_rate'] = training_args.learning_rate
+                task_specific_params['learning_rate_for_task'] = training_args.learning_rate_for_task \
+                    if training_args.learning_rate_for_task is not None else training_args.learning_rate
 
 
         if hasattr(self.tokenizer,'tokenizer'):
@@ -258,9 +259,10 @@ class DataHelper(DataPreprocessHelper):
             if task_params is not None:
                 task_specific_params.update(task_params)
 
-            task_specific_params['learning_rate'] = training_args.learning_rate
-            task_specific_params['learning_rate_for_task'] = training_args.learning_rate_for_task \
-                if training_args.learning_rate_for_task is not None else training_args.learning_rate
+            if training_args is not None:
+                task_specific_params['learning_rate'] = training_args.learning_rate
+                task_specific_params['learning_rate_for_task'] = training_args.learning_rate_for_task \
+                    if training_args.learning_rate_for_task is not None else training_args.learning_rate
 
         kwargs_args = {
             "bos_token_id": tokenizer.bos_token_id,

@@ -144,7 +144,7 @@ class ExceptClassMeta(type):
 class ExceptCLASS(metaclass=ExceptClassMeta):...
 
 
-def get_value_from_args(key,dtype,*args,**kwargs):
+def get_value_from_args_assert(key,dtype,*args,**kwargs):
     value = kwargs.get(key, None)
     if value is not None:
         for item in args:
@@ -152,4 +152,13 @@ def get_value_from_args(key,dtype,*args,**kwargs):
                 value = item
                 break
     assert value is not None, ValueError('no param ',key)
+    return value
+
+def get_value_from_args(key,dtype,*args,**kwargs):
+    value = kwargs.get(key, None)
+    if value is not None:
+        for item in args:
+            if isinstance(item,dtype):
+                value = item
+                break
     return value

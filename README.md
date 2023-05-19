@@ -21,6 +21,9 @@
  - 解耦 lightning on the way
 
 ## update
+- <strong>2023-05-19</strong>
+  - 0.1.6 release
+  - fix 0.1.5 rl bugs
 - <strong>2023-05-10</strong>
   - 0.1.5 release
   - fix lora v2 modules_to_save 自定义额外训练模块

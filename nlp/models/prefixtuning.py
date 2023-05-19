@@ -17,7 +17,7 @@ from ..layers.prefix_encoder import PrefixEncoder
 from ..layers.seq_pointer import EfficientPointerLayer, PointerLayer, f1_metric_for_pointer
 from ..losses.loss_globalpointer import loss_for_pointer
 from ..metrics.pointer import metric_for_pointer
-from ..utils import get_value_from_args
+from ..utils import get_value_from_args_assert
 
 __all__ = [
     'PrefixTransformerForModel',
@@ -31,7 +31,7 @@ __all__ = [
 
 class PrefixTransformerForModel(TransformerModel):
     def __init__(self, *args: Any, **kwargs: Any):
-        prompt_args = get_value_from_args('prompt_args', PrefixModelArguments, *args, **kwargs)
+        prompt_args = get_value_from_args_assert('prompt_args', PrefixModelArguments, *args, **kwargs)
         super().__init__(*args, **kwargs)
         self.prompt_args = prompt_args
         config = self.config

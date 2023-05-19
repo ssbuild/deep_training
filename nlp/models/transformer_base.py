@@ -15,7 +15,7 @@ from transformers import (
 )
 
 
-from ..utils import configure_optimizers, get_value_from_args
+from ..utils import configure_optimizers, get_value_from_args_assert, get_value_from_args
 from ..utils.adversarial import AdversarialMethods
 from ...data_helper import TrainingArguments, ModelArguments, PrefixModelArguments, DataArguments
 
@@ -103,7 +103,7 @@ class TransformerFakeMeta(type):
 
 class TransformerBase(MyLightningModule,metaclass=TransformerFakeMeta):
     def __init__(self,*args,**kwargs):
-        config = get_value_from_args('config',PretrainedConfig,*args,**kwargs)
+        config = get_value_from_args_assert('config',PretrainedConfig,*args,**kwargs)
         super(TransformerBase, self).__init__()
         self.config = config
         self.base_model_prefix = None
@@ -156,8 +156,8 @@ class TransformerBase(MyLightningModule,metaclass=TransformerFakeMeta):
 
 
     def from_pretrained(self,CLS, *args, **kwargs):
-        config = get_value_from_args('config', PretrainedConfig, *args, **kwargs)
-        model_args = get_value_from_args('model_args', ModelArguments, *args, **kwargs)
+        config = get_value_from_args_assert('config', PretrainedConfig, *args, **kwargs)
+        model_args = get_value_from_args_assert('model_args', ModelArguments, *args, **kwargs)
 
         if model_args.model_name_or_path:
             args_new = tuple(v for v in args
@@ -234,21 +234,23 @@ class TransformerBase(MyLightningModule,metaclass=TransformerFakeMeta):
 
 class TransformerLightningModule(MyLightningModule):
     def __init__(self, *args,**kwargs):
-        config = get_value_from_args('config',PretrainedConfig,*args,**kwargs)
-        model_args = get_value_from_args('model_args', ModelArguments, *args, **kwargs)
+        config = get_value_from_args_assert('config',PretrainedConfig,*args,**kwargs)
+        model_args = get_value_from_args_assert('model_args', ModelArguments, *args, **kwargs)
         training_args = get_value_from_args('training_args', TrainingArguments, *args, **kwargs)
         super(TransformerLightningModule, self).__init__()
         if not hasattr(config, 'task_specific_params') or config.task_specific_params is None:
             config.task_specific_params = {}
         task_specific_params = config.task_specific_params
-        task_specific_params['learning_rate'] = training_args.learning_rate
-        task_specific_params['learning_rate_for_task'] = training_args.learning_rate_for_task \
-            if training_args.learning_rate_for_task is not None else training_args.learning_rate
+        if training_args is not None:
+            task_specific_params['learning_rate'] = training_args.learning_rate
+            task_specific_params['learning_rate_for_task'] = training_args.learning_rate_for_task \
+                if training_args.learning_rate_for_task is not None else training_args.learning_rate
+
+            if training_args.adv is not None and training_args.adv['mode'] != None:
+                assert training_args.adv['mode']  in AdversarialMethods.keys(), ValueError('no support adv mode {} , must be in {}'.format(training_args.adv['mode'],','.join(AdversarialMethods.keys())))
+                self.automatic_optimization = False
         print(training_args)
         print(model_args)
-        if training_args.adv is not None and training_args.adv['mode'] != None:
-            assert training_args.adv['mode']  in AdversarialMethods.keys(), ValueError('no support adv mode {} , must be in {}'.format(training_args.adv['mode'],','.join(AdversarialMethods.keys())))
-            self.automatic_optimization = False
 
         try:
             self.save_hyperparameters(ignore=['config'])
@@ -265,45 +267,48 @@ class TransformerLightningModule(MyLightningModule):
         self.training_step_fn = self.training_step
         self.embeddings_forward_fn = None
 
-        #对抗训练
-        if training_args.adv is not None and training_args.adv['mode'] is not None:
-            self.embeddings_forward_fn = self.get_embeddings_module().embeddings.forward
 
-            self.training_step = self.adv_training_step
-            if training_args.adv['mode'].find('local') != -1:
-                self.adversarial = AdversarialMethods[training_args.adv['mode']](model=self.model)
+        if training_args is not None:
+            self.gradient_clip_val = training_args.max_grad_norm
+            #对抗训练
+            if training_args.adv is not None and training_args.adv['mode'] is not None:
+                self.embeddings_forward_fn = self.get_embeddings_module().embeddings.forward
+
+                self.training_step = self.adv_training_step
+                if training_args.adv['mode'].find('local') != -1:
+                    self.adversarial = AdversarialMethods[training_args.adv['mode']](model=self.model)
+                else:
+                    self.adversarial = AdversarialMethods[training_args.adv['mode']](model=self.model,
+                                                                                     emb_name=training_args.adv.get('emb_name', 'embedding'))
+
+                k = 'lightning.pytorch.trainer.configuration_validator'
+                if k in sys.modules:
+                    setattr( sys.modules[k],'__verify_manual_optimization_support' , verify_manual_optimization_support)
             else:
-                self.adversarial = AdversarialMethods[training_args.adv['mode']](model=self.model,
-                                                                                 emb_name=training_args.adv.get('emb_name', 'embedding'))
+                self.adversarial = None
 
-            k = 'lightning.pytorch.trainer.configuration_validator'
-            if k in sys.modules:
-                setattr( sys.modules[k],'__verify_manual_optimization_support' , verify_manual_optimization_support)
-        else:
-            self.adversarial = None
 
-        self.gradient_clip_val = training_args.max_grad_norm
 
-        if training_args.hierarchical_position is not None and (training_args.hierarchical_position > 0 and training_args.hierarchical_position < 1):
-            #绝对位置编码 分层位置编码
-            def forward(cls,input: Tensor) -> Tensor:
-                # return F.embedding(
-                #     input, self.weight, self.padding_idx, self.max_norm,
-                #     self.norm_type, self.scale_grad_by_freq, self.sparse)
-                position_ids = input
-                alpha = training_args.hierarchical_position
-                embeddings = cls.weight - alpha * cls.weight[:1]
-                embeddings = embeddings / (1 - alpha)
-                x_idx = position_ids // cls.num_embeddings
-                y_idx = position_ids % cls.num_embeddings
+            if training_args.hierarchical_position is not None and (training_args.hierarchical_position > 0 and training_args.hierarchical_position < 1):
+                #绝对位置编码 分层位置编码
+                def forward(cls,input: Tensor) -> Tensor:
+                    # return F.embedding(
+                    #     input, self.weight, self.padding_idx, self.max_norm,
+                    #     self.norm_type, self.scale_grad_by_freq, self.sparse)
+                    position_ids = input
+                    alpha = training_args.hierarchical_position
+                    embeddings = cls.weight - alpha * cls.weight[:1]
+                    embeddings = embeddings / (1 - alpha)
+                    x_idx = position_ids // cls.num_embeddings
+                    y_idx = position_ids % cls.num_embeddings
 
-                embeddings_x = torch.index_select(embeddings,dim=0,index=x_idx.view(-1))
-                embeddings_y = torch.index_select(embeddings,dim=0,index=y_idx.view(-1))
-                embeddings = alpha * embeddings_x + (1 - alpha) * embeddings_y
-                return embeddings
+                    embeddings_x = torch.index_select(embeddings,dim=0,index=x_idx.view(-1))
+                    embeddings_y = torch.index_select(embeddings,dim=0,index=y_idx.view(-1))
+                    embeddings = alpha * embeddings_x + (1 - alpha) * embeddings_y
+                    return embeddings
 
-            position_embeddings = self.get_embeddings_module().embeddings.position_embeddings
-            position_embeddings.forward = partial(forward,position_embeddings)
+                position_embeddings = self.get_embeddings_module().embeddings.position_embeddings
+                position_embeddings.forward = partial(forward,position_embeddings)
 
 
     def get_embeddings_module(self):
