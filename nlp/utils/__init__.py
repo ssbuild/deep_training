@@ -54,7 +54,7 @@ def configure_optimizers(named_parameter: typing.Union[typing.List,typing.Tuple]
             num_training_steps=estimated_stepping_batches
             # num_training_steps=self.trainer.estimated_stepping_batches,
         )
-    elif training_args.scheduler_type.lower() == 'CAL'.lower():
+    elif training_args.scheduler_type.lower() in ['CAL'.lower(),'CosineAnnealingLR'.lower()]:
         eta_min = training_args.scheduler.get('eta_min', 0.)
         last_epoch = training_args.scheduler.get('last_epoch', -1)
         verbose = training_args.scheduler.get('verbose', False)
@@ -69,7 +69,7 @@ def configure_optimizers(named_parameter: typing.Union[typing.List,typing.Tuple]
                                                          eta_min=eta_min,
                                                          last_epoch=last_epoch,
                                                          verbose=verbose)
-    elif training_args.scheduler_type.lower() == 'CAWR'.lower():
+    elif training_args.scheduler_type.lower() in ['CAWR'.lower(),'CosineAnnealingWarmRestarts'.lower()]:
         T_mult = training_args.scheduler["T_mult"]
 
         eta_min = training_args.scheduler.get('eta_min', 0.)

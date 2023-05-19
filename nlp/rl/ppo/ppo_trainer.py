@@ -3,8 +3,6 @@
 # @Author  : tk
 # @FileName: ppo_trainner
 import typing
-
-from .utils import logging, infinite_dataloader
 import os
 import numpy as np
 from tqdm import tqdm
@@ -23,10 +21,10 @@ from lightning.fabric.accelerators import Accelerator
 from lightning.fabric.loggers import Logger
 from lightning.fabric.strategies import Strategy
 from lightning.fabric.wrappers import _unwrap_objects, _FabricModule
-
-from .ppo_dataset import PPORolloutStore, MiniBatchIterator
-from .utils import logprobs_of_labels, Clock, gather_dict, RunningMoments, pad_across_processes, _gpu_gather, \
-    PPORLElement,logger
+from .ppo_dataset import PPORolloutStore
+from .data_define import PPORLElement,logger,logging
+from ..rl_base.rl_dataset import MiniBatchIterator
+from ..utils import logprobs_of_labels, Clock, gather_dict, RunningMoments, pad_across_processes, _gpu_gather, infinite_dataloader
 from ...layers.ppo import AdaptiveKLController, FixedKLController
 from .configuration import PPOConfig
 
@@ -52,6 +50,7 @@ class PPOTrainer:
         use_distributed_sampler: bool = True,
         checkpoint_dir: str = "./checkpoints",
         checkpoint_frequency: int = 1,
+        max_grad_norm=None,
     ) -> None:
         """Exemplary Trainer with Fabric. This is a very simple trainer focused on readablity but with reduced
         featureset. As a trainer with more included features, we recommend using the
@@ -141,7 +140,10 @@ class PPOTrainer:
 
         self.checkpoint_dir = checkpoint_dir
         self.checkpoint_frequency = checkpoint_frequency
-        self.mb_count = 0
+        self.max_grad_norm = max_grad_norm
+        self.train_mb_count = 0
+        self.train_item_count = 0
+
 
         self._callback_metrics: dict = {}
         self._state : Optional[dict] = {}
@@ -155,6 +157,81 @@ class PPOTrainer:
     @property
     def global_rank(self):
         return self.fabric.global_rank
+
+    @property
+    def local_rank(self):
+        return self.fabric.local_rank
+
+
+
+    #model,tokenizer,reward_fn,ppo_config,stop_sequences
+    def prepare_fit(self, model: L.LightningModule,
+        tokenizer,
+        reward_fn: Callable,
+        ppo_config,
+        stop_sequences=None,**kwargs):
+
+        self.config = model.config
+        self.tokenizer = tokenizer
+        self.reward_fn = reward_fn
+        self.ppo_config: PPOConfig = ppo_config
+
+        self.stop_sequences = stop_sequences
+
+        # Setup stats tracker
+        self.running_moments = RunningMoments()
+        self.ref_mean = self.ppo_config.ref_mean
+        self.ref_std = self.ppo_config.ref_std
+
+        self.store = PPORolloutStore(self.tokenizer.pad_token_id, self.tokenizer.padding_side)
+        self.train_mb_count = 0
+        self.train_item_count = 0
+
+        if self.ppo_config.minibatch_size:
+            assert model.training_args.train_batch_size % self.ppo_config.minibatch_size == 0, "Minibatch size must divide batch size"
+            self.mb_size = self.ppo_config.minibatch_size
+        else:
+            self.mb_size = model.training_args.train_batch_size
+
+        # self.fabric.barrier()
+        # Setup the KL controller
+        # This helps prevent large divergences in the controller (policy)
+        if self.ppo_config.target is not None:
+            self.kl_ctl = AdaptiveKLController(self.ppo_config.init_kl_coef, self.ppo_config.target,
+                                               self.ppo_config.horizon)
+        else:
+            self.kl_ctl = FixedKLController(self.ppo_config.init_kl_coef)
+        
+        if self.ppo_config.model_arch_type == "seq2seq":
+            self.generate_kwargs = dict(
+                self.ppo_config.gen_kwargs,
+                eos_token_id=self.tokenizer.eos_token_id,
+                pad_token_id=self.tokenizer.pad_token_id,
+            )
+            if self.ppo_config.gen_experience_kwargs is not None:
+                self.generate_experience_kwargs = dict(
+                    self.ppo_config.gen_experience_kwargs,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                    pad_token_id=self.tokenizer.pad_token_id,
+                )
+            else:
+                self.generate_experience_kwargs = None
+        else:
+            self.generate_kwargs = dict(
+                self.ppo_config.gen_kwargs,
+                eos_token_id=self.tokenizer.eos_token_id,
+                pad_token_id=self.tokenizer.eos_token_id,
+            )
+            if self.ppo_config.gen_experience_kwargs is not None:
+                self.generate_experience_kwargs = dict(
+                    self.ppo_config.gen_experience_kwargs,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                    pad_token_id=self.tokenizer.eos_token_id,
+                )
+            else:
+                self.generate_experience_kwargs = None
+                
+        self.n_updates_per_batch = self.ppo_config.ppo_epochs
 
     def fit(
         self,
@@ -179,41 +256,17 @@ class PPOTrainer:
             ckpt_path: Path to previous checkpoints to resume training from.
                 If specified, will always look for the latest checkpoint within the given directory.
         """
-        self.config = model.config
-        self.tokenizer = tokenizer
-        self.reward_fn = reward_fn
-        self.ppo_config: PPOConfig = ppo_config
 
-        self.stop_sequences = stop_sequences
-
-        # Setup stats tracker
-        self.running_moments = RunningMoments()
-        self.ref_mean = self.ppo_config.ref_mean
-        self.ref_std = self.ppo_config.ref_std
-
-        self.store = PPORolloutStore(self.tokenizer.pad_token_id, self.tokenizer.padding_side)
-        self.mb_count = 0
-
-        if self.ppo_config.minibatch_size:
-            assert model.training_args.train_batch_size % self.ppo_config.minibatch_size == 0, "Minibatch size must divide batch size"
-            self.mb_size = self.ppo_config.minibatch_size
-        else:
-            self.mb_size = model.training_args.train_batch_size
-
-
-        # self.fabric.barrier()
-        # Setup the KL controller
-        # This helps prevent large divergences in the controller (policy)
-        if self.ppo_config.target is not None:
-            self.kl_ctl = AdaptiveKLController(self.ppo_config.init_kl_coef, self.ppo_config.target, self.ppo_config.horizon)
-        else:
-            self.kl_ctl = FixedKLController(self.ppo_config.init_kl_coef)
-
+        self.prepare_fit(model,tokenizer,reward_fn,ppo_config,stop_sequences)
 
         # setup dataloaders
-        train_loader = self.fabric.setup_dataloaders(train_loader, use_distributed_sampler=self.use_distributed_sampler)
+        train_loader = self.fabric.setup_dataloaders(train_loader,
+                                                     use_distributed_sampler=self.use_distributed_sampler,
+                                                     move_to_device=True)
         if val_loader is not None:
-            val_loader = self.fabric.setup_dataloaders(val_loader, use_distributed_sampler=self.use_distributed_sampler)
+            val_loader = self.fabric.setup_dataloaders(val_loader,
+                                                       use_distributed_sampler=self.use_distributed_sampler,
+                                                       move_to_device=True)
 
         # setup model and optimizer
         if isinstance(self.fabric.strategy, L.fabric.strategies.fsdp.FSDPStrategy):
@@ -319,7 +372,7 @@ class PPOTrainer:
 
             self.fabric.call("on_train_batch_start",self,model,mbs, batch_idx)
             # For each update per batch
-            for _ in range(self.ppo_config.ppo_epochs):
+            for _ in range(self.n_updates_per_batch):
                 # Note that whereas standard policy gradient methods perform one
                 # gradient update per batch, PPO for example commonly performs
                 # multiple gradient updates on the same batch of data.
@@ -327,36 +380,42 @@ class PPOTrainer:
                 stats_accum = []
                 loss_accum = []
                 for mb in batch:
-                    self.mb_count += 1
-                    should_sync = self.mb_count % self.accumulate_grad_batches == 0
+                    self.train_mb_count += 1
+                    should_sync = self.train_mb_count % self.accumulate_grad_batches == 0
                     with self.fabric.no_backward_sync(model,enabled=not should_sync):
                         outputs = self.training_step(model=model, batch = mb, batch_idx = batch_idx)
                         loss, stats = outputs['loss'], outputs['stats']
                     loss_accum.append(loss)
                     stats_accum.append(stats)
 
-                stats = {key: sum([stats[key] for stats in stats_accum]) / num_mb for key in stats_accum[0]}
-                metrics = {
-                    "loss": torch.mean(torch.stack(loss_accum)),
-                }
-                metrics.update(stats)
-                self.fabric.logger.log_metrics(metrics,step=self.global_step)
-                self._callback_metrics.update(metrics)
                 # TODO(Dahoas): Best way to combine stats between mbs?
                 # How does accelerate do it?
                 # currently only supports a single optimizer
                 self.fabric.call("on_before_optimizer_step" ,self,model,optimizer, 0)
 
+                if self.max_grad_norm is not None:
+                    self.fabric.clip_gradients(model, optimizer, max_norm=self.max_grad_norm)
                 # optimizer step runs train step internally through closure
                 optimizer.step()
                 self.fabric.call("on_before_zero_grad",self,model, optimizer)
                 optimizer.zero_grad()
 
                 self.step_scheduler(model, scheduler_cfg, level="step", current_value=self.global_step)
-                self.fabric.call("on_train_batch_end",self,model, self._current_train_return, batch, batch_idx)
+
 
                 # only increase global step if optimizer stepped
                 self.global_step += 1
+
+                self.train_item_count += 1
+                stats = {key: sum([stats[key] for stats in stats_accum]) / num_mb for key in stats_accum[0]}
+                metrics = {
+                    "loss": torch.mean(torch.stack(loss_accum)),
+                }
+                metrics.update(stats)
+                self.fabric.logger.log_metrics(metrics, step=self.global_step)
+                self._callback_metrics.update(metrics)
+
+                self.fabric.call("on_train_batch_end", self, model, self._current_train_return, batch, batch_idx)
 
                 # stopping criterion on step level
                 if  self.max_steps is not None and self.max_steps >= 0 and self.global_step >= self.max_steps:
@@ -657,7 +716,11 @@ class PPOTrainer:
         input_ids = input_ids.to(model.device)
         if attention_mask is not None:
             attention_mask = attention_mask.to(model.device)
-        kwargs = dict(self.ppo_config.gen_kwargs, **kwargs)
+
+        if self.generate_experience_kwargs is not None:
+            kwargs = dict(self.generate_experience_kwargs, **kwargs)
+        else:
+            kwargs = dict(self.generate_kwargs, **kwargs)
         return model.generate(
             input_ids=input_ids, attention_mask=attention_mask, **kwargs
         )
@@ -780,7 +843,7 @@ class PPOTrainer:
             gathered_samples = _gpu_gather(padded_samples,world_size)
             gathered_prompts = _gpu_gather(padded_prompts,world_size)
             gathered_prompt_sizes = _gpu_gather(prompt_sizes,world_size)
-            metadata = gather_dict({k: v for k, v in batch.items() if k != "input_ids" and k != "attention_mask"})
+            metadata = gather_dict({k: v for k, v in batch.items() if k != "input_ids" and k != "attention_mask" and k != "position_ids"})
 
 
             if is_main_process:

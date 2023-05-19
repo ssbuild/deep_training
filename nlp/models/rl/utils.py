@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/5/11 9:07
 import functools
+import typing
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 import torch
@@ -44,8 +45,10 @@ class Seq2SeqLMOutputWithValue(ModelOutput):
 
 
 
-def make_head(n_embd: int, out: int, dtype: type = torch.float32) -> nn.Sequential:
+def make_head(n_embd: int, out: int, dtype: type = None,up_sampling_score=False) -> typing.Union[nn.Sequential,nn.Module]:
     """Returns a generic sequential MLP head."""
+    if not up_sampling_score:
+        return nn.Linear(n_embd, out, dtype=dtype)
     return nn.Sequential(
         nn.Linear(n_embd, n_embd * 2, dtype=dtype),
         nn.ReLU(),

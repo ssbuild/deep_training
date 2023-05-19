@@ -4,20 +4,14 @@ from dataclasses import dataclass
 from typing import Tuple, Optional
 import torch
 from torch import nn
+from transformers import PretrainedConfig
 from transformers.utils import ModelOutput
 from .configuration import PPOConfig
-from .utils import logprobs_of_labels, get_tensor_stats, flatten_dict, whiten, PPORLBatch
-from transformers import PretrainedConfig
+from ..utils import logprobs_of_labels, get_tensor_stats, flatten_dict, whiten
+from .data_define import PPORLBatch
+from ...models.rl.utils import CausalLMOutputWithValue
 
-@dataclass
-class CausalLMOutputWithValue(ModelOutput):
-    loss: Optional[torch.FloatTensor] = None
-    logits: Optional[torch.FloatTensor] = None
-    past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None
-    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
-    attentions: Optional[Tuple[torch.FloatTensor]] = None
-    cross_attentions: Optional[Tuple[torch.FloatTensor]] = None
-    value: Optional[torch.FloatTensor] = None
+
 
 class PPOLLMAbstract:
     def forward_llm_value_and_logits(self,input_ids,**kwargs):

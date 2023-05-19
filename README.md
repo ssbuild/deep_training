@@ -12,15 +12,26 @@
   - [poetry_training](https://github.com/ssbuild/poetry_training)
 
 
-## state
- - Reinforcement learning...
+## dev plan
+ - Reinforcement learning
+   - ppo ok 
+   - ilql ok
+   - rrhf on the way
+ - 支持 transformer Traner on the way
+ - 解耦 lightning on the way
 
 ## update
 - <strong>2023-05-10</strong>
+  - 0.1.5 release
   - fix lora v2 modules_to_save 自定义额外训练模块
   - 增加reward ppo  llm 完整训练 [rlhf_llm](https://github.com/ssbuild/rlhf_llm)
   - 增加reward ppo  chatglm 完整训练 [rlhf_chatglm](https://github.com/ssbuild/rlhf_chatglm)
   - 增加reward ppo  chatyuan 完整训练 [rlhf_chatyuan](https://github.com/ssbuild/rlhf_chatyuan)
+  - 0.1.5@post2 release
+  - fix prompt modules_to_save 自定义额外训练模块
+  - 增加 ilql 离线模式训练 ilql  完整训练 [rlhf_llm](https://github.com/ssbuild/rlhf_llm)
+  - 0.1.5@post3 release
+  - fix opt model hidden_size for ppo ilql 
   
 - <strong>2023-05-02</strong>
   - 0.1.4 增加 prompt_tuning,p_tuning,prefix_tuning,adaption_prompt

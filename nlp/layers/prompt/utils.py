@@ -152,6 +152,10 @@ def _set_trainable(model, adapter_name):
                     param.requires_grad = True
                 setattr(parent, target_name, ModulesToSaveWrapper(target, adapter_name))
 
+    for k, n in model.named_modules():
+        if isinstance(n,ModulesToSaveWrapper):
+            for p in n.original_module.parameters():
+                p.requires_grad = False
 
 def _set_adapter(model, adapter_name):
     for module in model.modules():
