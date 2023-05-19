@@ -4,14 +4,16 @@ import random
 import typing
 
 from torch import optim, nn
-from torch.optim import AdamW,Adam
 from transformers import get_linear_schedule_with_warmup
-
 from ..scheduler import WarmupCosineSchedule
 from ...data_helper import TrainingArguments
 from ..optimizer.lion import Lion
 from ..optimizer.lamb import Lamb
-
+from torch.optim import Adam
+try:
+    from transformers import AdamW
+except:
+    from torch.optim import AdamW
 
 def configure_optimizers(named_parameter: typing.Union[typing.List,typing.Tuple],
                          training_args: TrainingArguments,
