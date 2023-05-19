@@ -22,7 +22,7 @@
 
 ## update
 - <strong>2023-05-19</strong>
-  - 0.1.6 release
+  - 0.1.7 release
   - fix 0.1.5 rl bugs
 - <strong>2023-05-10</strong>
   - 0.1.5 release

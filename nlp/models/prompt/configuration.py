@@ -86,6 +86,8 @@ class PromptConfigMixin(PushToHubMixin):
 
         loaded_attributes = cls.from_json_file(config_file)
 
+        kwargs.pop("subfolder", None)
+
         config = cls(**kwargs)
 
         for key, value in loaded_attributes.items():
