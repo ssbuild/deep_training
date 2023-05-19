@@ -129,21 +129,23 @@ class AutoModelForCausalLMWithILQLHeads(TransformerForCausalLM):
 
 
     def __init__(
-        self, *args,
-        two_qs: bool = True,
-        alpha: float = 0.99,
-        **kwargs,
+            self, *args,
+            two_qs: bool = True,
+            alpha: float = 0.99,
+            hidden_size=None, 
+            up_sampling_score=False,
+            **kwargs,
     ):
         super(AutoModelForCausalLMWithILQLHeads,self).__init__(*args, **kwargs)
         config = self.model.config
-        hidden_size = kwargs.get('hidden_size',None) or hf_get_hidden_size(config)
+        hidden_size = hidden_size or hf_get_hidden_size(config)
         vocab_size = self.config.vocab_size
         dtype = next(hf_get_lm_head(self.model).parameters()).dtype
         self.two_qs = two_qs
         self.alpha = alpha
         self.ilql_heads = ILQLHeads(hidden_size, vocab_size, self.two_qs, self.alpha, dtype=dtype,
                                     head_size=config.num_labels,
-                                    up_sampling_score=kwargs.get('up_sampling_score',False))
+                                    up_sampling_score=up_sampling_score)
 
     def forward(
         self,
@@ -267,21 +269,23 @@ class AutoModelForSeq2SeqLMWithILQLHeads(TransformerForSeq2SeqLM):
 
 
     def __init__(
-        self, *args,
-        two_qs: bool = True,
-        alpha: float = 0.99,
-        **kwargs,
+            self, *args,
+            two_qs: bool = True,
+            alpha: float = 0.99,
+            hidden_size=None,
+            up_sampling_score=False,
+            **kwargs,
     ):
         super().__init__(*args,**kwargs)
         config = self.model.config
-        hidden_size = kwargs.get('hidden_size',None) or hf_get_hidden_size(config)
+        hidden_size = hidden_size or hf_get_hidden_size(config)
         vocab_size = config.vocab_size
         dtype = next(hf_get_lm_head(self.model).parameters()).dtype
         self.two_qs = two_qs
         self.alpha = alpha
         self.ilql_heads = ILQLHeads(hidden_size, vocab_size, self.two_qs, self.alpha, dtype=dtype,
                                     head_size=config.num_labels,
-                                    up_sampling_score=kwargs.get('up_sampling_score',False))
+                                    up_sampling_score=up_sampling_score)
 
     def sync_target_q_heads(self):
         self.ilql_heads.sync_target_q_heads()
@@ -406,21 +410,23 @@ class ChatglmModelForCausalLMWithILQLHeads(TransformerChatGlmLMHeadModel):
 
 
     def __init__(
-        self, *args,
-        two_qs: bool = True,
-        alpha: float = 0.99,
-        **kwargs,
+            self, *args,
+            two_qs: bool = True,
+            alpha: float = 0.99,
+            hidden_size=None,
+            up_sampling_score=False,
+            **kwargs,
     ):
         super(ChatglmModelForCausalLMWithILQLHeads,self).__init__(*args, **kwargs)
         config = self.model.config
-        hidden_size = kwargs.get('hidden_size',None) or hf_get_hidden_size(config)
+        hidden_size = hidden_size or hf_get_hidden_size(config)
         vocab_size = self.config.vocab_size
         dtype = next(hf_get_lm_head(self.model).parameters()).dtype
         self.two_qs = two_qs
         self.alpha = alpha
         self.ilql_heads = ILQLHeads(hidden_size, vocab_size, self.two_qs, self.alpha, dtype=dtype,
                                     head_size=config.num_labels,
-                                    up_sampling_score=kwargs.get('up_sampling_score',False))
+                                    up_sampling_score=up_sampling_score)
 
     def forward(
         self,

@@ -13,14 +13,13 @@ from ..chatglm import ChatGLMForConditionalGeneration, TransformerChatGlmLMHeadM
 from ..transformer import TransformerForCausalLM,TransformerForSeq2SeqLM
 
 class AutoModelForCausalLMWithValueHead(TransformerForCausalLM):
-    def __init__(self, *args, up_sampling_score=False,**kwargs):
+    def __init__(self, *args,hidden_size=None,up_sampling_score=False, **kwargs):
         super(AutoModelForCausalLMWithValueHead, self).__init__(*args, **kwargs)
         # base_model_prefix = self.base_model_prefix[:-1] if self.base_model_prefix.endswith(
         #     '_') else self.base_model_prefix
         # self.transformer_bone = getattr(self.model, base_model_prefix, None)
         # assert self.transformer_bone is not None
-        self.score = make_head(kwargs.get('hidden_size', None) or hf_get_hidden_size(self.config), self.config.num_labels,
-                               up_sampling_score=kwargs.get('up_sampling_score',False))
+        self.score = make_head( hidden_size or hf_get_hidden_size(self.config), self.config.num_labels,up_sampling_score=up_sampling_score)
 
 
 
@@ -45,10 +44,9 @@ class AutoModelForSeq2SeqLMWithValueHead(TransformerForSeq2SeqLM):
     models that have a language modeling head and a value head
     """
 
-    def __init__(self, *args,**kwargs):
+    def __init__(self, *args,hidden_size=None,up_sampling_score=False, **kwargs):
         super(AutoModelForSeq2SeqLMWithValueHead, self).__init__(*args, **kwargs)
-        self.score = make_head(kwargs.get('hidden_size', None) or hf_get_hidden_size(self.config), self.config.num_labels,
-                               up_sampling_score=kwargs.get('up_sampling_score',False))
+        self.score = make_head( hidden_size or hf_get_hidden_size(self.config), self.config.num_labels,up_sampling_score=up_sampling_score)
 
     def forward(self, *args, **inputs) -> Seq2SeqLMOutputWithValue:
         return_dict = inputs.get('return_dict', False)
@@ -67,14 +65,14 @@ class AutoModelForSeq2SeqLMWithValueHead(TransformerForSeq2SeqLM):
         return self.model.generate(*args, **kwargs)
 
 class AutoModelForCausalPrefixLMWithValueHead(TransformerForCausalLM):
-    def __init__(self, *args,**kwargs):
+    def __init__(self, *args,hidden_size=None,up_sampling_score=False, **kwargs):
         super(AutoModelForCausalPrefixLMWithValueHead, self).__init__(*args, **kwargs)
         # base_model_prefix = self.base_model_prefix[:-1] if self.base_model_prefix.endswith(
         #     '_') else self.base_model_prefix
         # self.transformer_bone = getattr(self.model, base_model_prefix, None)
         # assert self.transformer_bone is not None
-        self.score = make_head(kwargs.get('hidden_size', None) or hf_get_hidden_size(self.config), self.config.num_labels,
-                               up_sampling_score=kwargs.get('up_sampling_score',False))
+        self.score = make_head(hidden_size or hf_get_hidden_size(self.config), self.config.num_labels,
+                               up_sampling_score=up_sampling_score)
 
     def generate(self, *args, **kwargs) -> Union[ModelOutput, torch.LongTensor]:
         return self.model.generate(*args, **kwargs)
@@ -92,14 +90,14 @@ class AutoModelForCausalPrefixLMWithValueHead(TransformerForCausalLM):
         return CausalPrefixLMOutputWithValue(**outputs, value=value)
 
 class ChatglmModelForCausalPrefixLMWithValueHead(TransformerChatGlmLMHeadModel):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args,hidden_size=None,up_sampling_score=False, **kwargs):
         super(ChatglmModelForCausalPrefixLMWithValueHead, self).__init__(*args, **kwargs)
         # base_model_prefix = self.base_model_prefix[:-1] if self.base_model_prefix.endswith(
         #     '_') else self.base_model_prefix
         # self.transformer_bone = getattr(self.model, base_model_prefix, None)
         # assert self.transformer_bone is not None
-        self.score = make_head(kwargs.get('hidden_size', None) or hf_get_hidden_size(self.config), self.config.num_labels,
-                               up_sampling_score=kwargs.get('up_sampling_score',False))
+        self.score = make_head(hidden_size or hf_get_hidden_size(self.config), self.config.num_labels,
+                               up_sampling_score=up_sampling_score)
 
     def generate(self, *args, **kwargs) -> Union[ModelOutput, torch.LongTensor]:
         return self.model.generate(*args, **kwargs)
