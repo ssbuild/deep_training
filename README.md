@@ -30,6 +30,8 @@
   - 0.1.5@post2 release
   - fix prompt modules_to_save 自定义额外训练模块
   - 增加 ilql 离线模式训练 ilql  完整训练 [rlhf_llm](https://github.com/ssbuild/rlhf_llm)
+  - 0.1.5@post3 release
+  - fix opt model hidden_size for ppo ilql 
   
 - <strong>2023-05-02</strong>
   - 0.1.4 增加 prompt_tuning,p_tuning,prefix_tuning,adaption_prompt
