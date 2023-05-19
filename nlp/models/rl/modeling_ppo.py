@@ -8,18 +8,22 @@ import torch
 from torch import nn
 from transformers.utils import ModelOutput
 from .utils import CausalLMOutputWithValue, Seq2SeqLMOutputWithValue, hf_get_decoder_blocks, hf_get_decoder_final_norm, \
-    hf_get_lm_head, hf_get_hidden_size, hf_get_num_hidden_layers, CausalPrefixLMOutputWithValue
+    hf_get_lm_head, hf_get_hidden_size, hf_get_num_hidden_layers, CausalPrefixLMOutputWithValue, make_head
 from ..chatglm import ChatGLMForConditionalGeneration, TransformerChatGlmLMHeadModel
 from ..transformer import TransformerForCausalLM,TransformerForSeq2SeqLM
 
 class AutoModelForCausalLMWithValueHead(TransformerForCausalLM):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, up_sampling_score=False,**kwargs):
         super(AutoModelForCausalLMWithValueHead, self).__init__(*args, **kwargs)
         # base_model_prefix = self.base_model_prefix[:-1] if self.base_model_prefix.endswith(
         #     '_') else self.base_model_prefix
         # self.transformer_bone = getattr(self.model, base_model_prefix, None)
         # assert self.transformer_bone is not None
-        self.score = nn.Linear(self.config.hidden_size, self.config.num_labels)
+        self.score = make_head(kwargs.get('hidden_size', None) or hf_get_hidden_size(self.config), self.config.num_labels,
+                               up_sampling_score=kwargs.get('up_sampling_score',False))
+
+
+
 
     def generate(self, *args, **kwargs) -> Union[ModelOutput, torch.LongTensor]:
         return self.model.generate(*args, **kwargs)
@@ -41,9 +45,10 @@ class AutoModelForSeq2SeqLMWithValueHead(TransformerForSeq2SeqLM):
     models that have a language modeling head and a value head
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args,**kwargs):
         super(AutoModelForSeq2SeqLMWithValueHead, self).__init__(*args, **kwargs)
-        self.score = nn.Linear(self.config.hidden_size, self.config.num_labels)
+        self.score = make_head(kwargs.get('hidden_size', None) or hf_get_hidden_size(self.config), self.config.num_labels,
+                               up_sampling_score=kwargs.get('up_sampling_score',False))
 
     def forward(self, *args, **inputs) -> Seq2SeqLMOutputWithValue:
         return_dict = inputs.get('return_dict', False)
@@ -62,13 +67,14 @@ class AutoModelForSeq2SeqLMWithValueHead(TransformerForSeq2SeqLM):
         return self.model.generate(*args, **kwargs)
 
 class AutoModelForCausalPrefixLMWithValueHead(TransformerForCausalLM):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args,**kwargs):
         super(AutoModelForCausalPrefixLMWithValueHead, self).__init__(*args, **kwargs)
         # base_model_prefix = self.base_model_prefix[:-1] if self.base_model_prefix.endswith(
         #     '_') else self.base_model_prefix
         # self.transformer_bone = getattr(self.model, base_model_prefix, None)
         # assert self.transformer_bone is not None
-        self.score = nn.Linear(self.config.hidden_size, self.config.num_labels)
+        self.score = make_head(kwargs.get('hidden_size', None) or hf_get_hidden_size(self.config), self.config.num_labels,
+                               up_sampling_score=kwargs.get('up_sampling_score',False))
 
     def generate(self, *args, **kwargs) -> Union[ModelOutput, torch.LongTensor]:
         return self.model.generate(*args, **kwargs)
@@ -92,7 +98,8 @@ class ChatglmModelForCausalPrefixLMWithValueHead(TransformerChatGlmLMHeadModel):
         #     '_') else self.base_model_prefix
         # self.transformer_bone = getattr(self.model, base_model_prefix, None)
         # assert self.transformer_bone is not None
-        self.score = nn.Linear(self.config.hidden_size, self.config.num_labels)
+        self.score = make_head(kwargs.get('hidden_size', None) or hf_get_hidden_size(self.config), self.config.num_labels,
+                               up_sampling_score=kwargs.get('up_sampling_score',False))
 
     def generate(self, *args, **kwargs) -> Union[ModelOutput, torch.LongTensor]:
         return self.model.generate(*args, **kwargs)
@@ -203,7 +210,7 @@ class ChatglmModelForCausalPrefixLMWithValueHead(TransformerChatGlmLMHeadModel):
 #         self.final_norm = copy.deepcopy(hf_get_decoder_final_norm(base_model))
 #         self.lm_head = copy.deepcopy(hf_get_lm_head(base_model))
 #
-#         self.hidden_size = hf_get_hidden_size(self.config)
+#         self.hidden_size = hidden_size = kwargs.get('hidden_size',None) or hf_get_hidden_size(self.config)
 #         self.model_parallel = False
 #         self.device_map = None
 #         self.last_device = None

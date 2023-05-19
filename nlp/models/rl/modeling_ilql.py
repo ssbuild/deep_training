@@ -43,14 +43,14 @@ def batched_index_select(
 
 class ILQLHeads(nn.Module):
     def __init__(
-        self,
-        hidden_size: int,
-        vocab_size: int,
-        two_qs: bool,
-        alpha: float,
-        dtype: type,
-        head_size: int,
-
+            self,
+            hidden_size: int,
+            vocab_size: int,
+            two_qs: bool,
+            alpha: float,
+            dtype: type,
+            head_size: int,
+            up_sampling_score: int = None,
     ):
         super().__init__()
 
@@ -58,7 +58,7 @@ class ILQLHeads(nn.Module):
         self.vocab_size = vocab_size
         self.two_qs = two_qs
         self.alpha = alpha
-        self.score = make_head(self.hidden_size, head_size, dtype)
+        self.score = make_head(self.hidden_size, head_size, dtype,up_sampling_score=up_sampling_score)
 
         n_qs = 2 if self.two_qs else 1
         self.q_heads = nn.ModuleList(make_head(self.hidden_size, self.vocab_size, dtype) for _ in range(n_qs))
@@ -136,12 +136,14 @@ class AutoModelForCausalLMWithILQLHeads(TransformerForCausalLM):
     ):
         super(AutoModelForCausalLMWithILQLHeads,self).__init__(*args, **kwargs)
         config = self.model.config
-        hidden_size = hf_get_hidden_size(config)
+        hidden_size = kwargs.get('hidden_size',None) or hf_get_hidden_size(config)
         vocab_size = self.config.vocab_size
         dtype = next(hf_get_lm_head(self.model).parameters()).dtype
         self.two_qs = two_qs
         self.alpha = alpha
-        self.ilql_heads = ILQLHeads(hidden_size, vocab_size, self.two_qs, self.alpha, dtype=dtype,head_size=config.num_labels)
+        self.ilql_heads = ILQLHeads(hidden_size, vocab_size, self.two_qs, self.alpha, dtype=dtype,
+                                    head_size=config.num_labels,
+                                    up_sampling_score=kwargs.get('up_sampling_score',False))
 
     def forward(
         self,
@@ -272,12 +274,14 @@ class AutoModelForSeq2SeqLMWithILQLHeads(TransformerForSeq2SeqLM):
     ):
         super().__init__(*args,**kwargs)
         config = self.model.config
-        hidden_size = hf_get_hidden_size(config)
+        hidden_size = kwargs.get('hidden_size',None) or hf_get_hidden_size(config)
         vocab_size = config.vocab_size
         dtype = next(hf_get_lm_head(self.model).parameters()).dtype
         self.two_qs = two_qs
         self.alpha = alpha
-        self.ilql_heads = ILQLHeads(hidden_size, vocab_size, self.two_qs, self.alpha, dtype=dtype,head_size=config.num_labels)
+        self.ilql_heads = ILQLHeads(hidden_size, vocab_size, self.two_qs, self.alpha, dtype=dtype,
+                                    head_size=config.num_labels,
+                                    up_sampling_score=kwargs.get('up_sampling_score',False))
 
     def sync_target_q_heads(self):
         self.ilql_heads.sync_target_q_heads()
@@ -409,12 +413,14 @@ class ChatglmModelForCausalLMWithILQLHeads(TransformerChatGlmLMHeadModel):
     ):
         super(ChatglmModelForCausalLMWithILQLHeads,self).__init__(*args, **kwargs)
         config = self.model.config
-        hidden_size = hf_get_hidden_size(config)
+        hidden_size = kwargs.get('hidden_size',None) or hf_get_hidden_size(config)
         vocab_size = self.config.vocab_size
         dtype = next(hf_get_lm_head(self.model).parameters()).dtype
         self.two_qs = two_qs
         self.alpha = alpha
-        self.ilql_heads = ILQLHeads(hidden_size, vocab_size, self.two_qs, self.alpha, dtype=dtype,head_size=config.num_labels)
+        self.ilql_heads = ILQLHeads(hidden_size, vocab_size, self.two_qs, self.alpha, dtype=dtype,
+                                    head_size=config.num_labels,
+                                    up_sampling_score=kwargs.get('up_sampling_score',False))
 
     def forward(
         self,
