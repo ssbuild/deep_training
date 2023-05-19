@@ -142,7 +142,9 @@ class ILQLTrainer:
         self.train_item_count = 0
 
         self._callback_metrics: dict = {}
-        self._state : Optional[dict] = {}
+        self._state: Optional[dict] = {
+            "pytorch-lightning_version": lightning.__version__
+        }
         self.fabric.launch()
 
 
@@ -231,7 +233,7 @@ class ILQLTrainer:
             model, optimizer = self.fabric.setup(model, optimizer)
 
         # assemble state (current epoch and global step will be added in save)
-        state = {"model": model, "optim": optimizer, "scheduler": scheduler_cfg}
+        state = {"state_dict": model, "optimizer_states": optimizer, "lr_schedulers": scheduler_cfg}
         self._state.update(state)
         # load last checkpoint if available
         if ckpt_path is not None and os.path.isdir(ckpt_path):
@@ -556,8 +558,10 @@ class ILQLTrainer:
         state = self._state
         state.update(global_step=self.global_step, current_epoch=self.current_epoch)
         if weights_only:
-            state = {"model": state['model']}
-
+            state = {
+                "state_dict": state['state_dict'],
+                "pytorch-lightning_version": state['pytorch-lightning_version'],
+            }
         self.fabric.save(filepath, state)
 
     @staticmethod
