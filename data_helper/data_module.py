@@ -61,14 +61,21 @@ def load_configure(config_name,
         "cache_dir": cache_dir,
         "revision": model_revision,
         "use_auth_token": True if use_auth_token else None,
+        "return_dict": return_dict,
+        **kwargs
+    }
+    tmp_kwargs = {
         "bos_token_id": bos_token_id,
         "pad_token_id": pad_token_id,
         "eos_token_id": eos_token_id,
         "sep_token_id": sep_token_id,
-        "return_dict": return_dict,
         "task_specific_params": task_specific_params,
-        **kwargs
     }
+    for k in list(tmp_kwargs.keys()):
+        if tmp_kwargs[k] is None:
+            tmp_kwargs.pop(k)
+    if tmp_kwargs:
+        config_kwargs.update(tmp_kwargs)
 
     if class_name is not None:
         config = class_name.from_pretrained(config_name, **config_kwargs)
@@ -91,43 +98,3 @@ def load_configure(config_name,
     if config_overrides is not None:
         config.update_from_string(config_overrides)
     return config
-
-
-
-
-# class DataCommonModule(LightningDataModule):
-#     def __init__(self,*args,**kwargs):
-#         super().__init__()
-#
-#
-#     def prepare_data(self):
-#         pass
-#
-#
-#     # def setup(self, stage: str):
-#     #     pass
-#
-#     # def train_dataloader(self):
-#     #     try:
-#     #         length = len(self.dataset["train"])
-#     #     except:
-#     #         length = None
-#     #     collate_fn = self.dataReaderHelper.collate_fn
-#     #     if length is None:
-#     #         return DataLoader(torch_IterableDataset(self.dataset["train"].shuffle(1024).repeat(-1)), batch_size=self.train_batch_size,collate_fn=collate_fn)
-#     #     return DataLoader(torch_Dataset(self.dataset["train"].shuffle(buffer_size=-1)), batch_size=self.train_batch_size,collate_fn=collate_fn)
-#
-#     # def val_dataloader(self):
-#     #     if self.dataset["validation"] is None:
-#     #         return super(GLUEDataModule, self).val_dataloader()
-#     #
-#     #     collate_fn = self.data_helper.collate_fn
-#     #     return DataLoader(self.dataset["validation"], batch_size=self.eval_batch_size,collate_fn=collate_fn)
-#     #
-#     # def test_dataloader(self):
-#     #     if self.dataset["test"] is None:
-#     #         return super(GLUEDataModule, self).test_dataloader()
-#     #
-#     #     collate_fn = self.data_helper.collate_fn
-#     #     return DataLoader(self.dataset["test"], batch_size=self.test_batch_size,collate_fn=collate_fn)
-

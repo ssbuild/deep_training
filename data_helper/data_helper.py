@@ -87,12 +87,14 @@ class DataPreprocessHelper(object):
 
 
 class DataHelper(DataPreprocessHelper):
-    def __init__(self,model_args: ModelArguments,
-                training_args: typing.Optional[TrainingArguments],
-                data_args: DataArguments,**kwargs):
+    def __init__(self,
+                 model_args: ModelArguments,
+                 training_args: typing.Optional[TrainingArguments],
+                 data_args: typing.Optional[DataArguments],
+                 **kwargs):
         super(DataHelper, self).__init__()
 
-        self.backend = data_args.data_backend
+
         self.data_process_fn = self.on_data_process
 
         self.train_files = []
@@ -113,17 +115,23 @@ class DataHelper(DataPreprocessHelper):
 
         self.model_args = model_args
         self.training_args = training_args
+
+        self.backend = data_args.data_backend if data_args else 'record'
         self.data_args = data_args
 
-        label2id, id2label = self.on_get_labels(data_args.label_file)
-        self.label2id = label2id
-        self.id2label = id2label
+        if data_args:
+            label2id, id2label = self.on_get_labels(data_args.label_file)
+            self.label2id = label2id
+            self.id2label = id2label
 
-        self.max_seq_length_dict['train'] = data_args.train_max_seq_length
-        self.max_seq_length_dict['eval'] = data_args.eval_max_seq_length
-        self.max_seq_length_dict['val'] = data_args.eval_max_seq_length
-        self.max_seq_length_dict['test'] = data_args.test_max_seq_length
-        self.max_seq_length_dict['predict'] = data_args.test_max_seq_length
+            self.max_seq_length_dict['train'] = data_args.train_max_seq_length
+            self.max_seq_length_dict['eval'] = data_args.eval_max_seq_length
+            self.max_seq_length_dict['val'] = data_args.eval_max_seq_length
+            self.max_seq_length_dict['test'] = data_args.test_max_seq_length
+            self.max_seq_length_dict['predict'] = data_args.test_max_seq_length
+        else:
+            self.label2id = None
+            self.id2label = None
 
 
     @property
@@ -227,7 +235,6 @@ class DataHelper(DataPreprocessHelper):
         if config_kwargs is None:
             config_kwargs = {}
 
-
         model_args: ModelArguments = self.model_args
         training_args: TrainingArguments = self.training_args
         data_args: DataArguments = self.data_args
@@ -246,12 +253,12 @@ class DataHelper(DataPreprocessHelper):
                                    )
         self.tokenizer = tokenizer
 
-
-        self.max_seq_length_dict['train'] = data_args.train_max_seq_length
-        self.max_seq_length_dict['eval'] = data_args.eval_max_seq_length
-        self.max_seq_length_dict['val'] = data_args.eval_max_seq_length
-        self.max_seq_length_dict['test'] = data_args.test_max_seq_length
-        self.max_seq_length_dict['predict'] = data_args.test_max_seq_length
+        if data_args is not None:
+            self.max_seq_length_dict['train'] = data_args.train_max_seq_length
+            self.max_seq_length_dict['eval'] = data_args.eval_max_seq_length
+            self.max_seq_length_dict['val'] = data_args.eval_max_seq_length
+            self.max_seq_length_dict['test'] = data_args.test_max_seq_length
+            self.max_seq_length_dict['predict'] = data_args.test_max_seq_length
 
         if with_task_params:
             task_specific_params = task_specific_params or {}
@@ -297,7 +304,6 @@ class DataHelper(DataPreprocessHelper):
                 print('*' * 30, 'num_labels = ', config.num_labels)
                 print(self.label2id)
                 print(self.id2label)
-
 
         if with_labels:
             return tokenizer, config, self.label2id, self.id2label
