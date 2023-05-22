@@ -60,7 +60,7 @@ class W8A16Linear(torch.autograd.Function):
         weight = extract_weight_to_half(quant_w, scale_w, ctx.weight_bit_width)
         grad_output = grad_output.contiguous().view(-1, weight.size(0))
         grad_input = grad_output.mm(weight)
-        grad_weight = grad_output.t().mm(inp)
+        grad_weight = grad_output.t().mm(inp.type(weight.dtype))
         return grad_input.view(ctx.inp_shape), grad_weight.view(ctx.weight_shape), None, None
 
 
