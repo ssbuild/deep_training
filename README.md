@@ -23,7 +23,7 @@
 ## update
 - <strong>2023-05-19</strong>
   - 0.1.7 release fix 0.1.5 rl bugs
-  - 0.1.7 release fix chatglm-6b-int4,chatglm-6b-int4 p-tuning-v2 training , fix ilql lightning import
+  - 0.1.7.post0 release fix chatglm-6b-int4,chatglm-6b-int4 p-tuning-v2 training , fix ilql lightning import
   
 - <strong>2023-05-10</strong>
   - 0.1.5 release
