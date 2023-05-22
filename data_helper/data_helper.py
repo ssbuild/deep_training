@@ -374,7 +374,7 @@ class DataHelper(DataPreprocessHelper):
         elif mode == 'test' or mode == 'predict':
             contain_objs = self.test_files
         else:
-            raise ValueError('{} invalid ', mode)
+            raise ValueError('{} invalid '.format(mode))
 
         if not input_files:
             logging.info('input_files empty!')

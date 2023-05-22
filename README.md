@@ -17,7 +17,7 @@
    - ppo ok 
    - ilql ok
    - rrhf on the way
- - 支持 transformer Traner on the way
+ - 支持 transformer Trainer on the way
  - 解耦 lightning on the way
 
 ## update
