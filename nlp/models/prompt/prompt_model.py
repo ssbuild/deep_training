@@ -148,12 +148,18 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
         else:
             prompt_config.inference_mode = not is_trainable
 
-        # if prompt_config.task_type not in MODEL_TYPE_TO_PROMPT_MODEL_MAPPING.keys():
-        #     model = cls(model, prompt_config, adapter_name)
-        # else:
-        #     model = MODEL_TYPE_TO_PROMPT_MODEL_MAPPING[prompt_config.task_type](model, prompt_config, adapter_name)
+        if prompt_config.task_type not in MODEL_TYPE_TO_PROMPT_MODEL_MAPPING.keys():
+            model = cls(model, prompt_config, adapter_name)
+        else:
+            model = MODEL_TYPE_TO_PROMPT_MODEL_MAPPING[prompt_config.task_type](model, prompt_config, adapter_name)
         model.load_adapter(pretrained_model_name_or_path, adapter_name, **kwargs)
         return model
+
+
+
+    def load_weight(self, pretrained_model_name_or_path, adapter_name="default", is_trainable=False, **kwargs):
+        self.load_adapter(pretrained_model_name_or_path, adapter_name,is_trainable=is_trainable, **kwargs)
+
 
     def _setup_prompt_encoder(self, adapter_name):
         config = self.prompt_config[adapter_name]
@@ -315,7 +321,6 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
             _set_trainable(self, adapter_name)
 
     def load_adapter(self, model_id, adapter_name, is_trainable=False, **kwargs):
-
         if adapter_name not in self.prompt_config:
             # load the config
             prompt_config = PROMPT_TYPE_TO_CONFIG_MAPPING[
@@ -326,6 +331,8 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
             else:
                 prompt_config.inference_mode = not is_trainable
             self.add_adapter(adapter_name, prompt_config)
+        else:
+            self.prompt_config[adapter_name].inference_mode = not is_trainable
 
         # load weights if any
         path = os.path.join(model_id, kwargs["subfolder"]) if kwargs.get("subfolder", None) is not None else model_id
@@ -337,14 +344,12 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
                 f"Can't find weights for {model_id} in {model_id} or in the Hugging Face Hub. "
                 f"Please check that the file {WEIGHTS_NAME} is present at {model_id}."
             )
-
-
         adapters_weights = torch.load(
             filename, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu")
         )
-
         # load the weights into the model
         set_prompt_model_state_dict(self, adapters_weights, adapter_name=adapter_name)
+
 
 
 

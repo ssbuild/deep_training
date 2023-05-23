@@ -128,6 +128,8 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         model.load_adapter(pretrained_model_name_or_path, adapter_name, **kwargs)
         return model
 
+    def load_weight(self, pretrained_model_name_or_path, adapter_name="default", is_trainable=False, **kwargs):
+        self.load_adapter(pretrained_model_name_or_path, adapter_name, is_trainable=is_trainable, **kwargs)
 
 
     def print_trainable_parameters(self):
@@ -210,6 +212,8 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
 
             lora_config.inference_mode = not is_trainable
             self.add_adapter(adapter_name, lora_config)
+        else:
+            self.lora_config_v2[adapter_name].inference_mode = not is_trainable
 
         # load weights if any
         path = os.path.join(model_id, kwargs["subfolder"]) if kwargs.get("subfolder", None) is not None else model_id
