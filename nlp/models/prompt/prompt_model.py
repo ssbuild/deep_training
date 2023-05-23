@@ -152,7 +152,7 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
         #     model = cls(model, prompt_config, adapter_name)
         # else:
         #     model = MODEL_TYPE_TO_PROMPT_MODEL_MAPPING[prompt_config.task_type](model, prompt_config, adapter_name)
-        self.load_adapter(pretrained_model_name_or_path, adapter_name, **kwargs)
+        model.load_adapter(pretrained_model_name_or_path, adapter_name, **kwargs)
         return model
 
     def _setup_prompt_encoder(self, adapter_name):
