@@ -212,8 +212,7 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
 
             lora_config.inference_mode = not is_trainable
             self.add_adapter(adapter_name, lora_config)
-        else:
-            self.lora_config_v2[adapter_name].inference_mode = not is_trainable
+
 
         # load weights if any
         path = os.path.join(model_id, kwargs["subfolder"]) if kwargs.get("subfolder", None) is not None else model_id

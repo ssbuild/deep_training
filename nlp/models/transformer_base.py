@@ -111,10 +111,10 @@ class TransformerBase(MyLightningModule,metaclass=TransformerFakeMeta):
         self._trainer:  typing.Optional["pl.Trainer"]  = None
 
     def forward(self, *args, **batch):
-        return self.compute_loss(*args,**batch)
+        return self.model(*args, **batch)
 
-    def compute_loss(self, *args,**batch) -> tuple:
-        return self.model.forward(*args,**batch)
+    def compute_loss(self, *args, **batch) -> tuple:
+        return self.model(*args, **batch)
 
     def post_init(self):
         return self.model.post_init()
@@ -365,14 +365,12 @@ class TransformerLightningModule(MyLightningModule):
             return [(model, lr)]
         return self.model.get_model_lr(model=None,lr=None) if model is None else [(model,self.config.task_specific_params['learning_rate'])]
 
-
-    def compute_loss(self,*args, **kwargs):
+    def compute_loss(self, *args, **kwargs):
         if len(args):
             kwargs.update(dict(args))
         return self.model.compute_loss(**kwargs)
 
-
-    def forward(self,*args, **kwargs):
+    def forward(self, *args, **kwargs):
         if len(args):
             kwargs.update(dict(args))
         return self.compute_loss(**kwargs)
@@ -548,9 +546,9 @@ class TransformerLightningModule(MyLightningModule):
 
     def training_step(self, batch):
         if isinstance(batch, dict):
-            outputs = self.forward(**batch)
+            outputs = self.compute_loss(**batch)
         else:
-            outputs = self.forward(**dict(batch))
+            outputs = self.compute_loss(**dict(batch))
         loss = outputs[0]
         if isinstance(loss,dict):
             self.log_dict(loss,prog_bar=True)
@@ -560,9 +558,9 @@ class TransformerLightningModule(MyLightningModule):
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         if isinstance(batch, dict):
-            outputs = self.forward(**batch)
+            outputs = self.compute_loss(**batch)
         else:
-            outputs = self.forward(**dict(batch))
+            outputs = self.compute_loss(**dict(batch))
 
         loss = outputs[0]
         o = {}
@@ -604,9 +602,9 @@ class TransformerLightningModule(MyLightningModule):
 
     def test_step(self, batch, batch_idx):
         if isinstance(batch, dict):
-            outputs = self.forward(**batch)
+            outputs = self.compute_loss(**batch)
         else:
-            outputs = self.forward(**dict(batch))
+            outputs = self.compute_loss(**dict(batch))
         o = {}
         out = outputs
         if isinstance(out, (tuple, list)):

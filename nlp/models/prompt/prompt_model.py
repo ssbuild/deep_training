@@ -331,8 +331,7 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
             else:
                 prompt_config.inference_mode = not is_trainable
             self.add_adapter(adapter_name, prompt_config)
-        else:
-            self.prompt_config[adapter_name].inference_mode = not is_trainable
+
 
         # load weights if any
         path = os.path.join(model_id, kwargs["subfolder"]) if kwargs.get("subfolder", None) is not None else model_id
@@ -693,7 +692,7 @@ class PromptModelForCausalLM(PromptModel):
                     kwargs["token_type_ids"] = None
 
                 outputs = self.base_model.generate(**kwargs)
-        except:
+        except Exception:
             self.get_transformer_model().prepare_inputs_for_generation = self.base_model_prepare_inputs_for_generation
             raise
         else:

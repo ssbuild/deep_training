@@ -56,8 +56,8 @@ def set_prompt_model_state_dict(model, prompt_model_state_dict, adapter_name="de
     Set the state dict of the Peft model.
 
     Args:
-        model ([`PeftModel`]): The Peft model.
-        peft_model_state_dict (`dict`): The state dict of the Peft model.
+        model ([`LoraModel`]): The LoraModel.
+        prompt_model_state_dict (`dict`): The state dict of the Peft model.
     """
     config = model.prompt_config[adapter_name]
     state_dict = {}
