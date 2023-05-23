@@ -15,7 +15,7 @@ from transformers.utils import PushToHubMixin
 
 from .configuration import PromptLearningConfig, PromptType, PromptBaseArguments, PROMPT_TYPE_TO_CONFIG_MAPPING, \
     WEIGHTS_NAME, TaskType
-from .save_and_load import get_prompt_model_state_dict
+from .save_and_load import get_prompt_model_state_dict, set_prompt_model_state_dict
 from .utils import _prepare_prompt_learning_config
 from ...layers.prompt.prefix_tuning import PrefixEncoder
 from ...layers.prompt.p_tuning import PromptEncoder
@@ -148,11 +148,11 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
         else:
             prompt_config.inference_mode = not is_trainable
 
-        if prompt_config.task_type not in MODEL_TYPE_TO_PROMPT_MODEL_MAPPING.keys():
-            model = cls(model, prompt_config, adapter_name)
-        else:
-            model = MODEL_TYPE_TO_PROMPT_MODEL_MAPPING[prompt_config.task_type](model, prompt_config, adapter_name)
-        model.load_adapter(pretrained_model_name_or_path, adapter_name, **kwargs)
+        # if prompt_config.task_type not in MODEL_TYPE_TO_PROMPT_MODEL_MAPPING.keys():
+        #     model = cls(model, prompt_config, adapter_name)
+        # else:
+        #     model = MODEL_TYPE_TO_PROMPT_MODEL_MAPPING[prompt_config.task_type](model, prompt_config, adapter_name)
+        self.load_adapter(pretrained_model_name_or_path, adapter_name, **kwargs)
         return model
 
     def _setup_prompt_encoder(self, adapter_name):
@@ -304,7 +304,6 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
             )
         self.prompt_config[adapter_name] = prompt_config
         self._setup_prompt_encoder(adapter_name)
-
         self.set_additional_trainable_modules(prompt_config, adapter_name)
 
     def set_additional_trainable_modules(self, prompt_config, adapter_name):
@@ -343,12 +342,11 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
         adapters_weights = torch.load(
             filename, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu")
         )
+
         # load the weights into the model
-        get_prompt_model_state_dict(self, adapters_weights, adapter_name=adapter_name)
+        set_prompt_model_state_dict(self, adapters_weights, adapter_name=adapter_name)
 
 
-        # Set model in evaluation mode to deactivate Dropout modules by default
-        self.eval()
 
     def set_adapter(self, adapter_name):
         """

@@ -114,7 +114,7 @@ class TransformerBase(MyLightningModule,metaclass=TransformerFakeMeta):
         return self.model(*args,**batch)
 
     def compute_loss(self, *args,**batch) -> tuple:
-        return self.model(*args,**batch)
+        return self.forward(*args,**batch)
 
     def post_init(self):
         return self.model.post_init()
@@ -367,12 +367,14 @@ class TransformerLightningModule(MyLightningModule):
 
 
     def compute_loss(self,*args, **kwargs):
-        kwargs.update(dict(args))
+        if len(args):
+            kwargs.update(dict(args))
         return self.model.compute_loss(**kwargs)
 
 
     def forward(self,*args, **kwargs):
-        kwargs.update(dict(args))
+        if len(args):
+            kwargs.update(dict(args))
         return self.compute_loss(**kwargs)
 
 
@@ -546,9 +548,9 @@ class TransformerLightningModule(MyLightningModule):
 
     def training_step(self, batch):
         if isinstance(batch, dict):
-            outputs = self.compute_loss(**batch)
+            outputs = self.forward(**batch)
         else:
-            outputs = self.compute_loss(**dict(batch))
+            outputs = self.forward(**dict(batch))
         loss = outputs[0]
         if isinstance(loss,dict):
             self.log_dict(loss,prog_bar=True)
@@ -558,9 +560,9 @@ class TransformerLightningModule(MyLightningModule):
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         if isinstance(batch, dict):
-            outputs = self.compute_loss(**batch)
+            outputs = self.forward(**batch)
         else:
-            outputs = self.compute_loss(**dict(batch))
+            outputs = self.forward(**dict(batch))
 
         loss = outputs[0]
         o = {}
@@ -602,9 +604,9 @@ class TransformerLightningModule(MyLightningModule):
 
     def test_step(self, batch, batch_idx):
         if isinstance(batch, dict):
-            outputs = self.compute_loss(**batch)
+            outputs = self.forward(**batch)
         else:
-            outputs = self.compute_loss(**dict(batch))
+            outputs = self.forward(**dict(batch))
         o = {}
         out = outputs
         if isinstance(out, (tuple, list)):

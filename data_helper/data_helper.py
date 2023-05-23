@@ -89,11 +89,10 @@ class DataPreprocessHelper(object):
 class DataHelper(DataPreprocessHelper):
     def __init__(self,
                  model_args: ModelArguments,
-                 training_args: typing.Optional[TrainingArguments],
-                 data_args: typing.Optional[DataArguments],
+                 training_args: typing.Optional[TrainingArguments] = None,
+                 data_args: typing.Optional[DataArguments] = None,
                  **kwargs):
         super(DataHelper, self).__init__()
-
 
         self.data_process_fn = self.on_data_process
 
