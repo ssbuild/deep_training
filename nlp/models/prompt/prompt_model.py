@@ -15,7 +15,7 @@ from transformers.utils import PushToHubMixin
 
 from .configuration import PromptLearningConfig, PromptType, PromptBaseArguments, PROMPT_TYPE_TO_CONFIG_MAPPING, \
     WEIGHTS_NAME, TaskType
-from .save_and_load import get_prompt_model_state_dict
+from .save_and_load import get_prompt_model_state_dict, set_prompt_model_state_dict
 from .utils import _prepare_prompt_learning_config
 from ...layers.prompt.prefix_tuning import PrefixEncoder
 from ...layers.prompt.p_tuning import PromptEncoder
@@ -155,6 +155,12 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
         model.load_adapter(pretrained_model_name_or_path, adapter_name, **kwargs)
         return model
 
+
+
+    def load_weight(self, pretrained_model_name_or_path, adapter_name="default", is_trainable=False, **kwargs):
+        self.load_adapter(pretrained_model_name_or_path, adapter_name,is_trainable=is_trainable, **kwargs)
+
+
     def _setup_prompt_encoder(self, adapter_name):
         config = self.prompt_config[adapter_name]
         self.prompt_encoder = torch.nn.ModuleDict({})
@@ -271,6 +277,13 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
         """
         return self.get_base_model()(*args, **kwargs)
 
+
+
+    #becouse implementation new forward , so need define compute_loss in this class
+    def compute_loss(self,*args,**kwargs):
+        return self.forward(*args,**kwargs)
+
+
     @contextmanager
     def disable_adapter(self):
         """
@@ -304,7 +317,6 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
             )
         self.prompt_config[adapter_name] = prompt_config
         self._setup_prompt_encoder(adapter_name)
-
         self.set_additional_trainable_modules(prompt_config, adapter_name)
 
     def set_additional_trainable_modules(self, prompt_config, adapter_name):
@@ -316,7 +328,6 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
             _set_trainable(self, adapter_name)
 
     def load_adapter(self, model_id, adapter_name, is_trainable=False, **kwargs):
-
         if adapter_name not in self.prompt_config:
             # load the config
             prompt_config = PROMPT_TYPE_TO_CONFIG_MAPPING[
@@ -328,6 +339,7 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
                 prompt_config.inference_mode = not is_trainable
             self.add_adapter(adapter_name, prompt_config)
 
+
         # load weights if any
         path = os.path.join(model_id, kwargs["subfolder"]) if kwargs.get("subfolder", None) is not None else model_id
 
@@ -338,17 +350,14 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
                 f"Can't find weights for {model_id} in {model_id} or in the Hugging Face Hub. "
                 f"Please check that the file {WEIGHTS_NAME} is present at {model_id}."
             )
-
-
         adapters_weights = torch.load(
             filename, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu")
         )
         # load the weights into the model
-        get_prompt_model_state_dict(self, adapters_weights, adapter_name=adapter_name)
+        set_prompt_model_state_dict(self, adapters_weights, adapter_name=adapter_name)
 
 
-        # Set model in evaluation mode to deactivate Dropout modules by default
-        self.eval()
+
 
     def set_adapter(self, adapter_name):
         """
@@ -659,9 +668,10 @@ class PromptModelForCausalLM(PromptModel):
     def generate(self, **kwargs):
         prompt_config = self.active_prompt_config
         self.get_transformer_model().prepare_inputs_for_generation = self.prepare_inputs_for_generation
+        generate_fn = getattr(self.base_model,"generate",self.base_model.model.generate)
         try:
             if not isinstance(prompt_config, PromptLearningConfig):
-                outputs = self.base_model.generate(**kwargs)
+                outputs = generate_fn(**kwargs)
             else:
                 if "input_ids" not in kwargs:
                     raise ValueError("input_ids must be provided for Prompt model generation")
@@ -689,8 +699,8 @@ class PromptModelForCausalLM(PromptModel):
                     )
                     kwargs["token_type_ids"] = None
 
-                outputs = self.base_model.generate(**kwargs)
-        except:
+                outputs = generate_fn(**kwargs)
+        except Exception:
             self.get_transformer_model().prepare_inputs_for_generation = self.base_model_prepare_inputs_for_generation
             raise
         else:
@@ -880,9 +890,10 @@ class PromptModelForSeq2SeqLM(PromptModel):
         self.get_transformer_model()._prepare_encoder_decoder_kwargs_for_generation = (
             self._prepare_encoder_decoder_kwargs_for_generation
         )
+        generate_fn = getattr(self.base_model, "generate", self.base_model.model.generate)
         try:
             if not isinstance(prompt_config, PromptLearningConfig):
-                outputs = self.base_model.generate(**kwargs)
+                outputs = generate_fn(**kwargs)
             else:
                 if "input_ids" not in kwargs:
                     raise ValueError("input_ids must be provided for Prompt model generation")
@@ -898,7 +909,7 @@ class PromptModelForSeq2SeqLM(PromptModel):
                     kwargs["token_type_ids"] = None
 
                 if prompt_config.prompt_type == PromptType.PREFIX_TUNING:
-                    outputs = self.base_model.generate(**kwargs)
+                    outputs = generate_fn(**kwargs)
                 else:
                     raise NotImplementedError
         except:
