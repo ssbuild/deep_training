@@ -17,6 +17,7 @@ from .configuration import PromptLearningConfig, PromptType, PromptBaseArguments
     WEIGHTS_NAME, TaskType
 from .save_and_load import get_prompt_model_state_dict, set_prompt_model_state_dict
 from .utils import _prepare_prompt_learning_config
+from ..transformer_base import TransformerBase
 from ...layers.prompt.prefix_tuning import PrefixEncoder
 from ...layers.prompt.p_tuning import PromptEncoder
 from ...layers.prompt.prompt_tuning import PromptEmbedding
@@ -76,7 +77,7 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
         self.add_adapter(adapter_name, prompt_config)
 
     def get_transformer_model(self):
-        return self.base_model if isinstance(self.base_model,PreTrainedModel) else self.base_model.model
+        return self.base_mode.model if isinstance(self.base_mode, TransformerBase) else self.base_mode
 
     def save_pretrained(self, save_directory, **kwargs):
         r"""

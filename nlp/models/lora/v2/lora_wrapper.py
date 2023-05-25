@@ -3,9 +3,12 @@
 # @Author: tk
 # @File：lora_wrapper
 import os
+import typing
 from contextlib import contextmanager
 import torch
+from transformers import PreTrainedModel
 from transformers.utils import PushToHubMixin
+from ...transformer_base import TransformerBase
 from ....layers.lora_v2.utils import _set_trainable, _set_adapter
 from .adalora_model import AdaLoraModel
 from .configuration import WEIGHTS_NAME, LoraConfig, AdaLoraConfig,LoraArguments
@@ -25,21 +28,21 @@ LORA_TYPE_TO_CONFIG_MAPPING = {
 
 class LoraModel(PushToHubMixin, torch.nn.Module):
     """
-    Base model encompassing various Peft methods.
+    Base model encompassing various Lora methods.
 
     Args:
-        model ([`~transformers.PreTrainedModel`]): The base transformer model used for Peft.
-        lora_config_v2 ([`LoraConfig`]): The configuration of the Peft model.
+        model ([`~transformers.PreTrainedModel`]): The base transformer model used for Lora.
+        lora_config ([`LoraConfig`]): The configuration of the Lora model.
 
 
     **Attributes**:
-        - **base_model** ([`~transformers.PreTrainedModel`]) -- The base transformer model used for Peft.
-        - **lora_config** ([`LoraConfig`]) -- The configuration of the Peft model.
+        - **base_model** ([`~transformers.PreTrainedModel`]) -- The base transformer model used for Lora.
+        - **lora_config** ([`LoraConfig`]) -- The configuration of the Lora model.
         - **modules_to_save** (`list` of `str`) -- The list of sub-module names to save when
         saving the model.
-        - **prompt_encoder** ([`PromptEncoder`]) -- The prompt encoder used for Peft if
+        - **prompt_encoder** ([`PromptEncoder`]) -- The prompt encoder used for Lora if
         using [`PromptLearningConfig`].
-        - **prompt_tokens** (`torch.Tensor`) -- The virtual prompt tokens used for Peft if
+        - **prompt_tokens** (`torch.Tensor`) -- The virtual prompt tokens used for Lora if
         using [`PromptLearningConfig`].
         - **transformer_backbone_name** (`str`) -- The name of the transformer
         backbone in the base model if using [`PromptLearningConfig`].
@@ -47,21 +50,25 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         in the base model if using [`PromptLearningConfig`].
     """
 
-    def __init__(self, model, lora_config_v2: LoraConfig, adapter_name="default"):
+    def __init__(self, model, lora_config: LoraConfig, adapter_name="default"):
+        '''
+            model TransformerBase , model.model
+        '''
         super().__init__()
-        assert lora_config_v2.lora_type is not None
+        assert lora_config.lora_type is not None
         self.base_model = model
-        self.config = self.base_model.config
+        self.config = getattr(model.model if isinstance(model, TransformerBase) else model, "config", None)
         self.modules_to_save = None
-        self.lora_config_v2 = {}
+        self.lora_config = {}
         self.active_adapter = adapter_name
-        self.lora_type = lora_config_v2.lora_type
-        self.base_model_torch_dtype = getattr(model, "dtype", None)
-        self.lora_config_v2[adapter_name] = lora_config_v2
-        self.base_model = LORA_TYPE_TO_MODEL_MAPPING[lora_config_v2.lora_type](
-            self.base_model, self.lora_config_v2, adapter_name
+        self.lora_type = lora_config.lora_type
+        self.base_model_torch_dtype = getattr(model.model if isinstance(model, TransformerBase) else model, "dtype", None)
+        self.lora_config[adapter_name] = lora_config
+        self.base_model: LoraModel = LORA_TYPE_TO_MODEL_MAPPING[lora_config.lora_type](
+            self.base_model, self.lora_config, adapter_name
         )
-        self.set_additional_trainable_modules(lora_config_v2, adapter_name)
+        self.set_additional_trainable_modules(lora_config, adapter_name)
+
 
     def save_pretrained(self, save_directory, **kwargs):
         r"""
@@ -80,7 +87,7 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
             raise ValueError(f"Provided path ({save_directory}) should be a directory, not a file")
         os.makedirs(save_directory, exist_ok=True)
 
-        for adapter_name, lora_config in self.lora_config_v2.items():
+        for adapter_name, lora_config in self.lora_config.items():
             # save only the trainable weights
             output_state_dict = get_lora_model_state_dict(
                 self, state_dict=kwargs.get("state_dict", None), adapter_name=adapter_name
@@ -178,7 +185,7 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         yield
         self.base_model.enable_adapter_layers()
 
-    def get_base_model(self):
+    def get_base_model(self)->typing.Optional[TransformerBase,PreTrainedModel,typing.Any]:
         """
         Returns the base model.
         """
@@ -190,7 +197,7 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
                 f"Cannot combine adapters with different peft types. "
                 f"Found {self.lora_type} and {lora_config.lora_type}."
             )
-        self.lora_config_v2[adapter_name] = lora_config
+        self.lora_config[adapter_name] = lora_config
         self.base_model.add_adapter(adapter_name, lora_config)
         self.set_additional_trainable_modules(lora_config, adapter_name)
 
@@ -204,7 +211,7 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
             _set_trainable(self, adapter_name)
 
     def load_adapter(self, model_id, adapter_name, is_trainable=False, **kwargs):
-        if adapter_name not in self.lora_config_v2:
+        if adapter_name not in self.lora_config:
             # load the config
             lora_config = LORA_TYPE_TO_CONFIG_MAPPING[
                 LoraConfig.from_pretrained(model_id, subfolder=kwargs.get("subfolder", None)).lora_type
@@ -237,7 +244,7 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         """
         Sets the active adapter.
         """
-        if adapter_name not in self.lora_config_v2:
+        if adapter_name not in self.lora_config:
             raise ValueError(f"Adapter {adapter_name} not found.")
         self.active_adapter = adapter_name
         self.base_model.set_adapter(adapter_name)
@@ -245,4 +252,4 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
 
     @property
     def active_peft_config(self):
-        return self.lora_config_v2[self.active_adapter]
+        return self.lora_config[self.active_adapter]

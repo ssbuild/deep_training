@@ -13,8 +13,10 @@ import torch
 from torch import nn
 from transformers import Conv1D
 
+from ...transformer_base import TransformerBase
 from ....layers.lora_v2.layers import mark_only_lora_as_trainable, is_bnb_available, LoraLayer, Linear
-from ....layers.lora_v2.utils import _freeze_adapter, _get_submodules, ModulesToSaveWrapper
+from ....layers.lora_v2.utils import _freeze_adapter, _get_submodules, ModulesToSaveWrapper, \
+    prepare_model_for_kbit_training
 
 __all__ = [
     'is_bnb_available',
@@ -50,6 +52,15 @@ class LoraModel(torch.nn.Module):
         self.peft_config = config
         self.add_adapter(adapter_name, self.peft_config[adapter_name])
 
+        transformer_model = self.get_transformer_model()
+        loaded_in_4bit = getattr(transformer_model, "is_loaded_in_4bit", False)
+        loaded_in_8bit = getattr(transformer_model, "is_loaded_in_8bit", False)
+        if loaded_in_4bit or loaded_in_8bit:
+            prepare_model_for_kbit_training(transformer_model)
+
+    def get_transformer_model(self):
+        return self.model.model if isinstance(self.model, TransformerBase) else self.model
+
     def add_adapter(self, adapter_name, config=None):
         if config is not None:
             config = self._prepare_lora_config(config, self.model.config.to_dict())
@@ -66,14 +77,11 @@ class LoraModel(torch.nn.Module):
 
     def _find_and_replace(self, adapter_name):
         lora_config = self.peft_config[adapter_name]
-        loaded_in_8bit = getattr(self.model, "is_loaded_in_8bit", False)
-        if not loaded_in_8bit:
-            if hasattr(self.model,'model'):
-                loaded_in_8bit = getattr(self.model.model, "is_loaded_in_8bit", False)
-
-        if loaded_in_8bit and not is_bnb_available():
+        loaded_in_4bit = getattr(self.get_transformer_model(), "is_loaded_in_4bit", False)
+        loaded_in_8bit = getattr(self.get_transformer_model(), "is_loaded_in_8bit", False)
+        if (loaded_in_4bit or loaded_in_8bit) and not is_bnb_available():
             raise ImportError(
-                "To use Lora with 8-bit quantization, please install the `bitsandbytes` package. "
+                "To use Lora with 8-bit or 4-bit quantization, please install the `bitsandbytes` package. "
                 "You can install it with `pip install bitsandbytes`."
             )
         is_target_modules_in_base_model = False
@@ -240,8 +248,8 @@ class LoraModel(torch.nn.Module):
         if self.config.model_type == "gpt2":
             raise ValueError("GPT2 models are not supported for merging LORA layers")
 
-        if getattr(self.model, "is_loaded_in_8bit", False):
-            raise ValueError("Cannot merge LORA layers when the model is loaded in 8-bit mode")
+        if getattr(self.model, "is_loaded_in_8bit", False) or getattr(self.model, "is_loaded_in_4bit", False):
+            raise ValueError("Cannot merge LORA layers when the model is loaded in 8-bit mode and is_loaded_in_4bit")
 
         key_list = [key for key, _ in self.model.named_modules() if "lora" not in key]
         for key in key_list:

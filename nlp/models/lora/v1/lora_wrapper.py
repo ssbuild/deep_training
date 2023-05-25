@@ -19,6 +19,7 @@ from transformers import Conv1D
 from transformers.utils import PushToHubMixin
 
 from .configuration import LoraArguments, WEIGHTS_NAME
+from ...transformer_base import TransformerBase
 from ....layers.lora_v1.layers import MergedLinear, is_bnb_available, LoraLayer, Linear
 from ....layers.lora_v1.utils import mark_only_lora_as_trainable
 
@@ -97,17 +98,18 @@ class LoraModel(torch.nn.Module,PushToHubMixin):
         mark_only_lora_as_trainable(self.model, self.lora_config.bias)
         self.forward = self.model.forward
 
-    def _find_and_replace(self):
-        loaded_in_8bit = getattr(self.model, "is_loaded_in_8bit", False)
-        if not loaded_in_8bit:
-            if hasattr(self.model, 'model'):
-                loaded_in_8bit = getattr(self.model.model, "is_loaded_in_8bit", False)
+    def get_transformer_model(self):
+        return self.model.model if isinstance(self.model, TransformerBase) else self.model
 
-        if loaded_in_8bit and not is_bnb_available():
+    def _find_and_replace(self):
+        loaded_in_4bit = getattr(self.get_transformer_model(), "is_loaded_in_4bit", False)
+        loaded_in_8bit = getattr(self.get_transformer_model(), "is_loaded_in_8bit", False)
+        if (loaded_in_4bit or loaded_in_8bit) and not is_bnb_available():
             raise ImportError(
-                "To use Lora with 8-bit quantization, please install the `bitsandbytes` package. "
+                "To use Lora with 8-bit or 4-bit quantization, please install the `bitsandbytes` package. "
                 "You can install it with `pip install bitsandbytes`."
             )
+
         is_target_modules_in_base_model = False
         kwargs = {
             "r": self.lora_config.r,
