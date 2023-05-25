@@ -38,11 +38,11 @@ def get_filename_replace_dir(filename,new_path_dir,ext=None):
 
 
 class DataHelper(DataHelperBase):
-    tokenizer = typing.Optional[PreTrainedTokenizer] = None
-    config = typing.Optional[PretrainedConfig] = None
-    model_args = typing.Optional[ModelArguments] = None
-    training_args = typing.Optional[TrainingArguments] = None
-    data_args = typing.Optional[DataArguments] = None
+    tokenizer: typing.Optional[PreTrainedTokenizer] = None
+    config: typing.Optional[PretrainedConfig] = None
+    model_args: typing.Optional[ModelArguments] = None
+    training_args: typing.Optional[TrainingArguments] = None
+    data_args: typing.Optional[DataArguments] = None
     def __init__(self,
                  model_args: ModelArguments,
                  training_args: typing.Optional[TrainingArguments] = None,

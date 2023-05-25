@@ -50,7 +50,7 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         in the base model if using [`PromptLearningConfig`].
     """
 
-    def __init__(self, model, lora_config: LoraConfig, adapter_name="default"):
+    def __init__(self, model, lora_config: LoraConfig, adapter_name="default",auto_prepare_kbit_training=True):
         '''
             model TransformerBase , model.model
         '''
@@ -65,7 +65,7 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         self.base_model_torch_dtype = getattr(model.model if isinstance(model, TransformerBase) else model, "dtype", None)
         self.lora_config[adapter_name] = lora_config
         self.base_model: LoraModel = LORA_TYPE_TO_MODEL_MAPPING[lora_config.lora_type](
-            self.base_model, self.lora_config, adapter_name
+            self.base_model, self.lora_config, adapter_name,auto_prepare_kbit_training=auto_prepare_kbit_training
         )
         self.set_additional_trainable_modules(lora_config, adapter_name)
 
@@ -185,7 +185,7 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         yield
         self.base_model.enable_adapter_layers()
 
-    def get_base_model(self)-> typing.Optional[TransformerBase,PreTrainedModel,typing.Any]:
+    def get_base_model(self)-> typing.Union[TransformerBase,PreTrainedModel,typing.Any]:
         """
         Returns the base model.
         """

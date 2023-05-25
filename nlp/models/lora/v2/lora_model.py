@@ -15,7 +15,7 @@ from transformers import Conv1D
 
 from ...transformer_base import TransformerBase
 from ....layers.lora_v2.layers import mark_only_lora_as_trainable, is_bnb_available, LoraLayer, Linear, \
-    is_bnb_4bit_available, Linear4bit, Embedding
+    is_bnb_4bit_available,  Embedding
 from ....layers.lora_v2.utils import _freeze_adapter, _get_submodules, ModulesToSaveWrapper, \
     prepare_model_for_kbit_training
 
@@ -28,6 +28,9 @@ __all__ = [
 if is_bnb_available():
     import bitsandbytes as bnb
     from ....layers.lora_v2.layers import Linear8bitLt
+
+if is_bnb_4bit_available():
+    from ....layers.lora_v2.layers import Linear4bit
 
 class LoraModel(torch.nn.Module):
     """
@@ -46,18 +49,20 @@ class LoraModel(torch.nn.Module):
         - **lora_config** ([`LoraConfig`]): The configuration of the Lora model.
     """
 
-    def __init__(self, model, config, adapter_name):
+    def __init__(self, model, config, adapter_name,auto_prepare_kbit_training=True):
         super().__init__()
         self.model = model
+        transformer_model = self.get_transformer_model()
+        loaded_in_4bit = getattr(transformer_model, "is_loaded_in_4bit", False)
+        loaded_in_8bit = getattr(transformer_model, "is_loaded_in_8bit", False)
+        if auto_prepare_kbit_training and (loaded_in_4bit or loaded_in_8bit):
+            prepare_model_for_kbit_training(transformer_model)
+
         self.forward = self.model.forward
         self.lora_config = config
         self.add_adapter(adapter_name, self.lora_config[adapter_name])
 
-        transformer_model = self.get_transformer_model()
-        loaded_in_4bit = getattr(transformer_model, "is_loaded_in_4bit", False)
-        loaded_in_8bit = getattr(transformer_model, "is_loaded_in_8bit", False)
-        if loaded_in_4bit or loaded_in_8bit:
-            prepare_model_for_kbit_training(transformer_model)
+
 
     def get_transformer_model(self):
         return self.model.model if isinstance(self.model, TransformerBase) else self.model
