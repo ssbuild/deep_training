@@ -10,19 +10,19 @@ from fastdatasets.common.iterable_dataset import IterableDatasetBase
 from fastdatasets.common.random_dataset import RandomDatasetBase
 from fastdatasets.torch_dataset import IterableDataset as torch_IterableDataset, Dataset as torch_Dataset
 from torch.utils.data import DataLoader, IterableDataset
-from .data_module import load_tokenizer, load_configure
+from transformers import PreTrainedTokenizer, PretrainedConfig
 from .training_args import ModelArguments, DataArguments, TrainingArguments
 from ..utils.func import is_chinese_char
 from numpy_io.core.writer import DataWriteHelper
-from numpy_io.core.reader import load_numpy_dataset
-from numpy_io.pytorch_loader.dataloaders import load_distributed_random_sampler,load_random_sampler,load_sequential_sampler
+from numpy_io.pytorch_loader.data_helper import DataHelperBase,load_tokenizer, load_configure
 
 __all__ = [
     'DataHelper',
-    'make_dataset',
     'is_chinese_char',
     'get_filename_no_ext',
     'get_filename_replace_dir',
+    "load_tokenizer",
+    "load_configure"
 ]
 
 def get_filename_no_ext(filename):
@@ -37,56 +37,12 @@ def get_filename_replace_dir(filename,new_path_dir,ext=None):
     return os.path.join(new_path_dir,get_filename_no_ext(filename) + '.' + ext)
 
 
-
-class DataPreprocessHelper(object):
-
-    def on_data_ready(self):...
-
-    def on_data_finalize(self):...
-
-    # 下游任务继承
-    def on_data_process(self, data: typing.Any, user_data: tuple):
-        raise NotImplemented
-
-    def on_task_specific_params(self) -> typing.Dict:
-        return {}
-
-    def on_get_labels(self, files: typing.List[str]):
-        if not files:
-            return None, None
-        label_fname = files[0]
-        is_json_file = label_fname.endswith('.json')
-        D = set()
-        with open(label_fname, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-            for line in lines:
-                line = line.replace('\r\n', '').replace('\n', '')
-                if not line: continue
-                if is_json_file:
-                    jd = json.loads(line)
-                    line = jd['label']
-                D.add(line)
-        label2id = {label: i for i, label in enumerate(D)}
-        id2label = {i: label for i, label in enumerate(D)}
-        return label2id, id2label
-
-
-    # 读取文件
-    def on_get_corpus(self, files: typing.List[str], mode: str):
-        D = []
-        for filename in files:
-            with open(filename, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-                for line in lines:
-                    line = line.replace('\r\n', '').replace('\n', '')
-                    if not line: continue
-                    D.append(line)
-        return D
-
-
-
-
-class DataHelper(DataPreprocessHelper):
+class DataHelper(DataHelperBase):
+    tokenizer = typing.Optional[PreTrainedTokenizer] = None
+    config = typing.Optional[PretrainedConfig] = None
+    model_args = typing.Optional[ModelArguments] = None
+    training_args = typing.Optional[TrainingArguments] = None
+    data_args = typing.Optional[DataArguments] = None
     def __init__(self,
                  model_args: ModelArguments,
                  training_args: typing.Optional[TrainingArguments] = None,
@@ -94,31 +50,23 @@ class DataHelper(DataPreprocessHelper):
                  **kwargs):
         super(DataHelper, self).__init__()
 
-        self.data_process_fn = self.on_data_process
 
         self.train_files = []
         self.eval_files = []
         self.test_files = []
 
-        self.tokenizer = None
-        self.config = None
+
         self.label2id = None
         self.id2label = None
-        self.model_args =None
-        self.training_args = None
-        self.data_args = None
         self.max_seq_length_dict = {}
-
-
         self._external_kwargs = kwargs
-
+        self.backend = data_args.data_backend if data_args else 'record'
         self.model_args = model_args
         self.training_args = training_args
-
-        self.backend = data_args.data_backend if data_args else 'record'
         self.data_args = data_args
 
         if data_args:
+            #训练
             label2id, id2label = self.on_get_labels(data_args.label_file)
             self.label2id = label2id
             self.id2label = id2label
@@ -129,22 +77,18 @@ class DataHelper(DataPreprocessHelper):
             self.max_seq_length_dict['test'] = data_args.test_max_seq_length
             self.max_seq_length_dict['predict'] = data_args.test_max_seq_length
         else:
+            #推理
             self.label2id = None
             self.id2label = None
-
 
     @property
     def external_kwargs(self):
         return self._external_kwargs
 
-
-
-
     def load_tokenizer(self,*args,**kwargs):
         tokenizer = load_tokenizer(*args,**kwargs)
         self.tokenizer = tokenizer
         return tokenizer
-
 
 
     def load_config(self,
@@ -300,32 +244,13 @@ class DataHelper(DataPreprocessHelper):
 
         if with_labels and self.label2id is not None and hasattr(config, 'num_labels'):
             if with_print_labels:
-                print('*' * 30, 'num_labels = ', config.num_labels)
+                print('==' * 30, 'num_labels = ', config.num_labels)
                 print(self.label2id)
                 print(self.id2label)
 
         if with_labels:
             return tokenizer, config, self.label2id, self.id2label
         return tokenizer, config
-
-
-
-
-    def load_distributed_random_sampler(self,*args,**kwargs):
-        if 'backend' not in kwargs:
-            kwargs.update({"backend": self.backend})
-        return load_distributed_random_sampler(*args,**kwargs)
-
-
-    def load_random_sampler(self,*args,**kwargs):
-        if 'backend' not in kwargs:
-            kwargs.update({"backend": self.backend})
-        return load_random_sampler(*args, **kwargs)
-
-    def load_sequential_sampler(self,*args,**kwargs):
-        if 'backend' not in kwargs:
-            kwargs.update({"backend": self.backend})
-        return load_sequential_sampler(*args, **kwargs)
 
 
     # 返回制作特征数据的中间文件
@@ -343,14 +268,7 @@ class DataHelper(DataPreprocessHelper):
             logging.info('make data {}...'.format(intermediate_output))
         return intermediate_output
 
-    '''
-        mode: one of [ train , eval , test]
-        shuffle: whether shuffle data
-        num_process_worker: the number of mutiprocess
-        overwrite: whether overwrite data
-        mixed_data: Whether the mixed data
 
-    '''
     def make_dataset_with_args(self, input_files,
                                mode,
                                shuffle=False,
@@ -414,35 +332,3 @@ class DataHelper(DataPreprocessHelper):
                     contain_objs.append(input_item)
 
 
-
-
-    def make_dataset(self,outfile: typing.Union[str,list],
-                     data,
-                     input_fn_args: typing.Any,
-                     num_process_worker: int = 0,
-                     shuffle: bool=True):
-
-        self.on_data_ready()
-        fw = DataWriteHelper(self.data_process_fn,
-                             input_fn_args,
-                             outfile,
-                             self.backend,
-                             num_process_worker=num_process_worker,
-                             shuffle=shuffle)
-        fw.save(data)
-        self.on_data_finalize()
-
-
-
-
-def make_dataset(data: typing.List,
-               input_fn:typing.Callable[[int,typing.Any,tuple],typing.Union[typing.Dict,typing.List,typing.Tuple]],
-               input_fn_args:typing.Tuple,
-               outfile:str,
-               backend: str,
-               overwrite = False,
-               num_process_worker:int = 8):
-
-    if not os.path.exists(outfile) or overwrite:
-        fw = DataWriteHelper(input_fn,input_fn_args,outfile,backend,num_process_worker)
-        fw.save(data)
