@@ -3,6 +3,7 @@
 #  Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 #  ------------------------------------------------------------------------------------------
 import importlib
+import sys
 
 import torch
 import torch.nn as nn
@@ -11,8 +12,26 @@ import torch.nn.functional as F
 import math
 from typing import Optional, List
 
+if sys.version_info[0] < 3.8:
+    _is_python_greater_3_8 = False
+else:
+    _is_python_greater_3_8 = True
+
+
 def is_bnb_available():
     return importlib.util.find_spec("bitsandbytes") is not None
+
+
+def is_bnb_4bit_available():
+    if _is_python_greater_3_8:
+        from importlib.metadata import version
+
+        bnb_version = version("bitsandbytes")
+    else:
+        from pkg_resources import get_distribution
+
+        bnb_version = get_distribution("bitsandbytes").version
+    return bnb_version >= "0.39.0"
 
 
 if is_bnb_available():

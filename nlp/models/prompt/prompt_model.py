@@ -201,7 +201,10 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
         """
         Returns the prompt embedding to save when saving the model.
         """
-        prompt_tokens = self.prompt_tokens[adapter_name].unsqueeze(0).expand(1, -1).to(self.device)
+        prompt_encoder = self.prompt_encoder[adapter_name]
+        prompt_tokens = (
+            self.prompt_tokens[adapter_name].unsqueeze(0).expand(1, -1).to(prompt_encoder.embedding.weight.device)
+        )
         if self.prompt_config[adapter_name].prompt_type == PromptType.PREFIX_TUNING:
             prompt_tokens = prompt_tokens[:, : self.prompt_config[adapter_name].num_virtual_tokens]
         prompt_embeddings = self.prompt_encoder[adapter_name](prompt_tokens)

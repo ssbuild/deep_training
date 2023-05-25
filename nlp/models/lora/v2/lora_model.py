@@ -14,7 +14,8 @@ from torch import nn
 from transformers import Conv1D
 
 from ...transformer_base import TransformerBase
-from ....layers.lora_v2.layers import mark_only_lora_as_trainable, is_bnb_available, LoraLayer, Linear
+from ....layers.lora_v2.layers import mark_only_lora_as_trainable, is_bnb_available, LoraLayer, Linear, \
+    is_bnb_4bit_available, Linear4bit, Embedding
 from ....layers.lora_v2.utils import _freeze_adapter, _get_submodules, ModulesToSaveWrapper, \
     prepare_model_for_kbit_training
 
@@ -42,15 +43,15 @@ class LoraModel(torch.nn.Module):
 
     **Attributes**:
         - **model** ([`~transformers.PreTrainedModel`]) -- The model to be adapted.
-        - **peft_config** ([`LoraConfig`]): The configuration of the Lora model.
+        - **lora_config** ([`LoraConfig`]): The configuration of the Lora model.
     """
 
     def __init__(self, model, config, adapter_name):
         super().__init__()
         self.model = model
         self.forward = self.model.forward
-        self.peft_config = config
-        self.add_adapter(adapter_name, self.peft_config[adapter_name])
+        self.lora_config = config
+        self.add_adapter(adapter_name, self.lora_config[adapter_name])
 
         transformer_model = self.get_transformer_model()
         loaded_in_4bit = getattr(transformer_model, "is_loaded_in_4bit", False)
@@ -63,20 +64,22 @@ class LoraModel(torch.nn.Module):
 
     def add_adapter(self, adapter_name, config=None):
         if config is not None:
-            config = self._prepare_lora_config(config, self.model.config.to_dict())
-            self.peft_config[adapter_name] = config
+            model = self.get_transformer_model()
+            model_config = model.config.to_dict() if hasattr(model.config, "to_dict") else model.config
+            config = self._prepare_lora_config(config, model_config)
+            self.lora_config[adapter_name] = config
         self._find_and_replace(adapter_name)
-        if len(self.peft_config) > 1 and self.peft_config[adapter_name].bias != "none":
+        if len(self.lora_config) > 1 and self.lora_config[adapter_name].bias != "none":
             raise ValueError(
                 "LoraModel supports only 1 adapter with bias. When using multiple adapters, set bias to 'none' for all adapters."
             )
-        if self.peft_config[adapter_name].inference_mode:
+        if self.lora_config[adapter_name].inference_mode:
             _freeze_adapter(self.model, adapter_name)
         else:
-            mark_only_lora_as_trainable(self.model, self.peft_config[adapter_name].bias)
+            mark_only_lora_as_trainable(self.model, self.lora_config[adapter_name].bias)
 
     def _find_and_replace(self, adapter_name):
-        lora_config = self.peft_config[adapter_name]
+        lora_config = self.lora_config[adapter_name]
         loaded_in_4bit = getattr(self.get_transformer_model(), "is_loaded_in_4bit", False)
         loaded_in_8bit = getattr(self.get_transformer_model(), "is_loaded_in_8bit", False)
         if (loaded_in_4bit or loaded_in_8bit) and not is_bnb_available():
@@ -114,7 +117,9 @@ class LoraModel(torch.nn.Module):
                 if not is_target_modules_in_base_model:
                     is_target_modules_in_base_model = True
                 parent, target, target_name = _get_submodules(self.model, key)
-                bias = target.bias is not None
+                if hasattr(target, "bias"):
+                    bias = target.bias is not None
+
                 if isinstance(target, LoraLayer):
                     target.update_layer(
                         adapter_name,
@@ -138,6 +143,23 @@ class LoraModel(torch.nn.Module):
                         new_module = Linear8bitLt(
                             adapter_name, target.in_features, target.out_features, bias=bias, **eightbit_kwargs
                         )
+                    elif loaded_in_4bit and is_bnb_4bit_available() and isinstance(target, bnb.nn.Linear4bit):
+                        fourbit_kwargs = kwargs.copy()
+                        fourbit_kwargs.update(
+                            {
+                                "compute_dtype": target.compute_dtype,
+                                "compress_statistics": target.weight.compress_statistics,
+                                "quant_type": target.weight.quant_type,
+                            }
+                        )
+                        new_module = Linear4bit(
+                            adapter_name, target.in_features, target.out_features, bias=bias, **fourbit_kwargs
+                        )
+                    elif isinstance(target, torch.nn.Embedding):
+                        embedding_kwargs = kwargs.copy()
+                        embedding_kwargs.pop("fan_in_fan_out", None)
+                        in_features, out_features = target.num_embeddings, target.embedding_dim
+                        new_module = Embedding(adapter_name, in_features, out_features, **embedding_kwargs)
                     else:
                         if isinstance(target, torch.nn.Linear):
                             in_features, out_features = target.in_features, target.out_features
@@ -174,8 +196,10 @@ class LoraModel(torch.nn.Module):
     def _replace_module(self, parent_module, child_name, new_module, old_module):
         setattr(parent_module, child_name, new_module)
         new_module.weight = old_module.weight
-        if old_module.bias is not None:
-            new_module.bias = old_module.bias
+        if hasattr(old_module, "bias"):
+            if old_module.bias is not None:
+                new_module.bias = old_module.bias
+
         if getattr(old_module, "state", None) is not None:
             new_module.state = old_module.state
             new_module.to(old_module.weight.device)
@@ -192,13 +216,10 @@ class LoraModel(torch.nn.Module):
         except AttributeError:
             return getattr(self.model, name)
 
-    @property
-    def modules_to_save(self):
-        return None
 
-    def get_peft_config_as_dict(self, inference: bool = False):
+    def get_lora_config_as_dict(self, inference: bool = False):
         config_dict = {}
-        for key, value in self.peft_config.items():
+        for key, value in self.lora_config.items():
             config = {k: v.value if isinstance(v, Enum) else v for k, v in asdict(value).items()}
             if inference:
                 config["inference_mode"] = True
@@ -235,10 +256,10 @@ class LoraModel(torch.nn.Module):
                 module.unmerge()
 
     @staticmethod
-    def _prepare_lora_config(peft_config, model_config):
-        if peft_config.inference_mode:
-            peft_config.merge_weights = True
-        return peft_config
+    def _prepare_lora_config(lora_config, model_config):
+        if lora_config.inference_mode:
+            lora_config.merge_weights = True
+        return lora_config
 
     def merge_and_unload(self):
         r"""
@@ -248,7 +269,8 @@ class LoraModel(torch.nn.Module):
         if self.config.model_type == "gpt2":
             raise ValueError("GPT2 models are not supported for merging LORA layers")
 
-        if getattr(self.model, "is_loaded_in_8bit", False) or getattr(self.model, "is_loaded_in_4bit", False):
+
+        if getattr(self.get_transformer_model(), "is_loaded_in_8bit", False) or getattr(self.get_transformer_model(), "is_loaded_in_4bit", False):
             raise ValueError("Cannot merge LORA layers when the model is loaded in 8-bit mode and is_loaded_in_4bit")
 
         key_list = [key for key, _ in self.model.named_modules() if "lora" not in key]
@@ -267,3 +289,37 @@ class LoraModel(torch.nn.Module):
             if isinstance(target, ModulesToSaveWrapper):
                 setattr(parent, target_name, target.modules_to_save[target.active_adapter])
         return self.model
+
+    def add_weighted_adapter(self, adapters, weights, adapter_name):
+        if len({self.lora_config[adapter].r for adapter in adapters}) != 1:
+            raise ValueError("All adapters must have the same r value")
+        self.lora_config[adapter_name] = self.lora_config[adapters[0]]
+        self.lora_config[adapter_name].lora_alpha = self.lora_config[adapters[0]].r
+        self._find_and_replace(adapter_name)
+        mark_only_lora_as_trainable(self.model, self.lora_config[adapter_name].bias)
+        _freeze_adapter(self.model, adapter_name)
+        key_list = [key for key, _ in self.model.named_modules() if "lora" not in key]
+        for key in key_list:
+            _, target, _ = _get_submodules(self.model, key)
+            if isinstance(target, LoraLayer):
+                if adapter_name in target.lora_A:
+                    target.lora_A[adapter_name].weight.data = target.lora_A[adapter_name].weight.data * 0.0
+                    target.lora_B[adapter_name].weight.data = target.lora_B[adapter_name].weight.data * 0.0
+                    for adapter, weight in zip(adapters, weights):
+                        if adapter not in target.lora_A:
+                            continue
+                        target.lora_A[adapter_name].weight.data += (
+                                target.lora_A[adapter].weight.data * weight * target.scaling[adapter]
+                        )
+                        target.lora_B[adapter_name].weight.data += target.lora_B[adapter].weight.data * weight
+
+                elif adapter_name in target.lora_embedding_A:
+                    target.lora_embedding_A[adapter_name].data = target.lora_embedding_A[adapter_name].data * 0.0
+                    target.lora_embedding_B[adapter_name].data = target.lora_embedding_B[adapter_name].data * 0.0
+                    for adapter, weight in zip(adapters, weights):
+                        if adapter not in target.lora_embedding_A:
+                            continue
+                        target.lora_embedding_A[adapter_name].data += (
+                                target.lora_embedding_A[adapter].data * weight * target.scaling[adapter]
+                        )
+                        target.lora_embedding_B[adapter_name].data += target.lora_embedding_B[adapter].data * weight

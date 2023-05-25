@@ -185,7 +185,7 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         yield
         self.base_model.enable_adapter_layers()
 
-    def get_base_model(self)->typing.Optional[TransformerBase,PreTrainedModel,typing.Any]:
+    def get_base_model(self)-> typing.Optional[TransformerBase,PreTrainedModel,typing.Any]:
         """
         Returns the base model.
         """
