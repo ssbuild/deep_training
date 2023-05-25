@@ -22,7 +22,7 @@
 
 ## update
 - <strong>2023-05-25</strong>
- - 0.1.9 release add qlora
+  - 0.1.9 release add qlora
 
 - <strong>2023-05-24</strong>
   - 0.1.8 release fix load weight in prompt_tuning,p_tuning,prefix_tuning,adaption_prompt
