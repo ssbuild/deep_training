@@ -49,14 +49,18 @@ class LoraModel(torch.nn.Module):
         - **lora_config** ([`LoraConfig`]): The configuration of the Lora model.
     """
 
-    def __init__(self, model, config, adapter_name,auto_prepare_kbit_training=True):
+    def __init__(self, model, config, adapter_name,auto_prepare_kbit_training=True,use_input_require_grads=True):
         super().__init__()
         self.model = model
         transformer_model = self.get_transformer_model()
         loaded_in_4bit = getattr(transformer_model, "is_loaded_in_4bit", False)
         loaded_in_8bit = getattr(transformer_model, "is_loaded_in_8bit", False)
+
+
         if auto_prepare_kbit_training and (loaded_in_4bit or loaded_in_8bit):
-            prepare_model_for_kbit_training(transformer_model)
+            prepare_model_for_kbit_training(transformer_model,use_input_require_grads=use_input_require_grads)
+            # self.model.set_model(model,copy_attr=False)
+
 
         self.forward = self.model.forward
         self.lora_config = config
