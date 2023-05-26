@@ -6,6 +6,7 @@ import os
 import typing
 from contextlib import contextmanager
 import torch
+from torch import nn
 from transformers import PreTrainedModel
 from transformers.utils import PushToHubMixin
 from ...transformer_base import TransformerBase
@@ -50,7 +51,10 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         in the base model if using [`PromptLearningConfig`].
     """
 
-    def __init__(self, model, lora_config: LoraConfig, adapter_name="default",auto_prepare_kbit_training=True):
+    def __init__(self, model, lora_config: LoraConfig, adapter_name="default",
+                 auto_prepare_kbit_training=True,
+                 use_input_require_grads=True,
+                 use_gradient_checkpointing=True):
         '''
             model TransformerBase , model.model
         '''
@@ -64,8 +68,11 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         self.lora_type = lora_config.lora_type
         self.base_model_torch_dtype = getattr(model.model if isinstance(model, TransformerBase) else model, "dtype", None)
         self.lora_config[adapter_name] = lora_config
-        self.base_model: LoraModel = LORA_TYPE_TO_MODEL_MAPPING[lora_config.lora_type](
-            self.base_model, self.lora_config, adapter_name,auto_prepare_kbit_training=auto_prepare_kbit_training
+        self.base_model = LORA_TYPE_TO_MODEL_MAPPING[lora_config.lora_type](
+            self.base_model, self.lora_config, adapter_name,
+            auto_prepare_kbit_training=auto_prepare_kbit_training,
+            use_input_require_grads=use_input_require_grads,
+            use_gradient_checkpointing=use_gradient_checkpointing,
         )
         self.set_additional_trainable_modules(lora_config, adapter_name)
 
@@ -163,10 +170,13 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         try:
             return super().__getattr__(name)  # defer to nn.Module's logic
         except AttributeError:
-            try:
-                return getattr(self.base_model, name) # defer to nn.Module's logic
-            except AttributeError:
-                return getattr(self.base_model.model, name)
+            if isinstance(self.base_model,TransformerBase):
+                try:
+                    return getattr(self.base_model, name) # defer to nn.Module's logic
+                except AttributeError:
+                    return getattr(self.base_model.model, name)
+            else:
+                return getattr(self.base_model, name)
 
 
     def forward(self, *args, **kwargs):
@@ -185,7 +195,7 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         yield
         self.base_model.enable_adapter_layers()
 
-    def get_base_model(self)-> typing.Union[TransformerBase,PreTrainedModel,typing.Any]:
+    def get_base_model(self)-> typing.Union[TransformerBase,PreTrainedModel,nn.Module]:
         """
         Returns the base model.
         """

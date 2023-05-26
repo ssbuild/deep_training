@@ -4,3 +4,4 @@
 /build
 /deep_training.egg-info
 /dist
+/nlp/__pycache__

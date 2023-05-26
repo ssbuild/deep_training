@@ -44,14 +44,18 @@ class AdaLoraModel(LoraModel):
         - **peft_config** ([`AdaLoraConfig`]): The configuration of the AdaLora model.
     """
 
-    def __init__(self, model, config, adapter_name,auto_prepare_kbit_training=True):
+    def __init__(self, model, config, adapter_name,auto_prepare_kbit_training=True,
+                 use_input_require_grads=True,
+                 use_gradient_checkpointing=True):
         nn.Module.__init__(self)
         self.model = model
         transformer_model = self.get_transformer_model()
         loaded_in_4bit = getattr(transformer_model, "is_loaded_in_4bit", False)
         loaded_in_8bit = getattr(transformer_model, "is_loaded_in_8bit", False)
         if auto_prepare_kbit_training and (loaded_in_4bit or loaded_in_8bit):
-            prepare_model_for_kbit_training(transformer_model)
+            prepare_model_for_kbit_training(transformer_model,
+                                            use_input_require_grads=use_input_require_grads,
+                                            use_gradient_checkpointing=use_gradient_checkpointing)
 
         self.peft_config = config
         self.add_adapter(adapter_name, self.peft_config[adapter_name])

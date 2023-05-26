@@ -49,7 +49,9 @@ class LoraModel(torch.nn.Module):
         - **lora_config** ([`LoraConfig`]): The configuration of the Lora model.
     """
 
-    def __init__(self, model, config, adapter_name,auto_prepare_kbit_training=True,use_input_require_grads=True):
+    def __init__(self, model, config, adapter_name,auto_prepare_kbit_training=True,
+                 use_input_require_grads=True,
+                 use_gradient_checkpointing=True):
         super().__init__()
         self.model = model
         transformer_model = self.get_transformer_model()
@@ -58,7 +60,9 @@ class LoraModel(torch.nn.Module):
 
 
         if auto_prepare_kbit_training and (loaded_in_4bit or loaded_in_8bit):
-            prepare_model_for_kbit_training(transformer_model,use_input_require_grads=use_input_require_grads)
+            prepare_model_for_kbit_training(transformer_model,
+                                            use_input_require_grads=use_input_require_grads,
+                                            use_gradient_checkpointing=use_gradient_checkpointing)
             # self.model.set_model(model,copy_attr=False)
 
 

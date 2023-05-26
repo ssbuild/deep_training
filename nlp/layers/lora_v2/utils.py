@@ -33,7 +33,9 @@ def bloom_model_postprocess_past_key_value(past_key_values):
     return tuple(zip(keys, values))
 
 
-def prepare_model_for_kbit_training(model, use_input_require_grads=True,use_gradient_checkpointing=True):
+def prepare_model_for_kbit_training(model,
+                                    use_input_require_grads=True,
+                                    use_gradient_checkpointing=True):
     r"""
        This method wraps the entire protocol for preparing a model before running a training. This includes:
            1- Cast the layernorm in fp32 2- making output embedding layer require grads 3- Add the upcasting of the lm
