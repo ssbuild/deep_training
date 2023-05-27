@@ -1,106 +1,117 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/11/15 13:33
+import math
 import random
 import typing
-
-from torch import optim, nn
-from transformers import get_linear_schedule_with_warmup
+import torch
+from torch import optim
+from ..optimizer.optimizer import get_optimizer_cls_and_kwargs
 from ..scheduler import WarmupCosineSchedule
+from ..scheduler.scheduler import get_scheduler, SchedulerType
 from ...data_helper import TrainingArguments
-from ..optimizer.lion import Lion
-from ..optimizer.lamb import Lamb
-from torch.optim import Adam
+
 try:
-    from transformers import AdamW
+    from transformers import AdamW as AdamWHF
 except:
-    from torch.optim import AdamW
-
-def configure_optimizers(named_parameter: typing.Union[typing.List,typing.Tuple],
-                         training_args: TrainingArguments,
-                         estimated_stepping_batches: int):
+    AdamWHF = None
 
 
-    optimizer_name = training_args.optimizer.lower()
-    if optimizer_name == 'adamw':
-        optimizer = AdamW(named_parameter, lr=training_args.learning_rate,
-                          eps=training_args.adam_epsilon,
-                          betas=training_args.optimizer_betas,
-                          weight_decay=training_args.weight_decay
-                          )
-    elif optimizer_name == 'adam':
-        optimizer = Adam(named_parameter, training_args.learning_rate,
-                         eps=training_args.adam_epsilon,
-                         betas=training_args.optimizer_betas,
-                         weight_decay=training_args.weight_decay
-                         )
-    elif optimizer_name == 'lamb':
-        optimizer = Lamb(named_parameter, training_args.learning_rate,
-                         eps=training_args.adam_epsilon,
-                         betas=training_args.optimizer_betas,
-                         weight_decay=training_args.weight_decay
-                         )
-    elif optimizer_name == 'lion':
-        optimizer = Lion(named_parameter, training_args.learning_rate,
-                         betas=training_args.optimizer_betas,
-                         weight_decay=training_args.weight_decay
-                         )
-    else:
-        raise ValueError('optimizer must one of adamw,adam,lion')
+
+
+def configure_optimizers(optimizer_grouped_parameters: typing.Union[typing.List,typing.Tuple],
+                         args: TrainingArguments,
+                         estimated_stepping_batches: int,
+                         model_attrs = None
+                         ):
+    num_training_steps = estimated_stepping_batches
+    optimizer_name = args.optimizer.lower()
+    optimizer_cls, optimizer_kwargs = get_optimizer_cls_and_kwargs(optimizer_name, args)
+
+    optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
+    if optimizer_cls.__name__ == "Adam8bit":
+        import bitsandbytes
+
+        manager = bitsandbytes.optim.GlobalOptimManager.get_instance()
+        for (opt_model,lr) in model_attrs:
+            skipped = 0
+            for module in opt_model.modules():
+                if isinstance(module, torch.nn.Embedding):
+                    skipped += sum({p.data_ptr(): p.numel() for p in module.parameters()}.values())
+                    # logger.info(f"skipped {module}: {skipped / 2 ** 20}M params")
+                    manager.register_module_override(module, "weight", {"optim_bits": 32})
+                    # logger.debug(f"bitsandbytes: will optimize {module} in fp32")
+            # logger.info(f"skipped: {skipped / 2 ** 20}M params")
+
+    num_warmup_steps = args.warmup_steps if args.warmup_steps >= 1 else estimated_stepping_batches * args.warmup_steps
+    num_warmup_steps = int(num_warmup_steps)
+    lr_scheduler_type = args.scheduler_type.lower()
 
 
     scheduler = None
-    if training_args.scheduler_type.lower() == 'linear'.lower():
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=training_args.warmup_steps,
-            num_training_steps=estimated_stepping_batches
-            # num_training_steps=self.trainer.estimated_stepping_batches,
-        )
-    elif training_args.scheduler_type.lower() in ['CAL'.lower(),'CosineAnnealingLR'.lower()]:
-        eta_min = training_args.scheduler.get('eta_min', 0.)
-        last_epoch = training_args.scheduler.get('last_epoch', -1)
-        verbose = training_args.scheduler.get('verbose', False)
-        if training_args.scheduler.get('T_0',None) is None:
-            rewarm_epoch_num = training_args.scheduler["rewarm_epoch_num"]
-            T_0 = int(estimated_stepping_batches * rewarm_epoch_num/ training_args.max_epochs)
-            T_0 = max(T_0,1)
-        else:
-            T_0 = int(training_args.scheduler["T_0"])
+    if lr_scheduler_type == 'WarmupCosine'.lower():
+        lr_scheduler_type = SchedulerType.COSINE
+    elif lr_scheduler_type == 'CosineAnnealingWarmRestarts'.lower():
+        lr_scheduler_type = SchedulerType.COSINE_WITH_RESTARTS
+    elif lr_scheduler_type in ['CAL'.lower(), 'CosineAnnealingLR'.lower()]:
+        T_mult = args.scheduler["T_mult"]
+        eta_min = args.scheduler.get('eta_min', 0.)
+        last_epoch = args.scheduler.get('last_epoch', -1)
+        verbose = args.scheduler.get('verbose', False)
+        if args.scheduler.get('T_0', None) is None:
+            rewarm_epoch_num = args.scheduler["rewarm_epoch_num"]
+            T_0 = int(estimated_stepping_batches * rewarm_epoch_num / args.max_epochs)
             T_0 = max(T_0, 1)
+        else:
+            T_0 = int(args.scheduler["T_0"])
+            T_0 = max(T_0, 1)
+        scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0, T_mult,
+                                                                   eta_min=eta_min,
+                                                                   last_epoch=last_epoch,
+                                                                   verbose=verbose)
+    elif lr_scheduler_type in ['CAWR'.lower(), 'CosineAnnealingWarmRestarts'.lower()]:
+        # T_mult = args.scheduler["T_mult"]
+        eta_min = args.scheduler.get('eta_min', 0.)
+        last_epoch = args.scheduler.get('last_epoch', -1)
+        verbose = args.scheduler.get('verbose', False)
+        if args.scheduler.get('T_0', None) is None:
+            rewarm_epoch_num = args.scheduler["rewarm_epoch_num"]
+            T_0 = int(estimated_stepping_batches * rewarm_epoch_num / args.max_epochs)
+            T_0 = max(T_0, 1)
+        else:
+            T_0 = int(args.scheduler["T_0"])
+            T_0 = max(T_0, 1)
+
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_0,
                                                          eta_min=eta_min,
                                                          last_epoch=last_epoch,
                                                          verbose=verbose)
-    elif training_args.scheduler_type.lower() in ['CAWR'.lower(),'CosineAnnealingWarmRestarts'.lower()]:
-        T_mult = training_args.scheduler["T_mult"]
-
-        eta_min = training_args.scheduler.get('eta_min', 0.)
-        last_epoch = training_args.scheduler.get('last_epoch', -1)
-        verbose = training_args.scheduler.get('verbose', False)
-        if training_args.scheduler.get('T_0', None) is None:
-            rewarm_epoch_num = training_args.scheduler["rewarm_epoch_num"]
-            T_0 = int(estimated_stepping_batches * rewarm_epoch_num / training_args.max_epochs)
-            T_0 = max(T_0, 1)
-        else:
-            T_0 = int(training_args.scheduler["T_0"])
-            T_0 = max(T_0, 1)
-        scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer,T_0 , T_mult,
-                                                                   eta_min=eta_min,
-                                                                   last_epoch=last_epoch,
-                                                                   verbose=verbose)
-    elif training_args.scheduler_type.lower() == 'Step'.lower():
-        decay_rate = training_args.scheduler["decay_rate"]
-        decay_steps = training_args.scheduler["decay_steps"]
+    elif args.scheduler_type.lower() == 'Step'.lower():
+        decay_rate = args.scheduler["decay_rate"]
+        decay_steps = args.scheduler["decay_steps"]
         scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=decay_steps, gamma=decay_rate)
-    elif training_args.scheduler_type.lower() == 'ReduceLROnPlateau'.lower():
+    elif args.scheduler_type.lower() == 'ReduceLROnPlateau'.lower():
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", verbose=True, patience=6)
-    elif training_args.scheduler_type.lower() == 'WarmupCosine'.lower():
-        scheduler = WarmupCosineSchedule(optimizer, warmup_steps=training_args.warmup_steps, t_total=estimated_stepping_batches)
+    elif args.scheduler_type.lower() == 'WarmupCosine'.lower():
+        scheduler = WarmupCosineSchedule(optimizer, warmup_steps=args.warmup_steps, t_total=estimated_stepping_batches)
 
+    if scheduler is None:
+        scheduler = get_scheduler(
+            lr_scheduler_type,
+            optimizer=optimizer,
+            num_warmup_steps=num_warmup_steps,
+            num_training_steps=num_training_steps,
+        )
 
     if scheduler:
-        scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
-        return [optimizer], [scheduler]
+        # scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
+        # return [optimizer], [scheduler]
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval": "step", "frequency": 1
+            },
+        }
     return optimizer
 
 

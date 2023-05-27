@@ -42,7 +42,8 @@ class Lion(Optimizer):
         betas: Tuple[float, float] = (0.9, 0.99),
         weight_decay: float = 0.0,
         use_triton: bool = False,
-        triton_block_size: int = 1024
+        triton_block_size: int = 1024,
+        **kwargs
     ):
         assert lr > 0.
         assert all([0. <= beta <= 1. for beta in betas])

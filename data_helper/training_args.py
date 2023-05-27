@@ -118,11 +118,13 @@ class PrefixModelArguments:
 class TrainingArguments:
     optimizer: str = field(
         default='adamw',
-        metadata={"help": "one of [adamw,adam,lamb,lion]"},
+        metadata={"help": "one of [lamb,adamw_hf,adamw,adamw_torch,adamw_torch_fused,adamw_torch_xla,adamw_apex_fused,adafactor,adamw_anyprecision,sgd,adagrad,adamw_bnb_8bit,adamw_8bit,lion_8bit,lion_32bit,paged_adamw_32bit,paged_adamw_8bit,paged_lion_32bit,paged_lion_8bit]"},
     )
+    optimizer_args: Optional[str] = field(default=None,metadata={"help": "sample a=100,b=10 "})
     scheduler_type: str = field(
         default='linear',
-        metadata={"help": "one of [linear,WarmupCosine,CAWR,CAL,Step,ReduceLROnPlateau]"},
+        metadata={"help": "one of [linear,WarmupCosine,CAWR,CAL,Step,ReduceLROnPlateau, "
+                          "cosine,cosine_with_restarts,polynomial,constant,constant_with_warmup,inverse_sqrt,reduce_lr_on_plateau]"},
     )
 
     scheduler: dict = field(
@@ -197,7 +199,7 @@ class TrainingArguments:
         metadata={"help": "weight_decay"},
     )
 
-    warmup_steps: int = field(
+    warmup_steps: float = field(
         default=0,
         metadata={"help": "warmup_steps"},
     )

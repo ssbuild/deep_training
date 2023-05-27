@@ -405,7 +405,10 @@ class TransformerLightningModule(MyLightningModule):
         return opt
 
     def configure_optimizers(self):
-        return configure_optimizers(self.get_named_parameters(), self.training_args,self.trainer.estimated_stepping_batches)
+        return configure_optimizers(self.get_named_parameters(),
+                                    self.training_args,
+                                    self.trainer.estimated_stepping_batches,
+                                    self.get_model_lr())
 
 
     def manual_backward(self,loss: Tensor, *args: Any, **kwargs: Any):
