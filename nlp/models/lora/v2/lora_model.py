@@ -17,11 +17,11 @@ from ...transformer_base import TransformerBase
 from ....layers.lora_v2.layers import mark_only_lora_as_trainable, is_bnb_available, LoraLayer, Linear, \
     is_bnb_4bit_available,  Embedding
 from ....layers.lora_v2.utils import _freeze_adapter, _get_submodules, ModulesToSaveWrapper, \
-    prepare_model_for_kbit_training
+    prepare_model_for_kbit_training, TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING
 
 __all__ = [
     'is_bnb_available',
-    'LoraModel',
+    'LoraModule',
 ]
 
 
@@ -32,7 +32,7 @@ if is_bnb_available():
 if is_bnb_4bit_available():
     from ....layers.lora_v2.layers import Linear4bit
 
-class LoraModel(torch.nn.Module):
+class LoraModule(torch.nn.Module):
     """
     Creates Low Rank Adapter (Lora) model from a pretrained transformers model.
 
@@ -108,18 +108,6 @@ class LoraModel(torch.nn.Module):
             "fan_in_fan_out": lora_config.fan_in_fan_out,
             "init_lora_weights": lora_config.init_lora_weights,
         }
-        if lora_config.target_dtype is not None and not loaded_in_8bit:
-            if lora_config.target_dtype == 16 or lora_config.target_dtype == '16':
-                kwargs['dtype'] = torch.float16
-            elif lora_config.target_dtype == 32 or lora_config.target_dtype == '32':
-                kwargs['dtype'] = torch.float32
-            elif lora_config.target_dtype == 64 or lora_config.target_dtype == '64':
-                kwargs['dtype'] = torch.float64
-            elif lora_config.target_dtype == 'bf16':
-                kwargs['dtype'] = torch.bfloat16
-            elif isinstance(lora_config.target_dtype, torch.dtype):
-                kwargs['dtype'] = lora_config.target_dtype
-
         key_list = [key for key, _ in self.model.named_modules()]
         for key in key_list:
             if isinstance(lora_config.target_modules, str):
@@ -227,7 +215,11 @@ class LoraModel(torch.nn.Module):
         try:
             return super().__getattr__(name)  # defer to nn.Module's logic
         except AttributeError:
-            return getattr(self.model, name)
+            try:
+                return getattr(self.model, name)
+            except AttributeError:
+                return getattr(self.model.model, name)
+
 
 
     def get_lora_config_as_dict(self, inference: bool = False):
@@ -270,6 +262,11 @@ class LoraModel(torch.nn.Module):
 
     @staticmethod
     def _prepare_lora_config(lora_config, model_config):
+        if lora_config.target_modules is None:
+            if model_config["model_type"] not in TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING:
+                raise ValueError("Please specify `target_modules` in `peft_config`")
+            lora_config.target_modules = TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING[model_config["model_type"]]
+
         if lora_config.inference_mode:
             lora_config.merge_weights = True
         return lora_config

@@ -12,11 +12,11 @@ from ....layers.lora_v2.layers import mark_only_lora_as_trainable, is_bnb_availa
 from ....layers.lora_v2.adalora import RankAllocator,SVDLinear
 from ....layers.lora_v2.utils import _freeze_adapter, _get_submodules, \
     TRANSFORMERS_MODELS_TO_ADALORA_TARGET_MODULES_MAPPING, prepare_model_for_kbit_training
-from .lora_model import LoraModel
+from .lora_model import LoraModule
 
 __all__ = [
     'is_bnb_available',
-    'AdaLoraModel'
+    'AdaLoraModule'
 ]
 
 
@@ -26,7 +26,7 @@ if is_bnb_available():
     from ....layers.lora_v2.adalora import SVDLinear8bitLt
 
 
-class AdaLoraModel(LoraModel):
+class AdaLoraModule(LoraModule):
     """
     Creates AdaLoRA (Adaptive LoRA) model from a pretrained transformers model. Paper:
     https://openreview.net/pdf?id=lq62uWRJjiY
@@ -176,7 +176,10 @@ class AdaLoraModel(LoraModel):
         try:
             return super().__getattr__(name)  # defer to nn.Module's logic
         except AttributeError:
-            return getattr(self.model, name)
+            try:
+                return getattr(self.model, name)
+            except AttributeError:
+                return getattr(self.model.model, name)
 
     def forward(self, *args, **kwargs):
         outputs = self.model.forward(*args, **kwargs)

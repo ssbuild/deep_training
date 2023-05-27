@@ -11,15 +11,15 @@ from transformers import PreTrainedModel
 from transformers.utils import PushToHubMixin
 from ...transformer_base import TransformerBase
 from ....layers.lora_v2.utils import _set_trainable, _set_adapter
-from .adalora_model import AdaLoraModel
+from .adalora_model import AdaLoraModule
 from .configuration import WEIGHTS_NAME, LoraConfig, AdaLoraConfig,LoraArguments
-from .lora_model import LoraModel
+from .lora_model import LoraModule
 from .save_and_load import get_lora_model_state_dict, set_lora_model_state_dict
 
 
 LORA_TYPE_TO_MODEL_MAPPING = {
-    "lora": LoraModel,
-    "adalora": AdaLoraModel,
+    "lora": LoraModule,
+    "adalora": AdaLoraModule,
 }
 
 LORA_TYPE_TO_CONFIG_MAPPING = {
@@ -170,13 +170,8 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         try:
             return super().__getattr__(name)  # defer to nn.Module's logic
         except AttributeError:
-            if isinstance(self.base_model,TransformerBase):
-                try:
-                    return getattr(self.base_model, name) # defer to nn.Module's logic
-                except AttributeError:
-                    return getattr(self.base_model.model, name)
-            else:
-                return getattr(self.base_model, name)
+            return getattr(self.base_model, name)  # defer to nn.Module's logic
+
 
 
     def forward(self, *args, **kwargs):
