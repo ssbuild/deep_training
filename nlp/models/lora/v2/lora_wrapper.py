@@ -68,7 +68,7 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         self.lora_type = lora_config.lora_type
         self.base_model_torch_dtype = getattr(model.model if isinstance(model, TransformerBase) else model, "dtype", None)
         self.lora_config[adapter_name] = lora_config
-        self.base_model = LORA_TYPE_TO_MODEL_MAPPING[lora_config.lora_type](
+        self.base_model: LoraModule = LORA_TYPE_TO_MODEL_MAPPING[lora_config.lora_type](
             self.base_model, self.lora_config, adapter_name,
             auto_prepare_kbit_training=auto_prepare_kbit_training,
             use_input_require_grads=use_input_require_grads,
