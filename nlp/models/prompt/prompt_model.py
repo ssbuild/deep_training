@@ -77,7 +77,9 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
         self.add_adapter(adapter_name, prompt_config)
 
     def get_transformer_model(self):
-        return self.base_mode.model if isinstance(self.base_mode, TransformerBase) else self.base_mode
+        #return self.base_mode.model if isinstance(self.base_mode, TransformerBase) else self.base_mode
+
+        return self.base_model if isinstance(self.base_model, PreTrainedModel) else self.base_model.model
 
     def save_pretrained(self, save_directory, **kwargs):
         r"""
