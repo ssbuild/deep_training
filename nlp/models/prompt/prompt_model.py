@@ -2,7 +2,7 @@
 # @Time:  14:50
 # @Author: tk
 # @File：prompt_model
-
+import copy
 import inspect
 import os
 import warnings
@@ -13,6 +13,7 @@ from transformers import PreTrainedModel
 from transformers.modeling_outputs import SequenceClassifierOutput, TokenClassifierOutput
 from transformers.utils import PushToHubMixin
 
+from ....utils.function import copy_dataclass
 from .configuration import PromptLearningConfig, PromptType, PromptBaseArguments, PROMPT_TYPE_TO_CONFIG_MAPPING, \
     WEIGHTS_NAME, TaskType
 from .save_and_load import get_prompt_model_state_dict, set_prompt_model_state_dict
@@ -118,6 +119,29 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
             prompt_config.inference_mode = True
             prompt_config.save_pretrained(output_dir)
             prompt_config.inference_mode = inference_mode
+
+    def get_all_state_dict(self, **kwargs):
+        checkpoints = {}
+        for adapter_name, prompt_config in self.prompt_config.items():
+            # save only the trainable weights
+            output_state_dict = get_prompt_model_state_dict(
+                self, state_dict=kwargs.get("state_dict", None), adapter_name=adapter_name
+            )
+            # save the config and change the inference mode to `True`
+            if prompt_config.base_model_name_or_path is None:
+                prompt_config.base_model_name_or_path = (
+                    self.base_model.__dict__.get("name_or_path", None)
+                    if isinstance(prompt_config, PromptLearningConfig)
+                    else self.base_model.model.__dict__.get("name_or_path", None)
+                )
+            inference_mode = prompt_config.inference_mode
+            prompt_config.inference_mode = True
+            checkpoints[adapter_name] = {
+                "state_dict": output_state_dict,
+                "config":  copy_dataclass(prompt_config),
+            }
+            prompt_config.inference_mode = inference_mode
+        return checkpoints
 
     @classmethod
     def from_pretrained(cls, model, pretrained_model_name_or_path, prompt_config: PromptLearningConfig = None,

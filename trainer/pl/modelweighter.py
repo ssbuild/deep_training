@@ -6,7 +6,7 @@ import re
 from collections import OrderedDict
 import torch
 from deep_training.data_helper import ModelArguments, TrainingArguments, DataArguments
-from deep_training.nlp.models.prompt import PromptLearningConfig, PromptModel,PromptArguments
+from deep_training.nlp.models.prompt import PromptLearningConfig, PromptModel,PromptArguments,get_prompt_model
 from torch import nn
 from deep_training.nlp.models.lora.v2 import LoraModel, LoraArguments,LoraConfig
 from torch.nn.modules.module import _IncompatibleKeys
@@ -22,6 +22,7 @@ __all__ = [
     'PromptLearningConfig',
     'PromptModel',
     'PromptArguments',
+    'get_prompt_model',
     'ModelArguments',
     'TrainingArguments',
     'DataArguments',

@@ -2,10 +2,12 @@
 # @Time:  0:26
 # @Author: tk
 # @File：modelcheckpoint
-
+import os
 import copy
 import logging
+import re
 import warnings
+from collections import OrderedDict
 from typing import Optional, Any, Dict
 import torch
 import lightning as pl
@@ -13,33 +15,63 @@ from lightning.pytorch.callbacks import Checkpoint,ModelCheckpoint,Callback
 from torch import Tensor
 
 __all__ = [
+    'convert2lora_or_prompt_weight',
     'ModelCheckpointEx',
-    'ModelCheckpointFabricEx'
+    'FabricModelCheckpointEx'
 ]
+
+
+def convert2lora_or_prompt_weight(self, src_file, dist_file):
+    adapters_weights = torch.load(
+        src_file, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    )
+    if 'state_dict' in adapters_weights:
+        adapters_weights = adapters_weights['state_dict']
+
+    if '_TransformerLightningModule__backbone' in ','.join(list(adapters_weights.keys())):
+        adapters_weights_new = OrderedDict()
+        for k, v in adapters_weights:
+            k = re.sub('_forward_module\.', '', k)
+            k = re.sub('_TransformerLightningModule__backbone\.', '', k)
+            adapters_weights_new[k] = v
+            adapters_weights = adapters_weights_new
+
+    torch.save(adapters_weights.state_dict(), dist_file)
+
 
 class ModelCheckpointEx(ModelCheckpoint):
     def __init__(self,*args,**kwargs):
         self.lora_args = kwargs.pop('lora_args',None)
-        self.promot_args = kwargs.pop('lora_args', None)
+        self.prompt_args = kwargs.pop('prompt_args', None)
         super().__init__(*args,**kwargs)
+
+        if self.lora_args or self.prompt_args:
+            self.CHECKPOINT_NAME_LAST = "adapter_model"
+            self.FILE_EXTENSION = ".bin"
     def _save_checkpoint(self, trainer: "pl.Trainer", filepath: str) -> None:
-        state_dict_fn = None
-        if self.lora_args or self.promot_args:
-            def state_dict_fn(module, destination, prefix, local_metadata):
-                return trainer.model.backbone.state_dict()
-        h = None
-        if self.lora_args:
-            h = trainer.model._register_state_dict_hook(state_dict_fn)
-        elif self.promot_args is not None:
-            h = trainer.model._register_state_dict_hook(state_dict_fn)
-        super()._save_checkpoint(trainer,filepath)
-        if h:
-            h.remove()
+        if self.lora_args or self.prompt_args:
+            model = trainer.strategy.lightning_module
+            checkpoints = model.backbone.get_all_state_dict()
+            for k,v in checkpoints.items():
+                lora_or_prompt_config = v['config']
+                def state_dict_fn(module, destination, prefix, local_metadata):
+                    return v['state_dict']
+                h = model._register_state_dict_hook(state_dict_fn)
+                basename = os.path.basename(filepath)
+                dirname = os.path.dirname(filepath)
+                basename = k+ '_' + basename
+                filepath_new = os.path.join(dirname,basename)
+                super()._save_checkpoint(trainer, filepath_new)
+                h.remove()
+                lora_or_prompt_config.save_pretrained(dirname)
+        else:
+            super()._save_checkpoint(trainer,filepath)
 
 
 
 
-class ModelCheckpointFabricEx:
+
+class FabricModelCheckpointEx:
     def __init__(self,
                  rank=0,# 执行节点
                  every_n_train_steps: Optional[int] = None,
@@ -137,21 +169,25 @@ class ModelCheckpointFabricEx:
             self._save_checkpoint(trainer,self.weight_file)
 
     def _save_checkpoint(self, trainer: "pl.Trainer", filepath: str) -> None:
-        lora_args = self._external_kwargs.get('lora_args',None)
-        promot_args = self._external_kwargs.get('promot_args', None)
-        state_dict_fn = None
-        if lora_args or promot_args:
-            def state_dict_fn(module, destination, prefix, local_metadata):
-                return trainer.model.backbone.state_dict()
-        h = None
-        if lora_args:
-            h = trainer.model._register_state_dict_hook(state_dict_fn)
-        elif promot_args is not None:
-            h = trainer.model._register_state_dict_hook(state_dict_fn)
-        trainer.save_checkpoint(filepath, self.save_weights_only)
-        if h:
-            h.remove()
-
+        lora_args = self._external_kwargs.get('lora_args', None)
+        prompt_args = self._external_kwargs.get('prompt_args', None)
+        if lora_args or prompt_args:
+            model = trainer.strategy.lightning_module
+            checkpoints = model.backbone.get_all_state_dict()
+            for k,v in checkpoints.items():
+                lora_or_prompt_config = v['config']
+                def state_dict_fn(module, destination, prefix, local_metadata):
+                    return v['state_dict']
+                h = model._register_state_dict_hook(state_dict_fn)
+                basename = os.path.basename(filepath)
+                dirname = os.path.dirname(filepath)
+                basename = k+ '_' + basename
+                filepath_new = os.path.join(dirname,basename)
+                trainer.save_checkpoint(filepath_new, self.save_weights_only)
+                h.remove()
+                lora_or_prompt_config.save_pretrained(dirname)
+        else:
+            trainer.save_checkpoint(filepath, self.save_weights_only)
 
 
     def __on_save_model(
@@ -162,10 +198,8 @@ class ModelCheckpointFabricEx:
         #     if self.rank >= 0 and trainer.global_rank != self.rank:
         #         return
 
-        pl_module.eval()
-        with torch.no_grad():
-            self.on_save_model(trainer,pl_module)
-        pl_module.train()
+        self.on_save_model(trainer,pl_module)
+
 
     def on_train_batch_end(
             self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", outputs, batch: Any,

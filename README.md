@@ -13,10 +13,6 @@
 
 
 ## dev plan
- - Reinforcement learning
-   - ppo ok 
-   - ilql ok
-   - rrhf on the way
  - 支持 transformer Trainer on the way
  - 解耦 lightning on the way
 
@@ -27,6 +23,9 @@
   support of [linear,WarmupCosine,CAWR,CAL,Step,ReduceLROnPlateau, cosine,cosine_with_restarts,polynomial,constant,constant_with_warmup,inverse_sqrt,reduce_lr_on_plateau]
 
 ## update
+- <strong>2023-05-30</strong>
+  - 0.1.10 开发中.... support lora prompt for deepspeed training
+
 - <strong>2023-05-25</strong>
   - 0.1.9 release add qlora and support more optimizer and scheduler
 
