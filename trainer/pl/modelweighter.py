@@ -96,6 +96,7 @@ class ModelWeightMinMax:
                 missing_keys = [_ for _ in incompatible_keys.missing_keys]
                 model_prefix = r'{}\.{}\.'.format(pl_model_prefix, base_model_prefix)
                 missing_keys = [re.sub(r'{}'.format(model_prefix), '', _) for _ in missing_keys]
+                missing_keys = [re.sub(r'{}'.format(pl_model_prefix), '', _) for _ in missing_keys]
                 if missing_keys and _keys_to_ignore_on_load_missing:
                     __ = []
                     for _ in _keys_to_ignore_on_load_missing:
