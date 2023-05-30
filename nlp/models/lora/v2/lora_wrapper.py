@@ -265,6 +265,8 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         adapters_weights = torch.load(
             filename, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu")
         )
+        if 'state_dict' in adapters_weights:
+            adapters_weights = adapters_weights['state_dict']
         # load the weights into the model
         set_lora_model_state_dict(self, adapters_weights, adapter_name=adapter_name)
 

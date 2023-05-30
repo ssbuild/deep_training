@@ -13,30 +13,52 @@ import torch
 import lightning as pl
 from lightning.pytorch.callbacks import Checkpoint,ModelCheckpoint,Callback
 from torch import Tensor
+from lightning.pytorch.strategies import DeepSpeedStrategy
+from lightning.fabric.strategies import DeepSpeedStrategy as DeepSpeedStrategyFabric
 
 __all__ = [
-    'convert2lora_or_prompt_weight',
+    'convert_weight_deepspeed_to_lora_or_prompt',
+    'convert_weight_deepspeed_to_ft',
     'ModelCheckpointEx',
     'FabricModelCheckpointEx'
 ]
 
-
-def convert2lora_or_prompt_weight(self, src_file, dist_file):
+def convert_weight_deepspeed_to_lora_or_prompt(src_file, dist_file):
     adapters_weights = torch.load(
         src_file, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu")
     )
-    if 'state_dict' in adapters_weights:
-        adapters_weights = adapters_weights['state_dict']
+    if 'module' in adapters_weights:
+        adapters_weights = adapters_weights['module']
 
-    if '_TransformerLightningModule__backbone' in ','.join(list(adapters_weights.keys())):
-        adapters_weights_new = OrderedDict()
-        for k, v in adapters_weights:
-            k = re.sub('_forward_module\.', '', k)
-            k = re.sub('_TransformerLightningModule__backbone\.', '', k)
+
+    adapters_weights_new = OrderedDict()
+    for k, v in adapters_weights:
+        k = re.sub('_forward_module\.', '', k)
+        k = re.sub('_TransformerLightningModule__backbone\.', '', k)
+        adapters_weights_new[k] = v
+    adapters_weights = adapters_weights_new
+
+    adapters_weights_new = OrderedDict()
+    for k, v in adapters_weights:
+        if '.lora_' in k or '.modules_to_save.' in k:
             adapters_weights_new[k] = v
-            adapters_weights = adapters_weights_new
 
-    torch.save(adapters_weights.state_dict(), dist_file)
+    adapters_weights = adapters_weights_new
+    torch.save(adapters_weights, dist_file)
+
+def convert_weight_deepspeed_to_ft(src_file, dist_file):
+    adapters_weights = torch.load(
+        src_file, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    )
+    if 'module' in adapters_weights:
+        adapters_weights = adapters_weights['module']
+
+    adapters_weights_new = OrderedDict()
+    for k, v in adapters_weights:
+        k = re.sub('_forward_module\.', '', k)
+        adapters_weights_new[k] = v
+    adapters_weights = adapters_weights_new
+    torch.save(adapters_weights, dist_file)
 
 
 class ModelCheckpointEx(ModelCheckpoint):
@@ -48,23 +70,64 @@ class ModelCheckpointEx(ModelCheckpoint):
         if self.lora_args or self.prompt_args:
             self.CHECKPOINT_NAME_LAST = "adapter_model"
             self.FILE_EXTENSION = ".bin"
+
+    def on_fit_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"):
+        if isinstance(trainer.strategy,DeepSpeedStrategy):
+            if self.lora_args or self.prompt_args:
+                self.CHECKPOINT_NAME_LAST = "last"
+                self.FILE_EXTENSION = ""
+
+
     def _save_checkpoint(self, trainer: "pl.Trainer", filepath: str) -> None:
+        bHandled = False
         if self.lora_args or self.prompt_args:
             model = trainer.strategy.lightning_module
             checkpoints = model.backbone.get_all_state_dict()
-            for k,v in checkpoints.items():
-                lora_or_prompt_config = v['config']
+            bHandled = True
+            m = trainer.strategy.model.module if isinstance(trainer.strategy, DeepSpeedStrategy) else model
+            eng = trainer.strategy.model
+            for adapter_name, state in checkpoints.items():
+                lora_or_prompt_config = state['config']
                 def state_dict_fn(module, destination, prefix, local_metadata):
-                    return v['state_dict']
-                h = model._register_state_dict_hook(state_dict_fn)
+                    return state['state_dict']
+                h = m._register_state_dict_hook(state_dict_fn)
                 basename = os.path.basename(filepath)
                 dirname = os.path.dirname(filepath)
-                basename = k+ '_' + basename
-                filepath_new = os.path.join(dirname,basename)
+                if adapter_name != 'default':
+                    basename = adapter_name + '_' + basename
+                    config_dir = os.path.join(dirname, adapter_name)
+                else:
+                    config_dir = dirname
+                filepath_new = os.path.join(dirname, basename)
+                fn_old = None
+                get_zero_param_shapes_old = None
+                if isinstance(trainer.strategy, DeepSpeedStrategy):
+                    fn_old = eng.zero_optimization_partition_gradients
+                    eng.zero_optimization_partition_gradients = lambda: False
+                    zero_optimizer_state = eng.zero_optimization() or eng.bfloat16_enabled()
+                    if zero_optimizer_state:
+                        results_list_new = []
+                        results_list = eng._get_zero_param_shapes()
+                        for results in results_list:
+                            sub_module = OrderedDict()
+                            for key,value in results.items():
+                                key = re.sub(r'_forward_module\._TransformerLightningModule__backbone\.','',key)
+                                k1,k2 = key.split('.lora_')
+                                k2 = re.sub(re.compile('\.{}\.'.format(adapter_name)),'.',k2)
+                                key = k1 + '.' + k2
+                                key = key.replace("modules_to_save.", "")
+                                sub_module[key] = value
+                            results_list_new.append(sub_module)
+                        get_zero_param_shapes_old = eng._get_zero_param_shapes
+                        eng._get_zero_param_shapes = lambda : results_list_new
                 super()._save_checkpoint(trainer, filepath_new)
+                if fn_old:
+                    eng.zero_optimization_partition_gradients = fn_old
+                    eng._get_zero_param_shapes = get_zero_param_shapes_old
                 h.remove()
-                lora_or_prompt_config.save_pretrained(dirname)
-        else:
+                lora_or_prompt_config.save_pretrained(config_dir)
+
+        if not bHandled:
             super()._save_checkpoint(trainer,filepath)
 
 
@@ -171,22 +234,39 @@ class FabricModelCheckpointEx:
     def _save_checkpoint(self, trainer: "pl.Trainer", filepath: str) -> None:
         lora_args = self._external_kwargs.get('lora_args', None)
         prompt_args = self._external_kwargs.get('prompt_args', None)
+        bHandled = False
         if lora_args or prompt_args:
             model = trainer.strategy.lightning_module
             checkpoints = model.backbone.get_all_state_dict()
-            for k,v in checkpoints.items():
-                lora_or_prompt_config = v['config']
-                def state_dict_fn(module, destination, prefix, local_metadata):
-                    return v['state_dict']
-                h = model._register_state_dict_hook(state_dict_fn)
-                basename = os.path.basename(filepath)
-                dirname = os.path.dirname(filepath)
-                basename = k+ '_' + basename
-                filepath_new = os.path.join(dirname,basename)
-                trainer.save_checkpoint(filepath_new, self.save_weights_only)
-                h.remove()
-                lora_or_prompt_config.save_pretrained(dirname)
-        else:
+            if not isinstance(trainer.strategy,DeepSpeedStrategyFabric):
+                bHandled = True
+                for k,v in checkpoints.items():
+                    lora_or_prompt_config = v['config']
+                    def state_dict_fn(module, destination, prefix, local_metadata):
+                        return v['state_dict']
+                    h = model._register_state_dict_hook(state_dict_fn)
+                    basename = os.path.basename(filepath)
+                    dirname = os.path.dirname(filepath)
+                    if k != 'default':
+                        basename = k + '_' + basename
+                        config_dir = os.path.join(dirname, k)
+                    else:
+                        config_dir = dirname
+                    filepath_new = os.path.join(dirname,basename)
+                    trainer.save_checkpoint(filepath_new, self.save_weights_only)
+                    h.remove()
+                    lora_or_prompt_config.save_pretrained(config_dir)
+            else:
+                for k, v in checkpoints.items():
+                    lora_or_prompt_config = v['config']
+                    dirname = os.path.dirname(filepath)
+                    if k != 'default':
+                        config_dir = os.path.join(dirname, k)
+                    else:
+                        config_dir = dirname
+                    lora_or_prompt_config.save_pretrained(config_dir)
+
+        if not bHandled:
             trainer.save_checkpoint(filepath, self.save_weights_only)
 
 
