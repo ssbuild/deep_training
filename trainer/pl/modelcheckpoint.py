@@ -81,9 +81,9 @@ class ModelCheckpointEx(ModelCheckpoint):
     def _save_checkpoint(self, trainer: "pl.Trainer", filepath: str) -> None:
         bHandled = False
         if self.lora_args or self.prompt_args:
+            bHandled = True
             model = trainer.strategy.lightning_module
             checkpoints = model.backbone.get_all_state_dict()
-            bHandled = True
             m = trainer.strategy.model.module if isinstance(trainer.strategy, DeepSpeedStrategy) else model
             eng = trainer.strategy.model
             for adapter_name, state in checkpoints.items():
@@ -114,7 +114,7 @@ class ModelCheckpointEx(ModelCheckpoint):
                                 key = re.sub(r'_forward_module\._TransformerLightningModule__backbone\.','',key)
                                 k1,k2 = key.split('.lora_')
                                 k2 = re.sub(re.compile('\.{}\.'.format(adapter_name)),'.',k2)
-                                key = k1 + '.' + k2
+                                key = k1 + '.lora_' + k2
                                 key = key.replace("modules_to_save.", "")
                                 sub_module[key] = value
                             results_list_new.append(sub_module)

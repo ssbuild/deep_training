@@ -16,12 +16,21 @@
  - 支持 transformer Trainer on the way
  - 解耦 lightning on the way
 
-# optimizer
-  support of [lamb,adamw_hf,adamw,adamw_torch,adamw_torch_fused,adamw_torch_xla,adamw_apex_fused,adafactor,adamw_anyprecision,sgd,adagrad,adamw_bnb_8bit,adamw_8bit,lion_8bit,lion_32bit,paged_adamw_32bit,paged_adamw_8bit,paged_lion_32bit,paged_lion_8bit]
+## optimizer
+```text
+   lamb,adamw_hf,adamw,adamw_torch,adamw_torch_fused,adamw_torch_xla,adamw_apex_fused,
+   adafactor,adamw_anyprecision,sgd,adagrad,adamw_bnb_8bit,adamw_8bit,lion,lion_8bit,lion_32bit,
+   paged_adamw_32bit,paged_adamw_8bit,paged_lion_32bit,paged_lion_8bit,
+   lamb_fused_dp adagrad_cpu_dp adam_cpu_dp adam_fused_dp
+```
 
-# scheduler
-  support of [linear,WarmupCosine,CAWR,CAL,Step,ReduceLROnPlateau, cosine,cosine_with_restarts,polynomial,constant,constant_with_warmup,inverse_sqrt,reduce_lr_on_plateau]
-
+## scheduler
+```text
+  linear,WarmupCosine,CAWR,CAL,Step,ReduceLROnPlateau, cosine,cosine_with_restarts,polynomial,
+  constant,constant_with_warmup,inverse_sqrt,reduce_lr_on_plateau
+```
+ 
+  
 ## update
 - <strong>2023-05-30</strong>
   - 0.1.10 开发中.... support lora prompt for deepspeed training
