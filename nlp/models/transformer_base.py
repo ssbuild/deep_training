@@ -253,7 +253,7 @@ class TransformerLightningModule(MyLightningModule):
         print(model_args)
 
         try:
-            self.save_hyperparameters(ignore=['config','torch_dtype'])
+            self.save_hyperparameters(ignore=['config','torch_dtype','quantization_config'])
         except:
             pass
         self.config = config
