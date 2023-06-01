@@ -27,7 +27,7 @@ def gather_ds_state_dict(checkpoints: typing.Dict,output_filename,zero_stage_3,i
     for adapter_name, state in checkpoints.items():
         lora_or_prompt_config = state['config']
         state_dict = state['state_dict']
-        if not zero_stage_3:
+        if zero_stage_3:
             output_state_dict = {}
             for k,v in state_dict.items():
                 if hasattr(v, 'ds_id'):
@@ -36,9 +36,7 @@ def gather_ds_state_dict(checkpoints: typing.Dict,output_filename,zero_stage_3,i
                         v_p = v.data.cpu()
                 else:
                     v_p = v.cpu()
-
-                if is_global_zero and "lora" not in k:
-                    output_state_dict[k] = v_p
+                output_state_dict[k] = v_p
         else:
             output_state_dict = copy.copy(state_dict)
 
