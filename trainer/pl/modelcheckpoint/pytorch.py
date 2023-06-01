@@ -30,7 +30,7 @@ class ModelCheckpointEx(ModelCheckpoint):
         if isinstance(trainer.strategy,DeepSpeedStrategy):
             if self.lora_args or self.prompt_args:
                 self.CHECKPOINT_NAME_LAST = "last"
-                self.FILE_EXTENSION = ""
+            self.FILE_EXTENSION = ""
 
     def _save_checkpoint(self, trainer: "pl.Trainer", filepath: str) -> None:
         bHandled = False

@@ -19,7 +19,9 @@ class FabricEx(L.Fabric):
         if isinstance(module, _FabricModule):
             raise ValueError("A model should be passed only once to the `setup` method.")
 
-        if not isinstance(self._connector.strategy,DeepSpeedStrategy):
+        if isinstance(self.strategy, DeepSpeedStrategy) and 'optimizer' in self.strategy.config:
+            pass
+        else:
             if any(isinstance(opt, _FabricOptimizer) for opt in optimizers):
                 raise ValueError("An optimizer should be passed only once to the `setup` method.")
 
@@ -55,7 +57,12 @@ class FabricEx(L.Fabric):
         if move_to_device:
             module = self._move_model_to_device(model=module, optimizers=list(optimizers))
 
-        if not isinstance(self._connector.strategy, DeepSpeedStrategy):
+        if isinstance(self.strategy, DeepSpeedStrategy) and 'optimizer' in self.strategy.config:
+            module, optimizers = self._strategy.setup_module_and_optimizers(  # type: ignore[assignment]
+                module, [None]
+            )
+        else:
+
             # Let accelerator/plugin wrap and connect the models and optimizers
             if optimizers:
                 module, optimizers = self._strategy.setup_module_and_optimizers(  # type: ignore[assignment]
@@ -63,10 +70,6 @@ class FabricEx(L.Fabric):
                 )
             else:
                 module = self._strategy.setup_module(module)
-        else:
-            module, optimizers = self._strategy.setup_module_and_optimizers(  # type: ignore[assignment]
-                module, [None]
-            )
 
 
 

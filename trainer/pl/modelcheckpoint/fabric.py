@@ -206,6 +206,10 @@ class FabricModelCheckpoint:
 
     def _save_checkpoint(self, trainer: "pl.Trainer", filepath: str, pl_module: "pl.LightningModule") -> None:
         bHandled = False
+
+        if self.FILE_EXTENSION and isinstance(trainer.fabric.strategy, DeepSpeedStrategyFabric):
+            self.FILE_EXTENSION = ""
+
         if self.lora_args or self.prompt_args:
             bHandled = True
             model = pl_module.module
