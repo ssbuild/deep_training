@@ -51,7 +51,7 @@ def get_prompt_model_state_dict(model, state_dict=None, adapter_name="default"):
     return to_return
 
 
-def set_prompt_model_state_dict(model, prompt_model_state_dict, adapter_name="default"):
+def set_prompt_model_state_dict(model, prompt_model_state_dict, adapter_name="default",strict=False):
     """
     Set the state dict of the Peft model.
 
@@ -78,7 +78,7 @@ def set_prompt_model_state_dict(model, prompt_model_state_dict, adapter_name="de
     else:
         raise NotImplementedError
 
-    model.load_state_dict(peft_model_state_dict, strict=False)
+    model.load_state_dict(peft_model_state_dict, strict=strict)
     if isinstance(config, PromptLearningConfig):
         model.prompt_encoder[adapter_name].embedding.load_state_dict(
             {"weight": peft_model_state_dict["prompt_embeddings"]}, strict=True

@@ -57,12 +57,12 @@ class ModelWeightMinMax:
         if self.lora_args is not None and self.lora_args.with_lora:
             # 恢复权重
             self.backbone: LoraModel
-            self.backbone.load_adapter(sft_weight_path, adapter_name="default", is_trainable=is_trainable)
+            self.backbone.load_adapter(sft_weight_path, adapter_name="default", is_trainable=is_trainable, strict=strict)
 
         elif self.prompt_args is not None and self.prompt_args.with_prompt:
             # 恢复权重
             self.backbone: PromptModel
-            self.backbone.load_adapter(sft_weight_path, adapter_name="default", is_trainable=is_trainable)
+            self.backbone.load_adapter(sft_weight_path, adapter_name="default", is_trainable=is_trainable, strict=strict)
         else:
             weight_dict = torch.load(sft_weight_path)
             weights_dict_new = OrderedDict()

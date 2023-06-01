@@ -357,7 +357,7 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
                 self.modules_to_save.update(prompt_config.modules_to_save)
             _set_trainable(self, adapter_name)
 
-    def load_adapter(self, model_id, adapter_name, is_trainable=False, **kwargs):
+    def load_adapter(self, model_id, adapter_name, is_trainable=False,strict=False, **kwargs):
         if adapter_name not in self.prompt_config:
             # load the config
             prompt_config = PROMPT_TYPE_TO_CONFIG_MAPPING[
@@ -386,7 +386,7 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
         if 'state_dict' in adapters_weights:
             adapters_weights = adapters_weights['state_dict']
         # load the weights into the model
-        set_prompt_model_state_dict(self, adapters_weights, adapter_name=adapter_name)
+        set_prompt_model_state_dict(self, adapters_weights, adapter_name=adapter_name,strict=strict)
 
 
 
