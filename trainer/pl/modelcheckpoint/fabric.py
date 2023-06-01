@@ -21,15 +21,13 @@ __all__ = [
 ]
 
 
-
-
 class FabricModelCheckpoint:
     CHECKPOINT_JOIN_CHAR = "-"
     CHECKPOINT_NAME_LAST = "last"
     FILE_EXTENSION = ".ckpt"
 
     def __init__(self,
-                 dirpath:  None,
+                 dirpath:  str,
                  filename: Optional[str] = None,
                  rank=0,# 执行节点
                  every_n_train_steps: Optional[int] = None,
