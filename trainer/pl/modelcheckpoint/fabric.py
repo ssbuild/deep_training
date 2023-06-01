@@ -40,6 +40,7 @@ class FabricModelCheckpoint:
                  mode='min',
                  save_last: Optional[bool] = None,
                  save_weights_only=False,
+                 save_top_k = 1,
                  **kwargs):
 
         self.__every_n_train_steps = every_n_train_steps
