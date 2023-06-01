@@ -24,7 +24,13 @@ __all__ = [
 
 
 class FabricModelCheckpoint:
+    CHECKPOINT_JOIN_CHAR = "-"
+    CHECKPOINT_NAME_LAST = "last"
+    FILE_EXTENSION = ".ckpt"
+
     def __init__(self,
+                 dirpath:  None,
+                 filename: Optional[str] = None,
                  rank=0,# 执行节点
                  every_n_train_steps: Optional[int] = None,
                  every_n_epochs: Optional[int] = None,
@@ -32,9 +38,8 @@ class FabricModelCheckpoint:
                  skip_n_epochs: Optional[int] = None,
                  monitor=None,
                  mode='min',
+                 save_last: Optional[bool] = None,
                  save_weights_only=False,
-                 weight_file='./best.pt',#保存权重名字
-                 last_weight_file='./last.pt',#每评估一次保存一次权重
                  **kwargs):
 
         self.__every_n_train_steps = every_n_train_steps
@@ -52,12 +57,18 @@ class FabricModelCheckpoint:
         self.skip_n_train_steps = skip_n_train_steps
         self.skip_n_epochs = skip_n_epochs
 
-        self.weight_file = weight_file
-        self.last_weight_file = last_weight_file
+
         self._external_kwargs = kwargs
 
         self.lora_args = self._external_kwargs.get('lora_args', None)
         self.prompt_args = self._external_kwargs.get('prompt_args', None)
+
+        self.dirpath = dirpath
+        self.filename = filename
+        self.save_last = save_last
+        if self.lora_args or self.prompt_args:
+            self.CHECKPOINT_NAME_LAST = "last"
+            self.FILE_EXTENSION = ""
 
     @property
     def external_kwargs(self):
@@ -100,28 +111,43 @@ class FabricModelCheckpoint:
         monitor_candidates = self._monitor_candidates(trainer)
         monitor_candidates.update(self.on_get_metric(trainer,pl_module))
         val = monitor_candidates.get(self.monitor,None)
+
+        is_save = False
         if val is not None:
             flag = self.update_best(val)
             if flag:
-                logging.info('epoch {} ,step {} , save best {}, {}\n'.format(monitor_candidates['epoch'],
+                logging.info('epoch {} ,step {} , save saving {}\n'.format(monitor_candidates['epoch'],
                                                                            monitor_candidates['step'],
-                                                                           self.best[self.monitor],
-                                                                           self.weight_file))
-                self._save_checkpoint(trainer,self.weight_file)
-
-            if self.last_weight_file is not None:
-                logging.info('epoch {} ,step {} , save {}\n'.format(monitor_candidates['epoch'],
-                                                                    monitor_candidates['step'],
-                                                                    self.last_weight_file))
-                self._save_checkpoint(trainer,self.weight_file,pl_module)
+                                                                           self.best[self.monitor]))
+                is_save = True
 
         else:
             warnings.warn('monitor {} is not in metirc , save lastest checkpoint!'.format(self.monitor))
 
-            logging.info('epoch {} ,step {} , save {}\n'.format(monitor_candidates['epoch'],
-                                                                monitor_candidates['step'],
-                                                                self.weight_file))
-            self._save_checkpoint(trainer,self.weight_file,pl_module)
+            logging.info('epoch {} ,step {} , saving\n'.format(monitor_candidates['epoch'],
+                                                                monitor_candidates['step']))
+            is_save = True
+
+        if is_save:
+            if self.filename is None:
+                filename = 'epoch{}{}step{}{}'.format(monitor_candidates['epoch'],
+                                                      self.CHECKPOINT_JOIN_CHAR,
+                                                      monitor_candidates['step'],
+                                                      self.FILE_EXTENSION)
+
+            else:
+                filename = '{}{}epoch{}{}step{}{}'.format(self.filename,
+                                                          self.CHECKPOINT_JOIN_CHAR,
+                                                          monitor_candidates['epoch'],
+                                                          self.CHECKPOINT_JOIN_CHAR,
+                                                          monitor_candidates['step'],
+                                                          self.FILE_EXTENSION)
+
+            self._save_checkpoint(trainer,os.path.join(self.dirpath,filename),pl_module)
+            if self.save_last:
+                filename = '{}{}'.format(self.CHECKPOINT_NAME_LAST,self.FILE_EXTENSION)
+                self._save_checkpoint(trainer, os.path.join(self.dirpath, filename), pl_module)
+
 
 
 
@@ -182,22 +208,22 @@ class FabricModelCheckpoint:
         bHandled = False
         if self.lora_args or self.prompt_args:
             bHandled = True
-            model = pl_module.modules
-            if isinstance(trainer.strategy, DeepSpeedStrategyFabric):
+            model = pl_module.module
+            if isinstance(trainer.fabric.strategy, DeepSpeedStrategyFabric):
                 checkpoints = model.backbone.get_all_state_dict()
                 gather_ds_state_dict(checkpoints, filepath,
-                                     zero_stage_3=trainer.strategy.zero_stage_3,
-                                     is_global_zero=trainer.strategy.is_global_zero,
+                                     zero_stage_3=trainer.fabric.strategy.zero_stage_3,
+                                     is_global_zero=trainer.fabric.strategy.is_global_zero,
                                      config=model.backbone.config)
             else:
-                if trainer.is_global_zero:
+                if trainer.fabric.strategy.is_global_zero:
                     model.backbone.save_pretrained(filepath)
 
                     config_path = os.path.join(filepath, 'config.json')
                     if not os.path.exists(config_path):
                         model.backbone.config.save_pretrained(filepath)
 
-                # trainer.strategy.barrier()
+                # trainer.fabric.strategy.barrier()
         if not bHandled:
             trainer.save_checkpoint(filepath, self.save_weights_only)
 
@@ -222,8 +248,8 @@ class FabricModelCheckpoint:
     #         bHandled = True
     #         model = pl_module.modules
     #         checkpoints = model.backbone.get_all_state_dict()
-    #         m = trainer.strategy.model.module if isinstance(trainer.strategy, DeepSpeedStrategyFabric) else model
-    #         eng = trainer.strategy.model if isinstance(trainer.strategy, DeepSpeedStrategyFabric) else None
+    #         m = trainer.fabric.strategy.model.module if isinstance(trainer.fabric.strategy, DeepSpeedStrategyFabric) else model
+    #         eng = trainer.fabric.strategy.model if isinstance(trainer.fabric.strategy, DeepSpeedStrategyFabric) else None
     #         for adapter_name, state in checkpoints.items():
     #             lora_or_prompt_config = state['config']
     #
@@ -241,7 +267,7 @@ class FabricModelCheckpoint:
     #             filepath_new = os.path.join(dirname, basename)
     #             fn_old = None
     #             get_zero_param_shapes_old = None
-    #             if isinstance(trainer.strategy, DeepSpeedStrategyFabric):
+    #             if isinstance(trainer.fabric.strategy, DeepSpeedStrategyFabric):
     #                 fn_old = eng.zero_optimization_partition_gradients
     #                 eng.zero_optimization_partition_gradients = lambda: False
     #                 zero_optimizer_state = eng.zero_optimization() or eng.bfloat16_enabled()
