@@ -106,7 +106,8 @@ class ILQLTrainer:
             loggers = TensorBoardLogger(root_dir=checkpoint_dir,name='lightning_logs')
 
         self.loggers = loggers
-        self.fabric = L.Fabric(
+        # L.Fabric
+        self.fabric = FabricEx(
             accelerator=accelerator,
             strategy=strategy,
             devices=devices,
