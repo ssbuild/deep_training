@@ -75,6 +75,7 @@ class ModelCheckpointEx(ModelCheckpoint):
                                 else:
                                     key = key.replace("modules_to_save.", "")
                                     key = key.replace(f".{adapter_name}", "")
+                                    key = key.replace('prompt_encoder.embedding.weight','prompt_embeddings')
                                 sub_module[key] = value
                             results_list_new.append(sub_module)
                         get_zero_param_shapes_old = eng._get_zero_param_shapes

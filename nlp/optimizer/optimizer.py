@@ -22,7 +22,7 @@ class OptimizerNames(ExplicitEnum):
     """
     Stores the acceptable string identifiers for optimizers.
     """
-
+    ADAM = "adam"
     ADAMW_HF = "adamw_hf"
     ADAMW = "adamw"
     ADAMW_TORCH = "adamw_torch"
@@ -74,6 +74,9 @@ def get_optimizer_cls_and_kwargs(optimizer_name,args: TrainingArguments) -> typi
         optimizer_kwargs.update({"scale_parameter": False, "relative_step": False})
     elif optimizer_name == OptimizerNames.ADAMW_HF:
         optimizer_cls = AdamWHF
+        optimizer_kwargs.update(adam_kwargs)
+    elif optimizer_name == OptimizerNames.ADAM:
+        optimizer_cls = optim.adam
         optimizer_kwargs.update(adam_kwargs)
     elif optimizer_name in [OptimizerNames.ADAMW,OptimizerNames.ADAMW_TORCH, OptimizerNames.ADAMW_TORCH_FUSED]:
         optimizer_cls = optim.AdamW

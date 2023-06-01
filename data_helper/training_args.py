@@ -118,7 +118,7 @@ class PrefixModelArguments:
 class TrainingArguments:
     optimizer: str = field(
         default='adamw',
-        metadata={"help": "one of lamb,adamw_hf,adamw,adamw_torch,adamw_torch_fused,adamw_torch_xla,adamw_apex_fused,"
+        metadata={"help": "one of lamb,adam,adamw_hf,adamw,adamw_torch,adamw_torch_fused,adamw_torch_xla,adamw_apex_fused,"
                           "adafactor,adamw_anyprecision,sgd,adagrad,adamw_bnb_8bit,adamw_8bit,lion,lion_8bit,lion_32bit,"
                           "paged_adamw_32bit,paged_adamw_8bit,paged_lion_32bit,paged_lion_8bit,"
                           "lamb_fused_dp adagrad_cpu_dp adam_cpu_dp adam_fused_dp"},
