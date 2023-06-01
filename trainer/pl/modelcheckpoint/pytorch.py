@@ -23,8 +23,8 @@ class ModelCheckpointEx(ModelCheckpoint):
         super().__init__(*args,**kwargs)
 
         if self.lora_args or self.prompt_args:
-            self.CHECKPOINT_NAME_LAST = "adapter_model"
-            self.FILE_EXTENSION = ".bin"
+            self.CHECKPOINT_NAME_LAST = "last"
+            self.FILE_EXTENSION = ""
 
     def on_fit_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"):
         if isinstance(trainer.strategy,DeepSpeedStrategy):
