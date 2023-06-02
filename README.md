@@ -13,22 +13,31 @@
 
 
 ## dev plan
- - Reinforcement learning
-   - ppo ok 
-   - ilql ok
-   - rrhf on the way
  - 支持 transformer Trainer on the way
  - 解耦 lightning on the way
 
-# optimizer
-  one of [lamb,adamw_hf,adamw,adamw_torch,adamw_torch_fused,adamw_torch_xla,adamw_apex_fused,adafactor,adamw_anyprecision,sgd,adagrad,adamw_bnb_8bit,adamw_8bit,lion_8bit,lion_32bit,paged_adamw_32bit,paged_adamw_8bit,paged_lion_32bit,paged_lion_8bit]
+## optimizer
+```text
+   lamb,adma,adamw_hf,adam,adamw,adamw_torch,adamw_torch_fused,adamw_torch_xla,adamw_apex_fused,
+   adafactor,adamw_anyprecision,sgd,adagrad,adamw_bnb_8bit,adamw_8bit,lion,lion_8bit,lion_32bit,
+   paged_adamw_32bit,paged_adamw_8bit,paged_lion_32bit,paged_lion_8bit,
+   lamb_fused_dp adagrad_cpu_dp adam_cpu_dp adam_fused_dp
+```
 
-# scheduler
-  one of [linear,WarmupCosine,CAWR,CAL,Step,ReduceLROnPlateau, cosine,cosine_with_restarts,polynomial,constant,constant_with_warmup,inverse_sqrt,reduce_lr_on_plateau]
-
+## scheduler
+```text
+  linear,WarmupCosine,CAWR,CAL,Step,ReduceLROnPlateau, cosine,cosine_with_restarts,polynomial,
+  constant,constant_with_warmup,inverse_sqrt,reduce_lr_on_plateau
+```
+ 
+  
 ## update
-- <strong>2023-05-25</strong>
-  - 0.1.9 release add qlora and support more optimizer and scheduler
+- <strong>2023-05-30</strong>
+  - 
+
+- <strong>2023-06-01</strong>
+  - 0.1.10rc0 release add qlora and support more optimizer and scheduler,support lora prompt for deepspeed training
+  - 0.1.9 is merged into  0.1.10
 
 - <strong>2023-05-24</strong>
   - 0.1.8 release fix load weight in prompt_tuning,p_tuning,prefix_tuning,adaption_prompt

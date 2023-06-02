@@ -19,9 +19,10 @@ from lightning_utilities.core.apply_func import apply_to_collection
 import lightning as L
 from lightning.fabric.accelerators import Accelerator
 from lightning.fabric.loggers import Logger
-from lightning.fabric.strategies import Strategy
+from lightning.fabric.strategies import Strategy, DeepSpeedStrategy
 from lightning.fabric.wrappers import _unwrap_objects, _FabricModule
 
+from ....trainer.pl.fabric.fabric import FabricEx
 from .ilql_dataset import ILQLSeq2SeqRolloutStorage, ILQLRolloutStorage, tokenize_dialogue
 from ..rl_base.rl_dataset import MiniBatchIterator, logger
 from ..utils import RunningMoments
@@ -106,7 +107,8 @@ class ILQLTrainer:
             loggers = TensorBoardLogger(root_dir=checkpoint_dir,name='lightning_logs')
 
         self.loggers = loggers
-        self.fabric = L.Fabric(
+        # L.Fabric
+        self.fabric = FabricEx(
             accelerator=accelerator,
             strategy=strategy,
             devices=devices,
@@ -230,9 +232,12 @@ class ILQLTrainer:
             # as it would require fabric to hold a reference to the model, which we don't want to.
             raise NotImplementedError("BYOT currently does not support FSDP")
         else:
-            optimizer, scheduler_cfg = self._parse_optimizers_schedulers(model.configure_optimizers())
-            assert optimizer is not None
+            if isinstance(self.fabric.strategy, DeepSpeedStrategy) and 'optimizer' in self.fabric.strategy.config:
+                optimizer, scheduler_cfg = None, None
+            else:
+                optimizer, scheduler_cfg = self._parse_optimizers_schedulers(model.configure_optimizers())
             model, optimizer = self.fabric.setup(model, optimizer)
+            assert optimizer is not None
 
         # assemble state (current epoch and global step will be added in save)
         state = {"state_dict": model, "optimizer_states": optimizer, "lr_schedulers": scheduler_cfg}

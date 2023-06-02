@@ -2,6 +2,7 @@
 # @Time:  10:42
 # @Author: tk
 # @File：lora_wrapper
+import copy
 import os
 import typing
 from contextlib import contextmanager
@@ -9,6 +10,8 @@ import torch
 from torch import nn
 from transformers import PreTrainedModel
 from transformers.utils import PushToHubMixin
+
+from .....utils.function import copy_dataclass
 from ...transformer_base import TransformerBase
 from ....layers.lora_v2.utils import _set_trainable, _set_adapter
 from .adalora_model import AdaLoraModule
@@ -113,6 +116,27 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
             lora_config.save_pretrained(output_dir)
             lora_config.inference_mode = inference_mode
 
+    def get_all_state_dict(self, **kwargs):
+        checkpoints = {}
+        for adapter_name, lora_config in self.lora_config.items():
+            lora_config: LoraConfig
+            # save only the trainable weights
+            output_state_dict = get_lora_model_state_dict(
+                self, state_dict=kwargs.get("state_dict", None), adapter_name=adapter_name
+            )
+
+            if lora_config.base_model_name_or_path is None:
+                lora_config.base_model_name_or_path = (
+                    self.base_model.model.__dict__.get("model_name_or_path", None)
+                )
+            inference_mode = lora_config.inference_mode
+            lora_config.inference_mode = True
+            checkpoints[adapter_name] = {
+                "state_dict": output_state_dict,
+                "config": copy_dataclass(lora_config),
+            }
+            lora_config.inference_mode = inference_mode
+        return checkpoints
     @classmethod
     def from_pretrained(cls, model, pretrained_model_name_or_path, lora_config: LoraConfig = None, adapter_name="default", is_trainable=False, **kwargs):
         r"""
@@ -215,7 +239,8 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
                 self.modules_to_save = self.modules_to_save.update(lora_config.modules_to_save)
             _set_trainable(self, adapter_name)
 
-    def load_adapter(self, model_id, adapter_name, is_trainable=False, **kwargs):
+    def load_adapter(self, model_id, adapter_name, is_trainable=False,strict=False, **kwargs):
+
         if adapter_name not in self.lora_config:
             # load the config
             lora_config = LORA_TYPE_TO_CONFIG_MAPPING[
@@ -240,8 +265,10 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         adapters_weights = torch.load(
             filename, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu")
         )
+        if 'state_dict' in adapters_weights:
+            adapters_weights = adapters_weights['state_dict']
         # load the weights into the model
-        set_lora_model_state_dict(self, adapters_weights, adapter_name=adapter_name)
+        set_lora_model_state_dict(self, adapters_weights, adapter_name=adapter_name,strict=strict)
 
 
 

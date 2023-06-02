@@ -22,7 +22,7 @@ class OptimizerNames(ExplicitEnum):
     """
     Stores the acceptable string identifiers for optimizers.
     """
-
+    ADAM = "adam"
     ADAMW_HF = "adamw_hf"
     ADAMW = "adamw"
     ADAMW_TORCH = "adamw_torch"
@@ -43,6 +43,10 @@ class OptimizerNames(ExplicitEnum):
     PAGED_LION = "paged_lion_32bit"
     PAGED_LION_8BIT = "paged_lion_8bit"
     LAMB = "lamb"
+    LAMB_FUSED_DP = 'lamb_fused_dp'
+    ADAGRAD_CPU_DP = 'adagrad_cpu_dp'
+    ADAM_CPU_DP = 'adam_cpu_dp'
+    ADAM_FUSED_DP = 'adam_fused_dp'
 def get_optimizer_cls_and_kwargs(optimizer_name,args: TrainingArguments) -> typing.Tuple[typing.Any, typing.Any]:
     """
     Returns the optimizer class and optimizer parameters based on the training arguments.
@@ -50,7 +54,6 @@ def get_optimizer_cls_and_kwargs(optimizer_name,args: TrainingArguments) -> typi
     Args:
         args (`TrainingArguments`):
             The training arguments for the training session.
-
     """
 
     # parse optimizer_name
@@ -72,6 +75,9 @@ def get_optimizer_cls_and_kwargs(optimizer_name,args: TrainingArguments) -> typi
     elif optimizer_name == OptimizerNames.ADAMW_HF:
         optimizer_cls = AdamWHF
         optimizer_kwargs.update(adam_kwargs)
+    elif optimizer_name == OptimizerNames.ADAM:
+        optimizer_cls = optim.adam
+        optimizer_kwargs.update(adam_kwargs)
     elif optimizer_name in [OptimizerNames.ADAMW,OptimizerNames.ADAMW_TORCH, OptimizerNames.ADAMW_TORCH_FUSED]:
         optimizer_cls = optim.AdamW
         optimizer_kwargs.update(adam_kwargs)
@@ -91,6 +97,27 @@ def get_optimizer_cls_and_kwargs(optimizer_name,args: TrainingArguments) -> typi
             optimizer_kwargs.update(adam_kwargs)
         except ImportError:
             raise ValueError("Trainer tried to instantiate apex FusedAdam but apex is not installed!")
+    elif optimizer_name in [OptimizerNames.LAMB_FUSED_DP, OptimizerNames.ADAGRAD_CPU_DP, OptimizerNames.ADAM_CPU_DP,OptimizerNames.ADAM_FUSED_DP]:
+        if optimizer_name == OptimizerNames.LAMB_FUSED_DP:
+            from deepspeed.ops.lamb import FusedLamb
+            optimizer_cls = FusedLamb
+            optimizer_kwargs.update(adam_kwargs)
+        elif optimizer_name == OptimizerNames.ADAGRAD_CPU_DP:
+            from deepspeed.ops.adagrad import DeepSpeedCPUAdagrad
+            adam_kwargs.pop('betas',None)
+            optimizer_cls = DeepSpeedCPUAdagrad
+            optimizer_kwargs.update(adam_kwargs)
+        elif optimizer_name == OptimizerNames.ADAM_CPU_DP:
+            from deepspeed.ops.adam import DeepSpeedCPUAdam
+            optimizer_cls = DeepSpeedCPUAdam
+            optimizer_kwargs.update(adam_kwargs)
+        elif optimizer_name == OptimizerNames.ADAM_FUSED_DP:
+            from deepspeed.ops.adam import FusedAdam
+            optimizer_cls = FusedAdam
+            optimizer_kwargs.update(adam_kwargs)
+        else:
+            raise ValueError('invalid optimizer_name ',optimizer_name)
+
     elif optimizer_name == OptimizerNames.LION_CUSTOM:
         optimizer_cls = lion.Lion
         optimizer_kwargs.update(adam_kwargs)
