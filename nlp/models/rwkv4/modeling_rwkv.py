@@ -215,8 +215,8 @@ class RwkvSelfAttention(nn.Module):
     def forward(self, x, state=None):
         B, T, C = x.size()  # x = (Batch,Time,Channel)
         sr, k, v, state = self.jit_func(x,state=state)
-        rwkv,state = sr * RUN_CUDA(B, T, self.config.dim_att, self.time_decay, self.time_first, k, v, state)
-        return self.output(rwkv),state
+        rwkv,state = RUN_CUDA(B, T, self.config.dim_att, self.time_decay, self.time_first, k, v, state)
+        return self.output(sr * rwkv),state
 
 
 
