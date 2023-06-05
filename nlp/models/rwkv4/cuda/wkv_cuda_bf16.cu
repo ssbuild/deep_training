@@ -18,7 +18,7 @@ __global__ void kernel_forward(const int B, const int T, const int C,
     const bf16 *__restrict__ const k = _k + _offset;
     const bf16 *__restrict__ const v = _v + _offset;
     bf16 *__restrict__ const y = _y + _offset;
-    bf16 *__restrict__ const s = _s + _offset_s;
+    float *__restrict__ const s = _s + _offset_s;
 
     // aa and bb are running sums divided by exp(pp) (to avoid overflow)
     float aa = s[0], bb = s[1], pp = s[2];

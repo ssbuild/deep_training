@@ -32,12 +32,11 @@
  
   
 ## update
-- <strong>2023-05-30</strong>
-  - 
 
-- <strong>2023-06-01</strong>
+- <strong>2023-05-30</strong>
   - 0.1.10rc0 release add qlora and support more optimizer and scheduler,support lora prompt for deepspeed training
   - 0.1.9 is merged into  0.1.10
+  - rwkv 开发中...
 
 - <strong>2023-05-24</strong>
   - 0.1.8 release fix load weight in prompt_tuning,p_tuning,prefix_tuning,adaption_prompt

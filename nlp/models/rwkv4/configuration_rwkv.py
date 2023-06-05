@@ -40,7 +40,9 @@ RWKV_PRETRAINED_CONFIG_ARCHIVE_MAP = {
 
 class RwkvConfig(PretrainedConfig):
     model_type = "rwkv"
-    attribute_map = {"max_position_embeddings": "context_length"}
+    attribute_map = {"max_position_embeddings": "context_length","attention_hidden_size": "n_embd",
+                     "context_length": "ctx_len","hidden_size": "n_embd","intermediate_size": "dim_ffn"
+                     }
 
     def __init__(
             self,
@@ -56,10 +58,7 @@ class RwkvConfig(PretrainedConfig):
             use_cache=True,
             dim_att = 0,
             dim_ffn= 0,
-            tiny_att_layer = 0,
-            pile_stage=0,
             pos_emb_size=0,
-            layerwise_lr=0,
             **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -76,17 +75,16 @@ class RwkvConfig(PretrainedConfig):
 
         self.dim_att = dim_att
         self.dim_ffn = dim_ffn
-        self.tiny_att_layer = tiny_att_layer
-        self.pile_stage = pile_stage
+        # self.tiny_att_layer = tiny_att_layer
         self.pos_emb_size = pos_emb_size
-        self.layerwise_lr = layerwise_lr
+
 
         if dim_att == 0:
             self.dim_att = self.n_embd
         if dim_ffn == 0:
             self.dim_ffn = self.n_embd * 4
-        if tiny_att_layer <= 0 or not tiny_att_layer:
-            self.tiny_att_layer = -1
+        # if tiny_att_layer <= 0 or not tiny_att_layer:
+        #     self.tiny_att_layer = -1
 
 
         super().__init__(

@@ -6,7 +6,7 @@
 template <typename F>
 __global__ void kernel_forward(const int B, const int T, const int C,
                                const F *__restrict__ const _w, const F *__restrict__ const _u, const F *__restrict__ const _k, const F *__restrict__ const _v,
-                               F *__restrict__ const _s,F *__restrict__ const _y) {
+                               float *__restrict__ const _s,F *__restrict__ const _y) {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     const int _b = idx / C;
     const int _c = idx % C;
@@ -18,7 +18,7 @@ __global__ void kernel_forward(const int B, const int T, const int C,
     const F *__restrict__ const k = _k + _offset;
     const F *__restrict__ const v = _v + _offset;
     F *__restrict__ const y = _y + _offset;
-    F *__restrict__ const s = _s + _offset_s;
+    float *__restrict__ const s = _s + _offset_s;
 
     // aa and bb are running sums divided by exp(pp) (to avoid overflow)
     F aa = s[0], bb = s[1], pp = s[2];
