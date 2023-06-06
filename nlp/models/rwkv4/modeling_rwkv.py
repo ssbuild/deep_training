@@ -256,8 +256,8 @@ class RwkvFeedForward(nn.Module):
         #     self.time_mix_k = nn.Parameter(torch.pow(ddd, ratio_1_to_almost0))
         #     self.time_mix_r = nn.Parameter(torch.pow(ddd, ratio_1_to_almost0))
 
-        self.time_mix_k = nn.Parameter(torch.empty(1, 1, config.dim_ffn))
-        self.time_mix_r = nn.Parameter(torch.empty(1, 1, config.dim_ffn))
+        self.time_mix_k = nn.Parameter(torch.empty(1, 1, config.n_embd))
+        self.time_mix_r = nn.Parameter(torch.empty(1, 1, config.n_embd))
 
         self.key = nn.Linear(config.n_embd, config.dim_ffn, bias=False)
         self.receptance = nn.Linear(config.n_embd, config.n_embd, bias=False)
