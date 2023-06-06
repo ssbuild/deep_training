@@ -20,13 +20,11 @@ import gc
 import json
 import os
 import re
-
 import torch
 from huggingface_hub import hf_hub_download
-
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerFast
-from .configuration_rwkv import RwkvConfig
 from transformers.modeling_utils import WEIGHTS_INDEX_NAME, shard_checkpoint
+from deep_training.nlp.models.rwkv4.configuration_rwkv import RwkvConfig
 
 
 NUM_HIDDEN_LAYERS_MAPPING = {
@@ -59,7 +57,7 @@ def convert_state_dict(state_dict):
 
 
 def convert_rmkv_checkpoint_to_hf_format(
-    repo_id, checkpoint_file, output_dir, size=None, tokenizer_file=None, push_to_hub=False, model_name=None
+    repo_id, checkpoint_file, output_dir, size=None, tokenizer_file=None, push_to_hub=False, model_name=None,ctx_len=1024,
 ):
     # 1. If possible, build the tokenizer.
     if tokenizer_file is None:
@@ -87,12 +85,16 @@ def convert_rmkv_checkpoint_to_hf_format(
     config = RwkvConfig(
         vocab_size=vocab_size,
         num_hidden_layers=NUM_HIDDEN_LAYERS_MAPPING[size],
-        hidden_size=HIDEN_SIZE_MAPPING[size],
+        n_layers=HIDEN_SIZE_MAPPING[size],
+        ctx_len = ctx_len,
     )
     config.save_pretrained(output_dir)
 
     # 3. Download model file then convert state_dict
-    model_file = hf_hub_download(repo_id, checkpoint_file)
+    if os.path.exists(checkpoint_file) and os.path.isfile(checkpoint_file):
+        model_file = checkpoint_file
+    else:
+        model_file = hf_hub_download(repo_id, checkpoint_file)
     state_dict = torch.load(model_file, map_location="cpu")
     state_dict = convert_state_dict(state_dict)
 
@@ -137,7 +139,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # Required parameters
     parser.add_argument(
-        "--repo_id", default=None, type=str, required=True, help="Repo ID from which to pull the checkpoint."
+        "--repo_id", default=None, type=str, help="Repo ID from which to pull the checkpoint."
     )
     parser.add_argument(
         "--checkpoint_file", default=None, type=str, required=True, help="Name of the checkpoint file in the repo."
@@ -169,6 +171,13 @@ if __name__ == "__main__":
         help="Name of the pushed model on the Hub, including the username / organization.",
     )
 
+    parser.add_argument(
+        "--ctx_len",
+        default=1024,
+        type=int,
+        help="Size of the model. Will be inferred from the `checkpoint_file` if not passed.",
+    )
+
     args = parser.parse_args()
     convert_rmkv_checkpoint_to_hf_format(
         args.repo_id,
@@ -178,4 +187,5 @@ if __name__ == "__main__":
         tokenizer_file=args.tokenizer_file,
         push_to_hub=args.push_to_hub,
         model_name=args.model_name,
+        ctx_len=args.ctx_len,
     )
