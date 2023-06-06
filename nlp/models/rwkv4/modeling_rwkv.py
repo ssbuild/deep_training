@@ -3,48 +3,59 @@
 # @Author: tk
 # @File：rwkv-4
 import math
-import os.path
+import os
 import typing
-from dataclasses import dataclass
 from typing import Optional, List, Tuple, Union
 import torch
 from torch import nn
-from torch.nn import functional as F, CrossEntropyLoss
-from transformers.utils import ModelOutput
-from configuration_rwkv import RwkvConfig
+from torch.nn import functional as F
 from transformers import PreTrainedModel
-from torch.utils.cpp_extension import load
+from transformers.utils import ModelOutput
+from dataclasses import dataclass
+from .configuration_rwkv import RwkvConfig
+from ..transformer_base import TransformerBase
 
-__T_MAX__ = 1024
-__WKV_CUDA__ = typing.Optional = None
+__T_MAX__: int = 1024
+__WKV_CUDA__ : typing.Optional = None
 
+__all__ = [
+    'RwkvCausalLMOutput',
+    'RwkvModel',
+    'RwkvCausalLMOutput',
+    'RwkvForCausalLM',
+    'TransformerRWKV4LMHeadModel',
+]
 
 def set_model_profile(RWKV_T_MAX,RWKV_FLOAT_MODE='32'):
+    from torch.utils import cpp_extension
     global __T_MAX__,__WKV_CUDA__
     # torch._C._jit_set_profiling_executor(True)
     # torch._C._jit_set_profiling_mode(True)
     __T_MAX__ = RWKV_T_MAX  # TAKES LOTS OF VRAM!
     cur_path = os.path.dirname(__file__)
     if RWKV_FLOAT_MODE == "bf16":
-        __WKV_CUDA__ = load(name=f"wkv_{__T_MAX__}_bf16", sources=[os.path.join(cur_path,_) for _ in ["cuda/wkv_op_bf16.cpp", "cuda/wkv_cuda_bf16.cu"]],
+        __WKV_CUDA__ = cpp_extension.load(name=f"wkv_{__T_MAX__}_bf16", sources=[os.path.join(cur_path,_) for _ in ["cuda/wkv_op_bf16.cpp", "cuda/wkv_cuda_bf16.cu"]],
                         verbose=True,
                         extra_cuda_cflags=["-t 4", "-std=c++17", "-res-usage", "--maxrregcount 60", "--use_fast_math",
                                            "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-DTmax={__T_MAX__}"])
     else:
-        __WKV_CUDA__ = load(name=f"wkv_{__T_MAX__}", sources=[os.path.join(cur_path,_)  for _ in ["cuda/wkv_op.cpp", "cuda/wkv_cuda.cu"]], verbose=True,
+        __WKV_CUDA__ = cpp_extension.load(name=f"wkv_{__T_MAX__}", sources=[os.path.join(cur_path,_)  for _ in ["cuda/wkv_op.cpp", "cuda/wkv_cuda.cu"]], verbose=True,
                         extra_cuda_cflags=["-res-usage", "--maxrregcount 60", "--use_fast_math", "-O3", "-Xptxas -O3",
                                            "--extra-device-vectorization", f"-DTmax={__T_MAX__}"])
 class WKV(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, B, T, C, w, u, k, v, s):
+    def forward(ctx, w, u, k, v, st,return_state):
+        B, T, C = k.size()
         ctx.B = B
         ctx.T = T
         ctx.C = C
+
         assert T <= __T_MAX__
         assert B * C % min(C, 32) == 0
+        input_dtype = k.dtype
+        ctx.input_dtype = input_dtype
 
-        input_dtype = w.dtype
-        if s is None:
+        if st is None:
             s = torch.zeros(B,C,3,
                 dtype=torch.float32,
                 device=k.device,
@@ -52,61 +63,59 @@ class WKV(torch.autograd.Function):
             )
             s[:, :, 2] -= 1e38
         else:
-            s = torch.cat([_.unsqueeze(2) for _ in s], dim=2).contiguous()
+            s = torch.cat([_.unsqueeze(2) for _ in st], dim=2).contiguous()
 
-        if w.dtype == torch.float16:
-            w = w.float()
-            u = u.float()
+        if input_dtype == torch.float16:
             k = k.float()
             v = v.float()
+
         if s.dtype != torch.float32:
             s = s.float()
+
         w = -torch.exp(w.contiguous())
         u = u.contiguous()
         k = k.contiguous()
         v = v.contiguous()
         s = s.contiguous()
 
-        y = torch.empty((B, T, C), device=w.device, memory_format=torch.contiguous_format, dtype=w.dtype)
-        __WKV_CUDA__.forward(B, T, C, w, u, k, v, s, y)
+        y = torch.empty((B, T, C), device=w.device, memory_format=torch.contiguous_format)
+        __WKV_CUDA__.forward(w, u, k, v, s, y)
         ctx.save_for_backward(w, u, k, v, y)
 
-        if s is not None:
-            s = [_.squeeze(2) for _ in torch.chunk(s, 3, dim=2)]
-        return y.to(input_dtype), s
+        if return_state and s is not None:
+            st = [_.squeeze(2) for _ in torch.chunk(s, 3, dim=2)]
+        return y.to(input_dtype), st
 
     @staticmethod
-    def backward(ctx, gy):
+    def backward(ctx, gy, gstate=None):
         B = ctx.B
         T = ctx.T
         C = ctx.C
+        input_dtype = ctx.input_dtype
         assert T <= __T_MAX__
         assert B * C % min(C, 32) == 0
         w, u, k, v, y = ctx.saved_tensors
-        gw = torch.empty((B, C), device=gy.device, memory_format=torch.contiguous_format,dtype=w.dtype)
-        gu = torch.empty((B, C), device=gy.device, memory_format=torch.contiguous_format,dtype=w.dtype)
-        gk = torch.empty((B, T, C), device=gy.device, memory_format=torch.contiguous_format,dtype=w.dtype)
+        gw = torch.empty((B, C), device=gy.device, memory_format=torch.contiguous_format, dtype=torch.bfloat16 if input_dtype == torch.bfloat16 else torch.float32)
+        gu = torch.empty((B, C), device=gy.device, memory_format=torch.contiguous_format)
+        gk = torch.empty((B, T, C), device=gy.device, memory_format=torch.contiguous_format)
 
-        gv = torch.empty((B, T, C), device=gy.device, memory_format=torch.contiguous_format,dtype=w.dtype)
-        if k.dtype == torch.float16:
-            w = w.float()
-            k = k.float()
-            u = u.float()
-            v = v.float()
-        __WKV_CUDA__.backward(B, T, C, w, u, k, v, y, gy.contiguous(), gw, gu, gk, gv)
+        gv = torch.empty((B, T, C), device=gy.device, memory_format=torch.contiguous_format)
+        if input_dtype == torch.float16:
+            gy = gy.float()
+        __WKV_CUDA__.backward(w, u, k, v, y, gy.contiguous(), gw, gu, gk, gv)
         gw = torch.sum(gw, dim=0)
         gu = torch.sum(gu, dim=0)
-        return (None, None, None, gw, gu, gk, gv)
+        return (gw.to(input_dtype), gu.to(input_dtype), gk.to(input_dtype), gv.to(input_dtype), None, None)
 
 
-def RUN_CUDA(B, T, C, w, u, k, v,s):
+def RUN_CUDA(w, u, k, v,s,return_state):
     if __WKV_CUDA__ is None:
-        return rwkv_linear_attention_cpu(w, u, k, v,s)
-    return WKV.apply(B, T, C, w, u, k, v, s)
+        return rwkv_linear_attention_cpu(w, u, k, v,s,return_state)
+    return WKV.apply(w, u, k, v, s,return_state)
 
 
 
-def rwkv_linear_attention_cpu(time_decay, time_first, key, value, state=None):
+def rwkv_linear_attention_cpu(time_decay, time_first, key, value, state=None,return_state=False):
     # For CPU fallback. Will be slower and probably take more memory than the custom CUDA kernel if not executed
     # within a torch.no_grad.
     _, seq_length, _ = key.size()
@@ -144,7 +153,7 @@ def rwkv_linear_attention_cpu(time_decay, time_first, key, value, state=None):
         den_state = e1 * den_state + e2
         max_state = max_for_state
 
-    if state is not None:
+    if return_state and state is not None:
         state = [num_state, den_state, max_state]
 
     return output, state
@@ -197,7 +206,7 @@ class RwkvSelfAttention(nn.Module):
         self.receptance = nn.Linear(config.n_embd, config.dim_att, bias=False)
         self.output = nn.Linear(config.dim_att, config.n_embd, bias=False)
 
-    def jit_func(self, x,state=None):
+    def jit_func(self, x, state=None):
         # Mix x with the previous timestep to produce xk, xv, xr
         if x.size(1) == 1 and state is not None:
             shifted = state[1][:, :, self.layer_id]
@@ -224,15 +233,12 @@ class RwkvSelfAttention(nn.Module):
         sr, k, v, state = self.jit_func(x,state=state)
 
         layer_state = tuple(s[:, :, self.layer_id] for s in state[2:]) if state is not None else None
-        rwkv,layer_state = RUN_CUDA(B, T, self.config.dim_att, self.time_decay, self.time_first, k, v, layer_state)
+        rwkv,layer_state = RUN_CUDA(self.time_decay, self.time_first, k, v, layer_state,return_state=use_cache)
         if layer_state is not None:
             state[2][:, :, self.layer_id] = layer_state[0]
             state[3][:, :, self.layer_id] = layer_state[1]
             state[4][:, :, self.layer_id] = layer_state[2]
         return self.output(sr * rwkv),state
-
-
-
 
 
 class RwkvFeedForward(nn.Module):
@@ -729,7 +735,7 @@ class RwkvForCausalLM(RwkvPreTrainedModel):
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
             # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
+            loss_fct = nn.CrossEntropyLoss()
             loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
 
         if not return_dict:
@@ -743,3 +749,10 @@ class RwkvForCausalLM(RwkvPreTrainedModel):
             hidden_states=rwkv_outputs.hidden_states,
             attentions=rwkv_outputs.attentions,
         )
+
+
+
+class TransformerRWKV4LMHeadModel(TransformerBase):
+    def __init__(self, *args,**kwargs):
+        super(TransformerRWKV4LMHeadModel, self).__init__(*args,**kwargs)
+        self.set_model(self.from_pretrained(RwkvForCausalLM, *args, **kwargs))

@@ -84,8 +84,8 @@ def convert_rmkv_checkpoint_to_hf_format(
 
     config = RwkvConfig(
         vocab_size=vocab_size,
-        num_hidden_layers=NUM_HIDDEN_LAYERS_MAPPING[size],
-        n_layers=HIDEN_SIZE_MAPPING[size],
+        n_layers=NUM_HIDDEN_LAYERS_MAPPING[size],
+        n_embd=HIDEN_SIZE_MAPPING[size],
         ctx_len = ctx_len,
     )
     config.save_pretrained(output_dir)
