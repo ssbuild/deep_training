@@ -34,12 +34,12 @@ def set_model_profile(RWKV_T_MAX,RWKV_FLOAT_MODE='32'):
     __T_MAX__ = RWKV_T_MAX  # TAKES LOTS OF VRAM!
     cur_path = os.path.dirname(__file__)
     if RWKV_FLOAT_MODE == "bf16":
-        __WKV_CUDA__ = cpp_extension.load(name=f"wkv_{__T_MAX__}_bf16", sources=[os.path.join(cur_path,_) for _ in ["cuda/wkv_op_bf16.cpp", "cuda/wkv_cuda_bf16.cu"]],
+        __WKV_CUDA__ = cpp_extension.load(name=f"deep_wkv_{__T_MAX__}_bf16", sources=[os.path.join(cur_path,_) for _ in ["cuda/wkv_op_bf16.cpp", "cuda/wkv_cuda_bf16.cu"]],
                         verbose=True,
                         extra_cuda_cflags=["-t 4", "-std=c++17", "-res-usage", "--maxrregcount 60", "--use_fast_math",
                                            "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-DTmax={__T_MAX__}"])
     else:
-        __WKV_CUDA__ = cpp_extension.load(name=f"wkv_{__T_MAX__}", sources=[os.path.join(cur_path,_)  for _ in ["cuda/wkv_op.cpp", "cuda/wkv_cuda.cu"]], verbose=True,
+        __WKV_CUDA__ = cpp_extension.load(name=f"deep_wkv_{__T_MAX__}", sources=[os.path.join(cur_path,_)  for _ in ["cuda/wkv_op.cpp", "cuda/wkv_cuda.cu"]], verbose=True,
                         extra_cuda_cflags=["-res-usage", "--maxrregcount 60", "--use_fast_math", "-O3", "-Xptxas -O3",
                                            "--extra-device-vectorization", f"-DTmax={__T_MAX__}"])
 class WKV(torch.autograd.Function):

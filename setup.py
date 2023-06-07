@@ -2,10 +2,11 @@
 
 from setuptools import setup, find_packages
 
+package_list = find_packages()
 ignore = ['test','tests']
 setup(
     name='deep_training',
-    version='0.1.10',
+    version='0.1.10.post0',
     description='an easy training architecture',
     long_description='torch_training: https://github.com/ssbuild/deep_training.git',
     license='Apache License 2.0',
@@ -23,5 +24,7 @@ setup(
                       'tensorboard',
                       'tqdm',
                       'six'],
-    packages=[p for p in find_packages() if p not in ignore]
+    include_package_data=True,
+    package_data={'': ['*.cu', '*.c', '*.cpp']},
+    packages=package_list
 )
