@@ -1,8 +1,12 @@
 #! -*- coding: utf-8 -*-
+import re
 
 from setuptools import setup, find_packages
 
-package_list = find_packages()
+packge_list = find_packages('src')
+package_dir= {'deep_training.' + k : 'src/' + k.replace('.','/') for k in packge_list }
+package_dir.update({'deep_training': 'src'})
+
 ignore = ['test','tests']
 setup(
     name='deep_training',
@@ -24,7 +28,9 @@ setup(
                       'tensorboard',
                       'tqdm',
                       'six'],
-    include_package_data=True,
-    package_data={'': ['*.cu', '*.c', '*.cpp']},
-    packages=package_list
+
+    packages=list(package_dir.keys()),
+    package_dir= package_dir,
+    package_data={'': ['nlp/models/rwkv4/cuda/*.cu', 'nlp/models/rwkv4/cuda/*.c', 'nlp/models/rwkv4/cuda/*.cpp'],},
+
 )
