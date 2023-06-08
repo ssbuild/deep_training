@@ -66,6 +66,11 @@ class WKV(torch.autograd.Function):
             s = torch.cat([_.unsqueeze(2) for _ in st], dim=2).contiguous()
 
         if input_dtype == torch.float16:
+            # inference
+            if w.dtype != torch.float16:
+                w = w.float()
+                u = u.float()
+
             k = k.float()
             v = v.float()
 
@@ -551,6 +556,7 @@ class RwkvModel(RwkvPreTrainedModel):
                 output_attentions: Optional[bool] = None,
                 output_hidden_states: Optional[bool] = None,
                 return_dict: Optional[bool] = None,
+                return_state_only = False,
                 ):
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -598,6 +604,15 @@ class RwkvModel(RwkvPreTrainedModel):
 
             if output_attentions:
                 all_self_attentions = all_self_attentions + (attentions,)
+
+        if return_state_only:
+            if not return_dict:
+                return (state,)
+            else:
+                return RwkvOutput(
+                    state=state,
+                )
+
 
         hidden_states = self.ln_out(hidden_states)
 
@@ -705,6 +720,7 @@ class RwkvForCausalLM(RwkvPreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        return_state_only=False,
     ) -> Union[Tuple, RwkvCausalLMOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -722,8 +738,21 @@ class RwkvForCausalLM(RwkvPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            return_state_only=return_state_only,
         )
+
+        if return_state_only:
+            if not return_dict:
+                return (state,)
+            else:
+                return RwkvCausalLMOutput(
+                    state=rwkv_outputs.state,
+                )
+
+
         hidden_states = rwkv_outputs[0]
+
+
 
         logits = self.head(hidden_states)
 

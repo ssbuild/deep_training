@@ -41,6 +41,6 @@ def _prepare_prompt_learning_config(prompt_config, model_config):
         prompt_config.num_attention_heads = num_attention_heads
 
     if getattr(prompt_config, "encoder_hidden_size", None) is None:
-        setattr(prompt_config, "encoder_hidden_size", token_dim)
+        setattr(prompt_config, "encoder_hidden_size", prompt_config.token_dim)
 
     return prompt_config
