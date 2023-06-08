@@ -67,7 +67,7 @@ class WKV(torch.autograd.Function):
 
         if input_dtype == torch.float16:
             # inference
-            if w.dtype != torch.float16:
+            if w.dtype == torch.float16:
                 w = w.float()
                 u = u.float()
 
