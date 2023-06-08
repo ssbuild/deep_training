@@ -38,7 +38,7 @@ def set_model_profile(RWKV_T_MAX,RWKV_FLOAT_MODE='32'):
                         verbose=True,
                         extra_cuda_cflags=["-t 4", "-std=c++17", "-res-usage", "--maxrregcount 60", "--use_fast_math",
                                            "-O3", "-Xptxas -O3", "--extra-device-vectorization", f"-DTmax={__T_MAX__}"])
-    else:
+    elif RWKV_FLOAT_MODE in ['16','32']:
         __WKV_CUDA__ = cpp_extension.load(name=f"deep_wkv_{__T_MAX__}", sources=[os.path.join(cur_path,_)  for _ in ["cuda/wkv_op.cpp", "cuda/wkv_cuda.cu"]], verbose=True,
                         extra_cuda_cflags=["-res-usage", "--maxrregcount 60", "--use_fast_math", "-O3", "-Xptxas -O3",
                                            "--extra-device-vectorization", f"-DTmax={__T_MAX__}"])
@@ -596,8 +596,12 @@ class RwkvModel(RwkvPreTrainedModel):
         all_hidden_states = () if output_hidden_states else None
 
 
-        for block in self.blocks:
+        for i,block in enumerate(self.blocks):
             hidden_states, state, attentions = block(hidden_states,state=state, use_cache=use_cache, output_attentions=output_attentions)
+
+            if not self.training and self.config.rescale_every >0:
+                if (i + 1) % self.config.rescale_every == 0:
+                    hidden_states = hidden_states / 2
 
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
