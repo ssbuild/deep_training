@@ -169,7 +169,6 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
     def load_weight(self, pretrained_model_name_or_path, adapter_name="default", is_trainable=False, **kwargs):
         self.load_adapter(pretrained_model_name_or_path, adapter_name, is_trainable=is_trainable, **kwargs)
 
-
     def print_trainable_parameters(self):
         """
         Prints the number of trainable parameters in the model.
@@ -186,7 +185,7 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
             if param.requires_grad:
                 trainable_params += num_params
         print(
-            f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param}"
+            f"trainable params: {trainable_params:,d} || all params: {all_param:,d} || trainable%: {100 * trainable_params / all_param}"
         )
 
     def __getattr__(self, name: str):

@@ -40,7 +40,9 @@
     - support lora prompt for deepspeed training
     - support rwkv4  完整训练 [rwkv_finetuning](https://github.com/ssbuild/rwkv_finetuning)
   - 0.1.10.post0 
-     - fix package setup for cpp and cu code
+     - fix package setup for cpp and cu code for rwkv4
+  - 0.1.10.post1 
+     - fix infer for rwkv4
 
 
 
