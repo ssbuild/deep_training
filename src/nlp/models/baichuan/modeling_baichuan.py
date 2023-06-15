@@ -32,6 +32,7 @@ from transformers.utils import logging, add_start_docstrings_to_model_forward, r
 from xformers import ops as xops
 
 from .configuration_baichuan import BaiChuanConfig
+from ..transformer_base import TransformerBase
 
 logger = logging.get_logger(__name__)
 
@@ -690,3 +691,10 @@ class BaiChuanForCausalLM(PreTrainedModel):
         for layer_past in past_key_values:
             reordered_past += (tuple(past_state.index_select(0, beam_idx) for past_state in layer_past),)
         return reordered_past
+
+
+
+class TransformerBaiChuanLMHeadModel(TransformerBase):
+    def __init__(self, *args,**kwargs):
+        super(TransformerBaiChuanLMHeadModel, self).__init__(*args,**kwargs)
+        self.set_model(self.from_pretrained(BaiChuanForCausalLM, *args, **kwargs))

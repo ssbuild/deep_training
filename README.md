@@ -5,6 +5,8 @@
 
 ## install and download
 - pip install -U deep_training
+- install by source
+  - pip install -U git+https://github.com/ssbuild/deep_training.git
 - https://pypi.org/project/deep-training/#history
 
 ## examples
