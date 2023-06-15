@@ -24,11 +24,11 @@ import torch
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 import torch.utils.checkpoint
-from transformers import PreTrainedModel, add_start_docstrings
+from transformers import PreTrainedModel
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
-from transformers.utils import logging, add_start_docstrings_to_model_forward, replace_return_docstrings
+from transformers.utils import logging
 from xformers import ops as xops
 
 from .configuration_baichuan import BaiChuanConfig
