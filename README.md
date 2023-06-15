@@ -33,7 +33,9 @@
  
   
 ## update
-
+- <strong>2023-06-06</strong>
+  - 0.1.11 rc0 add baichuan models  完整训练 [baichuan_finetuning](https://github.com/ssbuild/baichuan_finetuning)
+  
 - <strong>2023-06-06</strong>
   - 0.1.9 is merged into  0.1.10
   - 0.1.10 
