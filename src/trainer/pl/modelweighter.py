@@ -15,6 +15,7 @@ from transformers import PreTrainedModel, HfArgumentParser, AutoConfig
 
 __all__ = [
     'ModelWeightMinMax',
+    'ModelWeightMixin',
     'LoraModel',
     'LoraArguments',
     'LoraConfig',
@@ -29,7 +30,9 @@ __all__ = [
     'PreTrainedModel',
     'HfArgumentParser'
 ]
-class ModelWeightMinMax:
+
+
+class ModelWeightMixin:
     lora_args = None
     prompt_args = None
     def save_pretrained_merge_lora(self,sft_weight_path: str):
@@ -162,3 +165,6 @@ class ModelWeightMinMax:
             config = self.get_llm_model().config
             config.save_pretrained(sft_weight_path)
             self.get_llm_model().save_pretrained(sft_weight_path)
+
+
+ModelWeightMinMax = ModelWeightMixin

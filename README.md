@@ -13,6 +13,7 @@
 
 
 ## dev plan
+ - 支持 datasets on the way
  - 支持 transformer Trainer on the way
  - 解耦 lightning on the way
 
@@ -60,10 +61,10 @@
   - 增加reward ppo  llm 完整训练 [rlhf_llm](https://github.com/ssbuild/rlhf_llm)
   - 增加reward ppo  chatglm 完整训练 [rlhf_chatglm](https://github.com/ssbuild/rlhf_chatglm)
   - 增加reward ppo  chatyuan 完整训练 [rlhf_chatyuan](https://github.com/ssbuild/rlhf_chatyuan)
-  - 0.1.5@post2 release
+  - 0.1.5.post2 release
   - fix prompt modules_to_save 自定义额外训练模块
   - 增加 ilql 离线模式训练 ilql  完整训练 [rlhf_llm](https://github.com/ssbuild/rlhf_llm)
-  - 0.1.5@post4 release
+  - 0.1.5.post4 release
   - fix opt model hidden_size for ppo ilql 
   - fix ppotrainer ilqltrainer deepspeed save weight
   - import AdmaW from transformers or but torch firstly
@@ -72,7 +73,7 @@
   - 0.1.4 增加 prompt_tuning,p_tuning,prefix_tuning,adaption_prompt
 
 - <strong>2023-04-28</strong>
-  - 0.1.3@post0 新版本基于lightning
+  - 0.1.3.post0 新版本基于lightning
   - pytorch-lightning 更名 lightning
   - 分离numpy-io模块
 
@@ -82,17 +83,17 @@
 
 - <strong>2023-04-11</strong>
   - 0.1.2 重构lora v2, 增加adalora
-  - 0.1.2@post0 fix lova v1,lova v2 load_in_8bit
+  - 0.1.2.post0 fix lova v1,lova v2 load_in_8bit
 - <strong>2023-04-07</strong>
   - deep_training 0.1.1 同步更新chatglm 词表配置信息 
 - <strong>2023-04-02</strong>
   - release 0.1.0 and lightning >= 2
 - <strong>2023-03-15</strong>
-  - 增加ChatGLM模型(稳定版>=0.0.18@post7) 完整训练参考 [chatglm_finetuning](https://github.com/ssbuild/chatglm_finetuning)
-  - 0.0.18@post8 解决deepspeed进程数据平衡 
-  - 0.0.18@post9 增加流式输出接口stream_chat接口
+  - 增加ChatGLM模型(稳定版>=0.0.18.post7) 完整训练参考 [chatglm_finetuning](https://github.com/ssbuild/chatglm_finetuning)
+  - 0.0.18.post8 解决deepspeed进程数据平衡 
+  - 0.0.18.post9 增加流式输出接口stream_chat接口
   - 0.0.20 ChatGLM lora 加载权重继续训练 ， 修改数据数据编码 ，权重自适应
-  - 0.0.21@post0 fix ChatGLM deepspeed stage 3 权重加载
+  - 0.0.21.post0 fix ChatGLM deepspeed stage 3 权重加载
 - <strong>2023-03-09</strong>
   - 增加LLaMA 模型(并行版) 完整训练参考 [llama_finetuning](https://github.com/ssbuild/llama_finetuning)
 - <strong>2023-03-08</strong>
