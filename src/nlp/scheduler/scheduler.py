@@ -7,9 +7,28 @@ from typing import Union, Optional
 from transformers import get_linear_schedule_with_warmup, get_cosine_schedule_with_warmup, \
     get_cosine_with_hard_restarts_schedule_with_warmup, get_polynomial_decay_schedule_with_warmup, \
     get_constant_schedule, get_constant_schedule_with_warmup, get_inverse_sqrt_schedule
-from transformers.optimization import get_reduce_on_plateau_schedule
+
 from transformers.utils import ExplicitEnum
 from torch.optim import Optimizer
+
+try:
+    from transformers.optimization import get_reduce_on_plateau_schedule
+except:
+    from torch.optim.lr_scheduler import ReduceLROnPlateau
+
+    def get_reduce_on_plateau_schedule(optimizer: Optimizer):
+        """
+        Create a schedule with a constant learning rate that decreases when a metric has stopped improving.
+
+        Args:
+            optimizer ([`~torch.optim.Optimizer`]):
+                The optimizer for which to schedule the learning rate.
+
+        Return:
+            `torch.optim.lr_scheduler.ReduceLROnPlateau` with the appropriate schedule.
+        """
+
+        return ReduceLROnPlateau(optimizer)
 
 
 class SchedulerType(ExplicitEnum):

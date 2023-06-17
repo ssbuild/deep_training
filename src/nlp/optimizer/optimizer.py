@@ -16,8 +16,6 @@ except:
     AdamWHF = None
 
 
-from ...data_helper import TrainingArguments
-
 class OptimizerNames(ExplicitEnum):
     """
     Stores the acceptable string identifiers for optimizers.
@@ -47,6 +45,7 @@ class OptimizerNames(ExplicitEnum):
     ADAGRAD_CPU_DP = 'adagrad_cpu_dp'
     ADAM_CPU_DP = 'adam_cpu_dp'
     ADAM_FUSED_DP = 'adam_fused_dp'
+
 def get_optimizer_cls_and_kwargs(optimizer_name,args: TrainingArguments) -> typing.Tuple[typing.Any, typing.Any]:
     """
     Returns the optimizer class and optimizer parameters based on the training arguments.
