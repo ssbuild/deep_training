@@ -37,6 +37,7 @@
 ## update
 - <strong>2023-06-06</strong>
   - 0.1.11 rc0 add baichuan model  完整训练 [baichuan_finetuning](https://github.com/ssbuild/baichuan_finetuning)
+  - 0.1.11 rc1 add chatglm2 model  完整训练 [chatglm2_finetuning](https://github.com/ssbuild/chatglm2_finetuning)
   
 - <strong>2023-06-06</strong>
   - 0.1.9 is merged into  0.1.10

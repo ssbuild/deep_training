@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/3/14 10:32
 #reference https://github.com/THUDM/ChatGLM-6B
+import sys
 import copy
 import inspect
 import math
 import os
 import re
+
 import warnings
 from enum import Enum
 from typing import Optional, Tuple, Union, List, Callable, Any, Dict
@@ -62,10 +64,11 @@ skip_init_function = skip_init
 
 def setup_model_profile(skip_init_flag=True):
     # flags required to enable jit fusion kernels
-    torch._C._jit_set_profiling_mode(False)
-    torch._C._jit_set_profiling_executor(False)
-    torch._C._jit_override_can_fuse_on_cpu(True)
-    torch._C._jit_override_can_fuse_on_gpu(True)
+    if sys.platform != 'darwin':
+        torch._C._jit_set_profiling_mode(False)
+        torch._C._jit_set_profiling_executor(False)
+        torch._C._jit_override_can_fuse_on_cpu(True)
+        torch._C._jit_override_can_fuse_on_gpu(True)
 
     global skip_init_function
     if skip_init_flag:
