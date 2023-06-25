@@ -775,11 +775,11 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
 
 
 class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
-    def __init__(self, config: ChatGLMConfig, empty_init=True, device=None):
+    def __init__(self, config: ChatGLMConfig,device=None):
         super().__init__(config)
 
         self.max_sequence_length = config.max_length
-        self.transformer = ChatGLMModel(config, empty_init=empty_init, device=device)
+        self.transformer = ChatGLMModel(config,  device=device)
         self.config = config
         self.quantized = False
 

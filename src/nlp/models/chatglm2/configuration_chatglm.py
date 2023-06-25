@@ -29,6 +29,8 @@ class ChatGLMConfig(PretrainedConfig):
         attention_softmax_in_fp32=True,
         fp32_residual_connection=False,
         quantization_bit=0,
+        pre_seq_len=None,
+        prefix_projection=False,
         **kwargs
     ):
         self.num_layers = num_layers
@@ -53,4 +55,6 @@ class ChatGLMConfig(PretrainedConfig):
         self.attention_softmax_in_fp32 = attention_softmax_in_fp32
         self.fp32_residual_connection = fp32_residual_connection
         self.quantization_bit = quantization_bit
+        self.pre_seq_len = pre_seq_len
+        self.prefix_projection = prefix_projection
         super().__init__(**kwargs)

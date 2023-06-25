@@ -92,7 +92,6 @@ class ChatGLMConfig(PretrainedConfig):
         self.prefix_projection = prefix_projection
         self.initializer_range = initializer_range
         self.initializer_weight = initializer_weight
-        self.quantization_bit = quantization_bit
 
 
         super().__init__(
