@@ -589,6 +589,7 @@ class GLMTransformer(torch.nn.Module):
 
     def __init__(self, config: ChatGLMConfig, device=None):
         super(GLMTransformer, self).__init__()
+        self.gradient_checkpointing = False
 
         self.fp32_residual_connection = config.fp32_residual_connection
         self.post_layer_norm = config.post_layer_norm
