@@ -236,6 +236,7 @@ class CoreAttention(torch.nn.Module):
             else:
                 if attention_mask is not None:
                     attention_mask = ~attention_mask
+
                 context_layer = torch.nn.functional.scaled_dot_product_attention(query_layer, key_layer, value_layer,
                                                                                  attention_mask)
             context_layer = context_layer.permute(2, 0, 1, 3)
@@ -445,7 +446,6 @@ class SelfAttention(torch.nn.Module):
         # ==================================
         # core attention computation
         # ==================================
-
         context_layer = self.core_attention(query_layer, key_layer, value_layer, attention_mask)
 
         # =================
@@ -778,6 +778,12 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
             self.prefix_encoder = PrefixEncoder(config)
             self.dropout = torch.nn.Dropout(0.1)
 
+            total_params = sum(p.numel() for p in self.parameters())
+            trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+            print("Using p-tuning v2: # trainable_params = {} / {} , || trainable %: {}".format(trainable_params,
+                                                                                            total_params,
+                                                                                            100 * trainable_params / total_params))
+
     def get_input_embeddings(self):
         return self.embedding.word_embeddings
 
@@ -836,6 +842,8 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
             if self.pre_seq_len is not None:
                 past_key_values = self.get_prompt(batch_size=batch_size, device=input_ids.device,
                                                   dtype=inputs_embeds.dtype)
+            else:
+                past_key_values = tuple([None] * self.num_layers)
 
 
         # Run encoder.
