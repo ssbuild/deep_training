@@ -4,6 +4,7 @@ from transformers import PretrainedConfig
 
 
 class ChatGLMConfig(PretrainedConfig):
+    model_type = "chatglm"
     def __init__(
         self,
         num_layers=28,
@@ -34,6 +35,7 @@ class ChatGLMConfig(PretrainedConfig):
         **kwargs
     ):
         self.num_layers = num_layers
+        self.vocab_size = padded_vocab_size
         self.padded_vocab_size = padded_vocab_size
         self.hidden_size = hidden_size
         self.ffn_hidden_size = ffn_hidden_size
