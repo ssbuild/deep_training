@@ -178,6 +178,19 @@ class LoraConfig(LoraBaseArguments):
         metadata={"help": "Whether to initialize the weights of the Lora layers."},
     )
 
+    layers_to_transform: Optional[Union[List, int]] = field(
+        default=None,
+        metadata={
+            "help": "The layer indexes to transform, is this argument is specified, PEFT will transform only the layers indexes that are specified inside this list. If a single integer is passed, PEFT will transform only the layer at this index."
+        },
+    )
+    layers_pattern: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "The layer pattern name, used only if `layers_to_transform` is different to None and if the layer pattern is not in the common layers pattern."
+        },
+    )
+
     def __post_init__(self):
         if self.lora_type is None:
             self.lora_type = 'lora'
@@ -268,3 +281,6 @@ class LoraArguments:
         if self.adalora is not None and isinstance(self.adalora, dict):
             self.adalora = AdaLoraConfig.from_memory(self.adalora)
             self.with_lora = self.adalora.with_lora | self.with_lora
+
+
+COMMON_LAYERS_PATTERN = ["layers", "h", "block", "blocks"]

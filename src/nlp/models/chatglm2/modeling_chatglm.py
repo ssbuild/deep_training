@@ -418,11 +418,11 @@ class SelfAttention(torch.nn.Module):
             key_layer = apply_rotary_pos_emb(key_layer, rotary_pos_emb)
 
         # adjust key and value for inference
+        if kv_cache is not None:
+            cache_k, cache_v = kv_cache
+            key_layer = torch.cat((cache_k, key_layer), dim=0)
+            value_layer = torch.cat((cache_v, value_layer), dim=0)
         if use_cache:
-            if kv_cache is not None:
-                cache_k, cache_v = kv_cache
-                key_layer = torch.cat((cache_k, key_layer), dim=0)
-                value_layer = torch.cat((cache_v, value_layer), dim=0)
             kv_cache = (key_layer, value_layer)
         else:
             kv_cache = None
@@ -754,7 +754,7 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         
         self.num_layers = config.num_layers
         self.multi_query_group_num = config.multi_query_group_num
-        self.kv_channels = config.kv_channels                                 
+        self.kv_channels = config.kv_channels
 
         # Rotary positional embeddings
         self.seq_length = config.seq_length
@@ -825,6 +825,13 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         if inputs_embeds is None:
             inputs_embeds = self.embedding(input_ids)
 
+        if self.pre_seq_len is not None:
+            if past_key_values is None:
+                past_key_values = self.get_prompt(batch_size=batch_size, device=input_ids.device,
+                                                  dtype=inputs_embeds.dtype)
+            if attention_mask is not None:
+                attention_mask = torch.cat([attention_mask.new_ones((batch_size, self.pre_seq_len)),
+                                            attention_mask], dim=-1)
         if full_attention_mask is None:
             if (attention_mask is not None and not attention_mask.all()) or (past_key_values and seq_length != 1):
                 full_attention_mask = self.get_masks(input_ids, past_key_values, padding_mask=attention_mask)
@@ -836,15 +843,6 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         else:
             rotary_pos_emb = rotary_pos_emb[None, :seq_length]
         rotary_pos_emb = rotary_pos_emb.transpose(0, 1).contiguous()
-        
-        
-        if past_key_values is None:
-            if self.pre_seq_len is not None:
-                past_key_values = self.get_prompt(batch_size=batch_size, device=input_ids.device,
-                                                  dtype=inputs_embeds.dtype)
-            else:
-                past_key_values = tuple([None] * self.num_layers)
-
 
         # Run encoder.
         hidden_states, presents, all_hidden_states, all_self_attentions = self.encoder(
@@ -1019,10 +1017,14 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
         return response
 
     def build_inputs(self, tokenizer, query: str, history: List[Tuple[str, str]] = None):
+
+        if history is None:
+            history = []
         prompt = ""
         for i, (old_query, response) in enumerate(history):
             prompt += "[Round {}]\n\n问：{}\n\n答：{}\n\n".format(i + 1, old_query, response)
         prompt += "[Round {}]\n\n问：{}\n\n答：".format(len(history) + 1, query)
+
         inputs = tokenizer([prompt], return_tensors="pt")
         inputs = inputs.to(self.device)
         return inputs

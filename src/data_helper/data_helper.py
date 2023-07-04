@@ -5,16 +5,16 @@ import logging
 import os
 import typing
 import torch
-from fastdatasets import memory as MEMORY
-from fastdatasets.common.iterable_dataset import IterableDatasetBase
-from fastdatasets.common.random_dataset import RandomDatasetBase
-from fastdatasets.torch_dataset import IterableDataset as torch_IterableDataset, Dataset as torch_Dataset
-from torch.utils.data import DataLoader, IterableDataset
+# from fastdatasets import memory as MEMORY
+# from fastdatasets.common.iterable_dataset import IterableDatasetBase
+# from fastdatasets.common.random_dataset import RandomDatasetBase
+# from fastdatasets.torch_dataset import IterableDataset as torch_IterableDataset, Dataset as torch_Dataset
+# from torch.utils.data import DataLoader, IterableDataset
 from transformers import PreTrainedTokenizer, PretrainedConfig
 from .training_args import ModelArguments, DataArguments, TrainingArguments
 from ..utils.func import is_chinese_char
-from numpy_io.core.writer import DataWriteHelper
 from numpy_io.pytorch_loader.data_helper import DataHelperBase,load_tokenizer, load_configure
+from numpy_io.core.writer import DataWriteHelper
 
 __all__ = [
     'DataHelper',
@@ -43,24 +43,23 @@ class DataHelper(DataHelperBase):
     model_args: typing.Optional[ModelArguments] = None
     training_args: typing.Optional[TrainingArguments] = None
     data_args: typing.Optional[DataArguments] = None
+
     def __init__(self,
                  model_args: ModelArguments,
                  training_args: typing.Optional[TrainingArguments] = None,
                  data_args: typing.Optional[DataArguments] = None,
                  **kwargs):
-        super(DataHelper, self).__init__()
 
-
-        self.train_files = []
-        self.eval_files = []
-        self.test_files = []
+        if data_args:
+            super(DataHelper, self).__init__(data_args.data_backend,data_args.convert_file,data_args.output_dir,data_args.intermediate_name)
+        else:
+            super(DataHelper, self).__init__(None, None, None, None)
 
 
         self.label2id = None
         self.id2label = None
         self.max_seq_length_dict = {}
         self._external_kwargs = kwargs
-        self.backend = data_args.data_backend if data_args else 'record'
         self.model_args = model_args
         self.training_args = training_args
         self.data_args = data_args
@@ -253,82 +252,6 @@ class DataHelper(DataHelperBase):
         return tokenizer, config
 
 
-    # 返回制作特征数据的中间文件
-    def get_intermediate_file(self, intermediate_name, mode):
-        data_args: DataArguments = self.data_args
-        if data_args.data_backend.startswith('memory'):
-            # 内存数据: list
-            intermediate_output = []
-            logging.info('make data {} {}...'.format(data_args.output_dir,
-                                                     intermediate_name + '-' + mode + '.' + self.backend))
-        else:
-            # 本地文件数据: 文件名
-            intermediate_output = os.path.join(data_args.output_dir,
-                                               intermediate_name + '-' + mode + '.' + self.backend)
-            logging.info('make data {}...'.format(intermediate_output))
-        return intermediate_output
 
-
-    def make_dataset_with_args(self, input_files,
-                               mode,
-                               shuffle=False,
-                               num_process_worker: int=0,
-                               overwrite: bool=False,
-                               mixed_data=True,
-                               dupe_factor=1):
-        '''
-            mode: one of [ train , eval , test]
-            shuffle: whether shuffle data
-            num_process_worker: the number of mutiprocess
-            overwrite: whether overwrite data
-            mixed_data: Whether the mixed data
-        '''
-        logging.info('make_dataset {} {}...'.format(','.join(input_files),mode))
-        if mode == 'train':
-            contain_objs = self.train_files
-        elif mode == 'eval' or mode == 'val':
-            contain_objs = self.eval_files
-        elif mode == 'test' or mode == 'predict':
-            contain_objs = self.test_files
-        else:
-            raise ValueError('{} invalid '.format(mode))
-
-        if not input_files:
-            logging.info('input_files empty!')
-            return
-
-        data_args: DataArguments = self.data_args
-        for i in range(dupe_factor):
-
-            if data_args.convert_file:
-                if mixed_data:
-                    intermediate_name = data_args.intermediate_name + '_dupe_factor_{}'.format(i)
-                    intermediate_output = self.get_intermediate_file(intermediate_name, mode)
-
-                    if isinstance(intermediate_output, list) or not os.path.exists(intermediate_output) or overwrite:
-                        data = self.on_get_corpus(input_files, mode)
-                        self.make_dataset(intermediate_output,
-                                          data,
-                                          mode,
-                                          num_process_worker=num_process_worker,
-                                          shuffle=shuffle)
-                    contain_objs.append(intermediate_output)
-                else:
-                    for fid,input_item in enumerate(input_files):
-                        intermediate_name = data_args.intermediate_name + '_file_{}_dupe_factor_{}'.format(fid,i)
-                        intermediate_output = self.get_intermediate_file(intermediate_name, mode)
-
-                        if isinstance(intermediate_output, list) or not os.path.exists(intermediate_output) or overwrite:
-                            data = self.on_get_corpus([input_item], mode)
-                            self.make_dataset(intermediate_output,
-                                              data,
-                                              mode,
-                                              num_process_worker=num_process_worker,
-                                              shuffle=shuffle)
-                        contain_objs.append(intermediate_output)
-
-            else:
-                for input_item in input_files:
-                    contain_objs.append(input_item)
 
 
