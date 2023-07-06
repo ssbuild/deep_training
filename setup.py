@@ -18,7 +18,7 @@ setup(
     author='ssbuild',
     author_email='9727464@qq.com',
     install_requires=['lightning>=2',
-                      'numpy-io>=0.0.5 , < 0.1.0',
+                      'numpy-io>=0.0.6 , < 0.1.0',
                       'sentencepiece',
                       'numpy',
                       'transformers>=4.22',
