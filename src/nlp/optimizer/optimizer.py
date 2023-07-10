@@ -75,7 +75,7 @@ def get_optimizer_cls_and_kwargs(optimizer_name,args: TrainingArguments) -> typi
         optimizer_cls = AdamWHF
         optimizer_kwargs.update(adam_kwargs)
     elif optimizer_name == OptimizerNames.ADAM:
-        optimizer_cls = optim.adam
+        optimizer_cls = optim.Adam
         optimizer_kwargs.update(adam_kwargs)
     elif optimizer_name in [OptimizerNames.ADAMW,OptimizerNames.ADAMW_TORCH, OptimizerNames.ADAMW_TORCH_FUSED]:
         optimizer_cls = optim.AdamW
