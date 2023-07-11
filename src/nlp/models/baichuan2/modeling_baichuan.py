@@ -362,6 +362,17 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
         if self.config.quantization_bit not in [0,32]:
             self.quantize(self.config.quantization_bit)
 
+    def get_input_embeddings(self):
+        return self.model.embed_tokens
+
+    def set_input_embeddings(self, value):
+        self.model.embed_tokens = value
+
+    def get_output_embeddings(self):
+        return self.lm_head
+
+    def set_output_embeddings(self, new_embeddings):
+        self.lm_head = new_embeddings
 
     def forward(
             self,
