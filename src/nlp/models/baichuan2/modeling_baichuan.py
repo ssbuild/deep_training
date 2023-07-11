@@ -2,7 +2,6 @@
 
 import math
 from typing import List, Optional, Tuple, Union
-
 import torch
 from torch.nn import CrossEntropyLoss
 from transformers import PreTrainedModel
@@ -12,6 +11,7 @@ from transformers.utils import logging
 from transformers.generation.utils import GenerationConfig
 
 from .configuration_baichuan import BaichuanConfig
+from ..transformer_base import TransformerBase
 
 logger = logging.get_logger(__name__)
 
@@ -533,3 +533,8 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
             outputs = self.generate(input_ids, generation_config=generation_config)
             response = tokenizer.decode(outputs[0][len(input_ids[0]):], skip_special_tokens=True)
             return response
+
+class TransformerBaichuanLMHeadModel(TransformerBase):
+    def __init__(self, *args,**kwargs):
+        super(TransformerBaichuanLMHeadModel, self).__init__(*args,**kwargs)
+        self.set_model(self.from_pretrained(BaichuanForCausalLM, *args, **kwargs))
