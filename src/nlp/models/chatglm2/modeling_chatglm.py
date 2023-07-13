@@ -1044,14 +1044,14 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
 
 
     @torch.no_grad()
-    def chat(self, tokenizer, query: str, history: List[Tuple[str, str]] = None, max_length: int = 8192, num_beams=1,
+    def chat(self, tokenizer, query: str, history: List[Tuple[str, str]] = None,
              do_sample=True, top_p=0.8, temperature=0.8, logits_processor=None, **kwargs):
         if history is None:
             history = []
         if logits_processor is None:
             logits_processor = LogitsProcessorList()
         logits_processor.append(InvalidScoreLogitsProcessor())
-        gen_kwargs = {"max_length": max_length, "num_beams": num_beams, "do_sample": do_sample, "top_p": top_p,
+        gen_kwargs = {"do_sample": do_sample, "top_p": top_p,
                       "temperature": temperature, "logits_processor": logits_processor, **kwargs}
         inputs = self.build_inputs(tokenizer, query, history=history)
         outputs = self.generate(**inputs, **gen_kwargs)
@@ -1063,14 +1063,14 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
 
     @torch.no_grad()
     def stream_chat(self, tokenizer, query: str, history: List[Tuple[str, str]] = None, past_key_values=None,
-                    max_length: int = 8192, do_sample=True, top_p=0.8, temperature=0.8, logits_processor=None,
+                    do_sample=True, top_p=0.8, temperature=0.8, logits_processor=None,
                     return_past_key_values=False, **kwargs):
         if history is None:
             history = []
         if logits_processor is None:
             logits_processor = LogitsProcessorList()
         logits_processor.append(InvalidScoreLogitsProcessor())
-        gen_kwargs = {"max_length": max_length, "do_sample": do_sample, "top_p": top_p,
+        gen_kwargs = {"do_sample": do_sample, "top_p": top_p,
                       "temperature": temperature, "logits_processor": logits_processor, **kwargs}
         if past_key_values is None and not return_past_key_values:
             inputs = self.build_inputs(tokenizer, query, history=history)
