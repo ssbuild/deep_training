@@ -146,8 +146,8 @@ class ModelWeightMixin:
         else:
             # 保存hf权重
             config = self.get_llm_model().config
-            config.save_pretrained(sft_weight_path)
-            self.save_pretrained(sft_weight_path)
+            config.save_pretrained(os.path.dirname(sft_weight_path))
+            torch.save(self.state_dict(),sft_weight_path)
 
     #只保存llm hf 权重
     def save_llm_sft_weight(self, sft_weight_path, merge_lora_weight=False):
@@ -163,7 +163,7 @@ class ModelWeightMixin:
         else:
             # 保存hf权重
             config = self.get_llm_model().config
-            config.save_pretrained(sft_weight_path)
+            config.save_pretrained(os.path.dirname(sft_weight_path))
             self.get_llm_model().save_pretrained(sft_weight_path)
 
 

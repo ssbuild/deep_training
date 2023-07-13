@@ -10,7 +10,7 @@ package_dir.update({'deep_training': 'src'})
 ignore = ['test','tests']
 setup(
     name='deep_training',
-    version='0.1.11',
+    version='0.1.11.post1',
     description='an easy training architecture',
     long_description='torch_training: https://github.com/ssbuild/deep_training.git',
     license='Apache License 2.0',
@@ -18,7 +18,7 @@ setup(
     author='ssbuild',
     author_email='9727464@qq.com',
     install_requires=['lightning>=2',
-                      'numpy-io>=0.0.5 , < 0.1.0',
+                      'numpy-io>=0.0.7 , < 0.1.0',
                       'sentencepiece',
                       'numpy',
                       'transformers>=4.22',

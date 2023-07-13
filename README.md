@@ -35,6 +35,10 @@
  
   
 ## update
+- <strong>2023-07-11</strong>
+  - support baichuan v2 完整训练 [baichuan2_finetuning](https://github.com/ssbuild/baichuan2_finetuning)
+  - fix adalora some bugs
+  
 - <strong>2023-07-04</strong>
   - 0.1.11 release 
     - fix baichuan and chatglm2 some bugs 
