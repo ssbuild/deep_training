@@ -6,7 +6,7 @@ import warnings
 import torch
 from torch import nn
 from torch.nn import functional as F
-from .layers import LoraLayer,is_bnb_available
+from .layers import LoraLayer,is_bnb_available,is_bnb_4bit_available
 from .utils import transpose
 
 if is_bnb_available():
@@ -205,6 +205,70 @@ if is_bnb_available():
                         / (self.ranknum[self.active_adapter] + 1e-5)
                     )
                 result += output
+            return result
+
+if is_bnb_4bit_available():
+
+    class SVDLinear4bit(bnb.nn.Linear4bit, AdaLoraLayer):
+        # Low-rank matrix for SVD-based adaptation
+        def __init__(
+            self,
+            adapter_name,
+            in_features,
+            out_features,
+            r: int = 0,
+            lora_alpha: int = 1,
+            lora_dropout: float = 0.0,
+            **kwargs,
+        ):
+            bnb.nn.Linear4bit.__init__(
+                self,
+                in_features,
+                out_features,
+                bias=kwargs.get("bias", True),
+                compute_dtype=kwargs.get("compute_dtype", torch.float32),
+                compress_statistics=kwargs.get("compress_statistics", True),
+                quant_type=kwargs.get("quant_type", "nf4"),
+            )
+            AdaLoraLayer.__init__(self, in_features=in_features, out_features=out_features)
+            # Freezing the pre-trained weight matrix
+            self.weight.requires_grad = False
+
+            init_lora_weights = kwargs.pop("init_lora_weights", True)
+            self.update_layer(adapter_name, r, lora_alpha, lora_dropout, init_lora_weights,dtype=kwargs.get('dtype',None))
+            self.active_adapter = adapter_name
+
+        def forward(self, x: torch.Tensor):
+            result = super().forward(x)
+
+            if self.disable_adapters or self.active_adapter not in self.lora_A.keys():
+                return result
+            elif self.r[self.active_adapter] > 0:
+                if not torch.is_autocast_enabled():
+                    expected_dtype = result.dtype
+
+                    if x.dtype != torch.float32:
+                        x = x.float()
+                    output = (
+                        (
+                            self.lora_dropout[self.active_adapter](x)
+                            @ (self.lora_A[self.active_adapter] * self.lora_E[self.active_adapter]).T
+                            @ self.lora_B[self.active_adapter].T
+                        ).to(expected_dtype)
+                        * self.scaling[self.active_adapter]
+                        / (self.ranknum[self.active_adapter] + 1e-5)
+                    )
+                else:
+                    output = (
+                        (
+                            self.lora_dropout[self.active_adapter](x)
+                            @ (self.lora_A[self.active_adapter] * self.lora_E[self.active_adapter]).T
+                            @ self.lora_B[self.active_adapter].T
+                        )
+                        * self.scaling[self.active_adapter]
+                        / (self.ranknum[self.active_adapter] + 1e-5)
+                    )
+                result = result + output
             return result
 
 
