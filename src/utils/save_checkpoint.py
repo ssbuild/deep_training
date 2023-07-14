@@ -14,13 +14,14 @@ from transformers.utils import WEIGHTS_INDEX_NAME
 def save_checkpoint_to_hf_format(
         model: typing.Optional[PreTrainedModel,typing.Any],
         output_dir,
-        config: typing.Optional[PretrainedConfig] = None
+        config: typing.Optional[PretrainedConfig] = None,
+        max_shard_size="10GB",
 ):
     if config is not None:
         config.save_pretrained(output_dir)
     state_dict = model.state_dict()
     # Split in shards and save
-    shards, index = shard_checkpoint(state_dict)
+    shards, index = shard_checkpoint(state_dict,max_shard_size=max_shard_size)
     for shard_file, shard in shards.items():
         torch.save(shard, os.path.join(output_dir, shard_file))
 
