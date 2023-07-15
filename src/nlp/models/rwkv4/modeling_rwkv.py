@@ -692,6 +692,12 @@ class RwkvForCausalLM(RwkvPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
+    def get_input_embeddings(self):
+        return self.rwkv.emb
+
+    def set_input_embeddings(self, value):
+        self.rwkv.emb = value
+
     def get_output_embeddings(self):
         return self.head
 

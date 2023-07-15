@@ -66,7 +66,7 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
     model_input_names = ["input_ids", "attention_mask", "position_ids"]
 
     def __init__(self, vocab_file, padding_side="left", **kwargs):
-        super().__init__(padding_side=padding_side, **kwargs)
+        super().__init__(padding_side=padding_side, clean_up_tokenization_spaces=False, **kwargs)
         self.name = "GLMTokenizer"
 
         self.vocab_file = vocab_file
@@ -82,6 +82,10 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
             return self.special_tokens[token]
         assert token in self.tokenizer.special_tokens, f"{token} is not a special token for {self.name}"
         return self.tokenizer.special_tokens[token]
+
+    @property
+    def unk_token(self) -> str:
+        return "<unk>"
 
     @property
     def pad_token(self) -> str:

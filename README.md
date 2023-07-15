@@ -36,8 +36,10 @@
   
 ## update
 - <strong>2023-07-11</strong>
-  - support baichuan v2 完整训练 [baichuan2_finetuning](https://github.com/ssbuild/baichuan2_finetuning)
-  - fix adalora some bugs
+  - 2023-07-11 support baichuan v2 完整训练 [baichuan2_finetuning](https://github.com/ssbuild/baichuan2_finetuning)
+  - 2023-07-11 fix adalora some bugs
+  - 2023-07-16 support rwkv world training
+  - 2023-07-16 0.1.12 release
   
 - <strong>2023-07-04</strong>
   - 0.1.11 release 
