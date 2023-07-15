@@ -20,6 +20,9 @@ import gc
 import json
 import os
 import re
+import shutil
+from typing import Union
+
 import torch
 from huggingface_hub import hf_hub_download
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerFast
@@ -28,6 +31,8 @@ from deep_training.nlp.models.rwkv4.configuration_rwkv import RwkvConfig
 
 
 NUM_HIDDEN_LAYERS_MAPPING = {
+    "0.1B": 12,
+    "0.4B": 24,
     "169M": 12,
     "430M": 24,
     "1B5": 24,
@@ -37,6 +42,8 @@ NUM_HIDDEN_LAYERS_MAPPING = {
 }
 
 HIDEN_SIZE_MAPPING = {
+    "0.1B": 768,
+    "0.4B": 1024,
     "169M": 768,
     "430M": 1024,
     "1B5": 2048,
@@ -57,17 +64,29 @@ def convert_state_dict(state_dict):
 
 
 def convert_rmkv_checkpoint_to_hf_format(
-    repo_id, checkpoint_file, output_dir, size=None, tokenizer_file=None, push_to_hub=False, model_name=None,ctx_len=1024,
+        repo_id, checkpoint_file, output_dir, size=None, tokenizer_file=None, push_to_hub=False, model_name=None,ctx_len=1024,
+        vocab_size=None,
+        max_shard_size: Union[int, str] = "10GB",
+        is_world=False
 ):
     # 1. If possible, build the tokenizer.
-    if tokenizer_file is None:
-        print("No `--tokenizer_file` provided, we will use the default tokenizer.")
-        vocab_size = 50277
-        tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
-    else:
-        tokenizer = PreTrainedTokenizerFast(tokenizer_file=tokenizer_file)
-        vocab_size = len(tokenizer)
-    tokenizer.save_pretrained(output_dir)
+    # if tokenizer_file is None:
+    #     print("No `--tokenizer_file` provided, we will use the default tokenizer.")
+    #     vocab_size = 50277
+    #     tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
+    # else:
+    #     tokenizer = PreTrainedTokenizerFast(tokenizer_file=tokenizer_file)
+    #     vocab_size = len(tokenizer)
+    # tokenizer.save_pretrained(output_dir)
+
+    if tokenizer_file is not None:
+        if not is_world:
+            tokenizer = PreTrainedTokenizerFast(tokenizer_file=tokenizer_file)
+            if vocab_size is None:
+                vocab_size = len(tokenizer)
+            tokenizer.save_pretrained(output_dir)
+        else:
+            shutil.copy(tokenizer_file,os.path.join(output_dir,os.path.basename(tokenizer_file)))
 
     # 2. Build the config
     possible_sizes = list(NUM_HIDDEN_LAYERS_MAPPING.keys())
@@ -99,7 +118,7 @@ def convert_rmkv_checkpoint_to_hf_format(
     state_dict = convert_state_dict(state_dict)
 
     # 4. Split in shards and save
-    shards, index = shard_checkpoint(state_dict)
+    shards, index = shard_checkpoint(state_dict,max_shard_size=max_shard_size)
     for shard_file, shard in shards.items():
         torch.save(shard, os.path.join(output_dir, shard_file))
 
@@ -132,7 +151,8 @@ def convert_rmkv_checkpoint_to_hf_format(
             raise ValueError("Please provide a `model_name` to push the model to the Hub.")
         model = AutoModelForCausalLM.from_pretrained(output_dir)
         model.push_to_hub(model_name, max_shard_size="2GB")
-        tokenizer.push_to_hub(model_name)
+        if tokenizer is not None:
+            tokenizer.push_to_hub(model_name)
 
 
 if __name__ == "__main__":
