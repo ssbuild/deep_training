@@ -684,6 +684,8 @@ class RwkvModel(RwkvPreTrainedModel):
 
 
 class RwkvForCausalLM(RwkvPreTrainedModel):
+    _tied_weights_keys = ["head.weight"]
+
     def __init__(self, config: RwkvConfig):
         super().__init__(config)
         self.rwkv = RwkvModel(config)
