@@ -39,7 +39,7 @@
 - <strong>2023-07-18</strong>
   - support InterLm(书生)  完整训练 [internlm_finetuning](https://github.com/ssbuild/internlm_finetuning)
 
-  - 
+
 - <strong>2023-07-11</strong>
   - 2023-07-11 support baichuan v2 完整训练 [baichuan2_finetuning](https://github.com/ssbuild/baichuan2_finetuning)
   - 2023-07-11 fix adalora some bugs

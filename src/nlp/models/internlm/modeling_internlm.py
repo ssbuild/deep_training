@@ -31,8 +31,8 @@ from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutpu
 from transformers.modeling_utils import PreTrainedModel
 from transformers.generation.streamers import BaseStreamer
 from transformers.utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging, replace_return_docstrings
-from configuration_internlm import InternLMConfig
-
+from .configuration_internlm import InternLMConfig
+from ..transformer_base import TransformerBase
 
 logger = logging.get_logger(__name__)
 
@@ -784,6 +784,7 @@ class InternLMForCausalLM(InternLMPreTrainedModel):
              do_sample: bool = True,
              temperature: float = 0.8,
              top_p: float = 0.8,
+             eos_token_id = (2, 103028),
              **kwargs):
         inputs = self.build_inputs(tokenizer, query, history)
         inputs = {k: v.to(self.device) for k, v in inputs.items() if torch.is_tensor(v)}
@@ -793,6 +794,7 @@ class InternLMForCausalLM(InternLMPreTrainedModel):
                                 do_sample=do_sample, 
                                 temperature=temperature, 
                                 top_p=top_p, 
+                                eos_token_id=list(eos_token_id),
                                 **kwargs)
         outputs = outputs[0].cpu().tolist()[len(inputs["input_ids"][0]):]
         response = tokenizer.decode(outputs, skip_special_tokens=True)
@@ -809,6 +811,7 @@ class InternLMForCausalLM(InternLMPreTrainedModel):
                     do_sample: bool = True,
                     temperature: float = 0.8,
                     top_p: float = 0.8,
+                    eos_token_id = (2, 103028),
                     **kwargs):
         class ChatStreamer(BaseStreamer):
             def __init__(self, tokenizer) -> None:
@@ -836,6 +839,7 @@ class InternLMForCausalLM(InternLMPreTrainedModel):
             do_sample=do_sample,
             temperature=temperature,
             top_p=top_p,
+            eos_token_id=eos_token_id,
             **kwargs
         )
                 
@@ -960,3 +964,9 @@ class InternLMForSequenceClassification(InternLMPreTrainedModel):
             hidden_states=transformer_outputs.hidden_states,
             attentions=transformer_outputs.attentions,
         )
+
+
+class TransformerInternLMHeadModel(TransformerBase):
+    def __init__(self, *args,**kwargs):
+        super(TransformerInternLMHeadModel, self).__init__(*args,**kwargs)
+        self.set_model(self.from_pretrained(InternLMForCausalLM, *args, **kwargs))
