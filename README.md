@@ -5,9 +5,17 @@
 
 ## install and download
 - pip install -U deep_training
-- install by source
-  - pip install -U git+https://github.com/ssbuild/deep_training.git
-- https://pypi.org/project/deep-training/#history
+- 源码安装
+```text
+pip uninstall deep_training
+pip install -U git+https://github.com/ssbuild/deep_training.git
+```
+
+- 源码重装
+```text
+pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --force-reinstall
+```
+ 
 
 ## examples
   - [pytorch-task-example](https://github.com/ssbuild/pytorch-task-example)
