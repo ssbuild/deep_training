@@ -45,7 +45,7 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
 ## update
 
 - <strong>2023-07-18</strong>
-  - support InterLm(书生)  完整训练 [internlm_finetuning](https://github.com/ssbuild/internlm_finetuning)
+  - support InternLm(书生)  完整训练 [internlm_finetuning](https://github.com/ssbuild/internlm_finetuning)
 
 
 - <strong>2023-07-11</strong>
