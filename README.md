@@ -5,9 +5,17 @@
 
 ## install and download
 - pip install -U deep_training
-- install by source
-  - pip install -U git+https://github.com/ssbuild/deep_training.git
-- https://pypi.org/project/deep-training/#history
+- 源码安装
+```text
+pip uninstall deep_training
+pip install -U git+https://github.com/ssbuild/deep_training.git
+```
+
+- 源码重装
+```text
+pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --force-reinstall
+```
+ 
 
 ## examples
   - [pytorch-task-example](https://github.com/ssbuild/pytorch-task-example)
@@ -35,6 +43,11 @@
  
   
 ## update
+
+- <strong>2023-07-18</strong>
+  - support InternLm(书生)  完整训练 [internlm_finetuning](https://github.com/ssbuild/internlm_finetuning)
+
+
 - <strong>2023-07-11</strong>
   - 2023-07-11 support baichuan v2 完整训练 [baichuan2_finetuning](https://github.com/ssbuild/baichuan2_finetuning)
   - 2023-07-11 fix adalora some bugs
