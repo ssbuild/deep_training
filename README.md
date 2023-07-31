@@ -16,7 +16,7 @@ pip install -U git+https://github.com/ssbuild/deep_training.git
 ```text
 git clone https://github.com/ssbuild/deep_training.git
 cd deep_training 
-python setup.py install 
+python setup.py build install
 ```
 
 - 源码重装
