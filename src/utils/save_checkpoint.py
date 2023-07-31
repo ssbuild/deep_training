@@ -12,7 +12,7 @@ from transformers.utils import WEIGHTS_INDEX_NAME
 
 
 def save_checkpoint_to_hf_format(
-        model: typing.Optional[PreTrainedModel,typing.Any],
+        model: typing.Optional[typing.Union[PreTrainedModel,typing.Any]],
         output_dir,
         config: typing.Optional[PretrainedConfig] = None,
         max_shard_size="10GB",
