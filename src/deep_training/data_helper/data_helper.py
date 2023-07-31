@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2022/11/9 11:02
-import json
-import logging
-import os
-import typing
-import torch
 # from fastdatasets import memory as MEMORY
 # from fastdatasets.common.iterable_dataset import IterableDatasetBase
 # from fastdatasets.common.random_dataset import RandomDatasetBase
 # from fastdatasets.torch_dataset import IterableDataset as torch_IterableDataset, Dataset as torch_Dataset
 # from torch.utils.data import DataLoader, IterableDataset
+
+import json
+import logging
+import os
+import typing
+import torch
 from transformers import PreTrainedTokenizer, PretrainedConfig
 from .training_args import ModelArguments, DataArguments, TrainingArguments
 from ..utils.func import is_chinese_char
