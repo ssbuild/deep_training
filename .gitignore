@@ -6,3 +6,4 @@
 /dist
 /nlp/__pycache__
 /nlp/models/rwkv4/__pycache__
+/src/deep_training.egg-info
