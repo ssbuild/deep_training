@@ -17,7 +17,7 @@ setup(
     url='https://github.com/ssbuild/deep_training',
     author='ssbuild',
     author_email='9727464@qq.com',
-    install_requires=['lightning>=2.0',
+    install_requires=['lightning>=2.0 , <50.0',
                       'numpy-io>=0.0.7 , < 0.1.0',
                       'sentencepiece',
                       'numpy',

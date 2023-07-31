@@ -9,6 +9,10 @@
 ```text
 pip uninstall deep_training
 pip install -U git+https://github.com/ssbuild/deep_training.git
+或者
+git clone https://github.com/ssbuild/deep_training.git
+cd deep_training 
+python setup.py install 
 ```
 
 - 源码重装
