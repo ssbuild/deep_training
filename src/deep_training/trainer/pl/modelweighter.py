@@ -58,17 +58,17 @@ class ModelWeightMixin:
     #     lora_model.model.model.save_pretrained(sft_weight_path)
     #     lora_model.unmerge_adapter()
 
-    def load_sft_weight(self, sft_weight_path: str, is_trainable=False, strict=False):
+    def load_sft_weight(self, sft_weight_path: str, is_trainable=False, strict=False,adapter_name="default"):
         assert os.path.exists(sft_weight_path)
         if self.lora_args is not None and self.lora_args.with_lora:
             # 恢复权重
             self.backbone: LoraModel
-            self.backbone.load_adapter(sft_weight_path, adapter_name="default", is_trainable=is_trainable, strict=strict)
+            self.backbone.load_adapter(sft_weight_path, adapter_name=adapter_name, is_trainable=is_trainable, strict=strict)
 
         elif self.prompt_args is not None and self.prompt_args.with_prompt:
             # 恢复权重
             self.backbone: PromptModel
-            self.backbone.load_adapter(sft_weight_path, adapter_name="default", is_trainable=is_trainable, strict=strict)
+            self.backbone.load_adapter(sft_weight_path, adapter_name=adapter_name, is_trainable=is_trainable, strict=strict)
         else:
             weight_dict = torch.load(sft_weight_path)
             weights_dict_new = OrderedDict()
