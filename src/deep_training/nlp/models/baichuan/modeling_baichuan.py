@@ -30,12 +30,22 @@ from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutpu
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 from transformers.utils import logging
 from xformers import ops as xops
+from torch.nn.utils import skip_init
 
 from .configuration_baichuan import BaiChuanConfig
 from ..transformer_base import TransformerBase
 
 logger = logging.get_logger(__name__)
 
+def default_init(cls, *args, **kwargs):
+    return cls(*args, **kwargs)
+skip_init_function = skip_init
+def setup_model_profile(skip_init_flag=True):
+    global skip_init_function
+    if skip_init_flag:
+        skip_init_function = skip_init
+    else:
+        skip_init_function = default_init
 
 # Copied from transformers.models.bart.modeling_bart._make_causal_mask
 def _make_causal_mask(
@@ -545,11 +555,13 @@ class Model(PreTrainedModel):
 
 
 class BaiChuanForCausalLM(PreTrainedModel):
-    def __init__(self, config):
+    def __init__(self, config: BaiChuanConfig):
         super().__init__(config)
         self.model = Model(config)
 
-        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        global skip_init_function
+        init_method = skip_init_function
+        self.lm_head = init_method(nn.Linear,config.hidden_size, config.vocab_size, bias=False)
 
         # Initialize weights and apply final processing
         self.post_init()

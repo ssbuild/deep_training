@@ -25,6 +25,7 @@ import torch
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from torch.nn.utils import skip_init
 
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast, SequenceClassifierOutputWithPast
@@ -37,6 +38,17 @@ from ..transformer_base import TransformerBase
 logger = logging.get_logger(__name__)
 
 _CONFIG_FOR_DOC = "InternLMConfig"
+
+
+def default_init(cls, *args, **kwargs):
+    return cls(*args, **kwargs)
+skip_init_function = skip_init
+def setup_model_profile(skip_init_flag=True):
+    global skip_init_function
+    if skip_init_flag:
+        skip_init_function = skip_init
+    else:
+        skip_init_function = default_init
 
 # Copied from transformers.models.bart.modeling_bart._make_causal_mask
 def _make_causal_mask(
@@ -615,7 +627,9 @@ class InternLMForCausalLM(InternLMPreTrainedModel):
 
     def __init__(self, config):
         super().__init__(config)
-        self.model = InternLMModel(config)
+        global skip_init_function
+        init_method = skip_init_function
+        self.model = init_method(InternLMModel,config)
 
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 

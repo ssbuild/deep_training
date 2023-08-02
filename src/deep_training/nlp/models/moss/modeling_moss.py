@@ -7,6 +7,7 @@ import torch.utils.checkpoint
 import transformers
 from torch import nn
 from torch.nn import CrossEntropyLoss
+from torch.nn.utils import skip_init
 
 from transformers.activations import ACT2FN
 from transformers.modeling_utils import PreTrainedModel
@@ -33,6 +34,16 @@ MOSS_PRETRAINED_MODEL_ARCHIVE_LIST = [
     "fnlp/moss-moon-003-sft-plugin",
 ]
 
+
+def default_init(cls, *args, **kwargs):
+    return cls(*args, **kwargs)
+skip_init_function = skip_init
+def setup_model_profile(skip_init_flag=True):
+    global skip_init_function
+    if skip_init_flag:
+        skip_init_function = skip_init
+    else:
+        skip_init_function = default_init
 
 # Copied from transformers.models.gptj.modeling_gptj.create_sinusoidal_positions
 def create_sinusoidal_positions(num_pos: int, dim: int) -> torch.Tensor:
@@ -599,8 +610,12 @@ class MossForCausalLM(MossPreTrainedModel):
             torch.set_default_dtype(torch.half)
             transformers.modeling_utils._init_weights = False
             torch.set_default_dtype(torch.half)
-        self.transformer = MossModel(config)
-        self.lm_head = nn.Linear(config.n_embd, config.vocab_size)
+
+        global skip_init_function
+        init_method = skip_init_function
+        self.transformer = init_method(MossModel,config)
+        self.lm_head = init_method(nn.Linear,config.n_embd, config.vocab_size)
+
         if config.wbits in [4, 8]:
             torch.set_default_dtype(torch.float)
             transformers.modeling_utils._init_weights = True

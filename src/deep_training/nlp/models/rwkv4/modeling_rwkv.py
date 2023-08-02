@@ -9,6 +9,7 @@ from typing import Optional, List, Tuple, Union
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torch.nn.utils import skip_init
 from transformers import PreTrainedModel
 from transformers.utils import ModelOutput
 from dataclasses import dataclass
@@ -26,7 +27,12 @@ __all__ = [
     'TransformerRWKV4LMHeadModel',
 ]
 
-def set_model_profile(RWKV_T_MAX,RWKV_FLOAT_MODE='32'):
+def default_init(cls, *args, **kwargs):
+    return cls(*args, **kwargs)
+skip_init_function = skip_init
+
+
+def set_model_profile(RWKV_T_MAX,RWKV_FLOAT_MODE='32',skip_init_flag=True):
     from torch.utils import cpp_extension
     global __T_MAX__,__WKV_CUDA__
     # torch._C._jit_set_profiling_executor(True)
@@ -42,6 +48,13 @@ def set_model_profile(RWKV_T_MAX,RWKV_FLOAT_MODE='32'):
         __WKV_CUDA__ = cpp_extension.load(name=f"deep_wkv_{__T_MAX__}", sources=[os.path.join(cur_path,_)  for _ in ["cuda/wkv_op.cpp", "cuda/wkv_cuda.cu"]], verbose=True,
                         extra_cuda_cflags=["-res-usage", "--maxrregcount 60", "--use_fast_math", "-O3", "-Xptxas -O3",
                                            "--extra-device-vectorization", f"-DTmax={__T_MAX__}"])
+
+    global skip_init_function
+    if skip_init_flag:
+        skip_init_function = skip_init
+    else:
+        skip_init_function = default_init
+
 class WKV(torch.autograd.Function):
     @staticmethod
     def forward(ctx, w, u, k, v, st,return_state):
@@ -688,8 +701,10 @@ class RwkvForCausalLM(RwkvPreTrainedModel):
 
     def __init__(self, config: RwkvConfig):
         super().__init__(config)
-        self.rwkv = RwkvModel(config)
-        self.head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+        global skip_init_function
+        init_method = skip_init_function
+        self.rwkv = init_method(RwkvModel,config)
+        self.head = init_method(nn.Linear,config.n_embd, config.vocab_size, bias=False)
 
         # Initialize weights and apply final processing
         self.post_init()

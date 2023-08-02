@@ -4,6 +4,7 @@ import math
 from typing import List, Optional, Tuple, Union
 import torch
 from torch.nn import CrossEntropyLoss
+from torch.nn.utils import skip_init
 from transformers import PreTrainedModel
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
@@ -14,6 +15,18 @@ from .configuration_baichuan import BaichuanConfig
 from ..transformer_base import TransformerBase
 
 logger = logging.get_logger(__name__)
+
+
+def default_init(cls, *args, **kwargs):
+    return cls(*args, **kwargs)
+skip_init_function = skip_init
+def setup_model_profile(skip_init_flag=True):
+    global skip_init_function
+    if skip_init_flag:
+        skip_init_function = skip_init
+    else:
+        skip_init_function = default_init
+
 
 def _get_interleave(n):
     def _get_interleave_power_of_2(n):
@@ -351,8 +364,12 @@ class BaichuanModel(BaichuanPreTrainedModel):
 class BaichuanForCausalLM(BaichuanPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
-        self.model = BaichuanModel(config)
-        self.lm_head = torch.nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+
+        global skip_init_function
+        init_method = skip_init_function
+
+        self.model = init_method(BaichuanModel,config)
+        self.lm_head = init_method(torch.nn.Linear,config.hidden_size, config.vocab_size, bias=False)
 
         # Initialize weights and apply final processing
         self.post_init()
