@@ -59,6 +59,7 @@ class RwkvConfig(PretrainedConfig):
             dim_att = 0,
             dim_ffn= 0,
             pos_emb_size=0,
+            initializer_weight=False,
             **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -85,7 +86,7 @@ class RwkvConfig(PretrainedConfig):
             self.dim_ffn = self.n_embd * 4
         # if tiny_att_layer <= 0 or not tiny_att_layer:
         #     self.tiny_att_layer = -1
-
+        self.initializer_weight = initializer_weight
 
         super().__init__(
             tie_word_embeddings=tie_word_embeddings, bos_token_id=bos_token_id, eos_token_id=eos_token_id, **kwargs

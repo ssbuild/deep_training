@@ -19,7 +19,7 @@ install_requires = [
 ]
 setup(
     name='deep_training',
-    version='0.1.13.post0',
+    version='0.1.13.post1',
     description='an easy training architecture',
     long_description='torch_training: https://github.com/ssbuild/deep_training.git',
     license='Apache License 2.0',

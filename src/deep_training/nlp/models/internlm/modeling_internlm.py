@@ -25,7 +25,7 @@ import torch
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
-from torch.nn.utils import skip_init
+from ...utils.torch_utils import skip_init
 
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast, SequenceClassifierOutputWithPast
@@ -84,12 +84,12 @@ def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] 
 
 
 class InternLMRMSNorm(nn.Module):
-    def __init__(self, hidden_size, eps=1e-6):
+    def __init__(self, hidden_size, eps=1e-6,**kwargs):
         """
         InternLMRMSNorm is equivalent to T5LayerNorm
         """
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(hidden_size))
+        self.weight = nn.Parameter(torch.ones(hidden_size,**kwargs))
         self.variance_epsilon = eps
 
     def forward(self, hidden_states):
@@ -104,7 +104,7 @@ class InternLMRMSNorm(nn.Module):
 
 
 class InternLMRotaryEmbedding(torch.nn.Module):
-    def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None):
+    def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None,**kwargs):
         super().__init__()
         inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float().to(device) / dim))
         self.register_buffer("inv_freq", inv_freq)
@@ -159,11 +159,12 @@ class InternLMMLP(nn.Module):
         hidden_size: int,
         intermediate_size: int,
         hidden_act: str,
+        **kwargs
     ):
         super().__init__()
-        self.gate_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
-        self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False)
-        self.up_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
+        self.gate_proj = nn.Linear(hidden_size, intermediate_size, bias=False,**kwargs)
+        self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False,**kwargs)
+        self.up_proj = nn.Linear(hidden_size, intermediate_size, bias=False,**kwargs)
         self.act_fn = ACT2FN[hidden_act]
 
     def forward(self, x):
@@ -173,7 +174,7 @@ class InternLMMLP(nn.Module):
 class InternLMAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
-    def __init__(self, config: InternLMConfig):
+    def __init__(self, config: InternLMConfig,**kwargs):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
@@ -186,11 +187,11 @@ class InternLMAttention(nn.Module):
                 f"hidden_size must be divisible by num_heads (got `hidden_size`: {self.hidden_size}"
                 f" and `num_heads`: {self.num_heads})."
             )
-        self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=config.bias)
-        self.k_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=config.bias)
-        self.v_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=config.bias)
-        self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=config.bias)
-        self.rotary_emb = InternLMRotaryEmbedding(self.head_dim, max_position_embeddings=self.max_position_embeddings)
+        self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=config.bias,**kwargs)
+        self.k_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=config.bias,**kwargs)
+        self.v_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=config.bias,**kwargs)
+        self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=config.bias,**kwargs)
+        self.rotary_emb = InternLMRotaryEmbedding(self.head_dim, max_position_embeddings=self.max_position_embeddings,**kwargs)
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
@@ -262,17 +263,18 @@ class InternLMAttention(nn.Module):
 
 
 class InternLMDecoderLayer(nn.Module):
-    def __init__(self, config: InternLMConfig):
+    def __init__(self, config: InternLMConfig,**kwargs):
         super().__init__()
         self.hidden_size = config.hidden_size
-        self.self_attn = InternLMAttention(config=config)
+        self.self_attn = InternLMAttention(config=config,**kwargs)
         self.mlp = InternLMMLP(
             hidden_size=self.hidden_size,
             intermediate_size=config.intermediate_size,
             hidden_act=config.hidden_act,
+            **kwargs,
         )
-        self.input_layernorm = InternLMRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = InternLMRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.input_layernorm = InternLMRMSNorm(config.hidden_size, eps=config.rms_norm_eps,**kwargs)
+        self.post_attention_layernorm = InternLMRMSNorm(config.hidden_size, eps=config.rms_norm_eps,**kwargs)
 
     def forward(
         self,
@@ -358,6 +360,8 @@ class InternLMPreTrainedModel(PreTrainedModel):
     _keys_to_ignore_on_load_unexpected = [r"decoder\.version"]
 
     def _init_weights(self, module):
+        if not getattr(self.config, 'initializer_weight', False):
+            return
         std = self.config.initializer_range
         if isinstance(module, nn.Linear):
             module.weight.data.normal_(mean=0.0, std=std)
@@ -450,14 +454,14 @@ class InternLMModel(InternLMPreTrainedModel):
     """
     _auto_class = "AutoModel"
 
-    def __init__(self, config: InternLMConfig):
+    def __init__(self, config: InternLMConfig,**kwargs):
         super().__init__(config)
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
 
-        self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
-        self.layers = nn.ModuleList([InternLMDecoderLayer(config) for _ in range(config.num_hidden_layers)])
-        self.norm = InternLMRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx,**kwargs)
+        self.layers = nn.ModuleList([InternLMDecoderLayer(config,**kwargs) for _ in range(config.num_hidden_layers)])
+        self.norm = InternLMRMSNorm(config.hidden_size, eps=config.rms_norm_eps,**kwargs)
 
         self.gradient_checkpointing = False
         # Initialize weights and apply final processing
@@ -625,13 +629,13 @@ class InternLMModel(InternLMPreTrainedModel):
 class InternLMForCausalLM(InternLMPreTrainedModel):
     _auto_class = "AutoModelForCausalLM"
 
-    def __init__(self, config):
+    def __init__(self, config,**kwargs):
         super().__init__(config)
         global skip_init_function
         init_method = skip_init_function
-        self.model = init_method(InternLMModel,config)
+        self.model = init_method(InternLMModel,config,**kwargs)
 
-        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        self.lm_head = init_method(nn.Linear,config.hidden_size, config.vocab_size, bias=False,**kwargs)
 
         # Initialize weights and apply final processing
         self.post_init()

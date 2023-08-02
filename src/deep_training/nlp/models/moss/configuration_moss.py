@@ -73,28 +73,29 @@ class MossConfig(PretrainedConfig):
     }
 
     def __init__(
-        self,
-        vocab_size=107008,
-        n_positions=2048,
-        n_ctx=2048,
-        n_embd=4096,
-        n_layer=28,
-        n_head=16,
-        rotary_dim=64,
-        n_inner=None,
-        activation_function="gelu_new",
-        resid_pdrop=0.0,
-        embd_pdrop=0.0,
-        attn_pdrop=0.0,
-        layer_norm_epsilon=1e-5,
-        initializer_range=0.02,
-        use_cache=True,
-        bos_token_id=106028,
-        eos_token_id=106068,
-        tie_word_embeddings=False,
-        wbits=32,
-        groupsize=128,
-        **kwargs,
+            self,
+            vocab_size=107008,
+            n_positions=2048,
+            n_ctx=2048,
+            n_embd=4096,
+            n_layer=28,
+            n_head=16,
+            rotary_dim=64,
+            n_inner=None,
+            activation_function="gelu_new",
+            resid_pdrop=0.0,
+            embd_pdrop=0.0,
+            attn_pdrop=0.0,
+            layer_norm_epsilon=1e-5,
+            initializer_range=0.02,
+            use_cache=True,
+            bos_token_id=106028,
+            eos_token_id=106068,
+            tie_word_embeddings=False,
+            wbits=32,
+            groupsize=128,
+            initializer_weight=False,
+            **kwargs,
     ):
         self.vocab_size = vocab_size
         self.n_ctx = n_ctx
@@ -116,7 +117,7 @@ class MossConfig(PretrainedConfig):
 
         self.bos_token_id = bos_token_id
         self.eos_token_id = eos_token_id
-
+        self.initializer_weight = initializer_weight
         super().__init__(
             bos_token_id=bos_token_id, eos_token_id=eos_token_id, tie_word_embeddings=tie_word_embeddings, **kwargs
         )

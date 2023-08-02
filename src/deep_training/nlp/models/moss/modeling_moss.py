@@ -7,7 +7,7 @@ import torch.utils.checkpoint
 import transformers
 from torch import nn
 from torch.nn import CrossEntropyLoss
-from torch.nn.utils import skip_init
+from ...utils.torch_utils import skip_init
 
 from transformers.activations import ACT2FN
 from transformers.modeling_utils import PreTrainedModel
@@ -68,7 +68,7 @@ def apply_rotary_pos_emb(tensor: torch.Tensor, sin: torch.Tensor, cos: torch.Ten
 
 
 class MossAttention(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config,**kwargs):
         super().__init__()
 
         max_positions = config.max_position_embeddings
@@ -91,9 +91,9 @@ class MossAttention(nn.Module):
                 f" `num_attention_heads`: {self.num_attention_heads})."
             )
         self.scale_attn = torch.sqrt(torch.tensor(self.head_dim, dtype=torch.float32)).to(torch.get_default_dtype())
-        self.qkv_proj = nn.Linear(self.embed_dim, self.embed_dim * 3, bias=False)
+        self.qkv_proj = nn.Linear(self.embed_dim, self.embed_dim * 3, bias=False,**kwargs)
 
-        self.out_proj = nn.Linear(self.embed_dim, self.embed_dim, bias=False)
+        self.out_proj = nn.Linear(self.embed_dim, self.embed_dim, bias=False,**kwargs)
         self.rotary_dim = config.rotary_dim
         pos_embd_dim = self.rotary_dim or self.embed_dim
         self.embed_positions = create_sinusoidal_positions(max_positions, pos_embd_dim)
@@ -237,12 +237,12 @@ class MossAttention(nn.Module):
 
 # Copied from transformers.models.gptj.modeling_gptj.GPTJMLP with GPTJ->Moss
 class MossMLP(nn.Module):
-    def __init__(self, intermediate_size, config):  # in MLP: intermediate_size= 4 * embed_dim
+    def __init__(self, intermediate_size, config,**kwargs):  # in MLP: intermediate_size= 4 * embed_dim
         super().__init__()
         embed_dim = config.n_embd
 
-        self.fc_in = nn.Linear(embed_dim, intermediate_size)
-        self.fc_out = nn.Linear(intermediate_size, embed_dim)
+        self.fc_in = nn.Linear(embed_dim, intermediate_size,**kwargs)
+        self.fc_out = nn.Linear(intermediate_size, embed_dim,**kwargs)
 
         self.act = ACT2FN[config.activation_function]
         self.dropout = nn.Dropout(config.resid_pdrop)
@@ -257,12 +257,12 @@ class MossMLP(nn.Module):
 
 # Copied from transformers.models.gptj.modeling_gptj.GPTJBlock with GPTJ->Moss
 class MossBlock(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config,**kwargs):
         super().__init__()
         inner_dim = config.n_inner if config.n_inner is not None else 4 * config.n_embd
-        self.ln_1 = nn.LayerNorm(config.n_embd, eps=config.layer_norm_epsilon)
-        self.attn = MossAttention(config)
-        self.mlp = MossMLP(inner_dim, config)
+        self.ln_1 = nn.LayerNorm(config.n_embd, eps=config.layer_norm_epsilon,**kwargs)
+        self.attn = MossAttention(config,**kwargs)
+        self.mlp = MossMLP(inner_dim, config,**kwargs)
 
     def forward(
         self,
@@ -314,6 +314,8 @@ class MossPreTrainedModel(PreTrainedModel):
         super().__init__(*inputs, **kwargs)
 
     def _init_weights(self, module):
+        if not getattr(self.config, 'initializer_weight', False):
+            return
         """Initialize the weights."""
         if isinstance(module, (nn.Linear,)):
             # Slightly different from Mesh Transformer JAX which uses truncated_normal for initialization
@@ -400,15 +402,15 @@ MOSS_INPUTS_DOCSTRING = r"""
     MOSS_START_DOCSTRING,
 )
 class MossModel(MossPreTrainedModel):
-    def __init__(self, config):
+    def __init__(self, config,**kwargs):
         super().__init__(config)
 
         self.embed_dim = config.n_embd
         self.vocab_size = config.vocab_size
-        self.wte = nn.Embedding(config.vocab_size, self.embed_dim)
+        self.wte = nn.Embedding(config.vocab_size, self.embed_dim,**kwargs)
         self.drop = nn.Dropout(config.embd_pdrop)
-        self.h = nn.ModuleList([MossBlock(config) for _ in range(config.n_layer)])
-        self.ln_f = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
+        self.h = nn.ModuleList([MossBlock(config,**kwargs) for _ in range(config.n_layer)])
+        self.ln_f = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon,**kwargs)
         self.rotary_dim = min(config.rotary_dim, config.n_ctx // config.num_attention_heads)
 
         self.gradient_checkpointing = False
@@ -595,7 +597,7 @@ class MossModel(MossPreTrainedModel):
 class MossForCausalLM(MossPreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"h\.\d+\.attn\.causal_mask"]
 
-    def __init__(self, config):
+    def __init__(self, config,**kwargs):
         super().__init__(config)
         if config.wbits not in [4, 8, 32]:
             logger.warning(f'Specify `wbits` with 4, 8 or 32 to load the model. ')
@@ -613,8 +615,8 @@ class MossForCausalLM(MossPreTrainedModel):
 
         global skip_init_function
         init_method = skip_init_function
-        self.transformer = init_method(MossModel,config)
-        self.lm_head = init_method(nn.Linear,config.n_embd, config.vocab_size)
+        self.transformer = init_method(MossModel,config,**kwargs)
+        self.lm_head = init_method(nn.Linear,config.n_embd, config.vocab_size,**kwargs)
 
         if config.wbits in [4, 8]:
             torch.set_default_dtype(torch.float)

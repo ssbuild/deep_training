@@ -4,7 +4,7 @@ import math
 from typing import List, Optional, Tuple, Union
 import torch
 from torch.nn import CrossEntropyLoss
-from torch.nn.utils import skip_init
+from ...utils.torch_utils import skip_init
 from transformers import PreTrainedModel
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
@@ -58,9 +58,9 @@ def _gen_alibi_mask(n_head, max_pos):
 
 
 class RMSNorm(torch.nn.Module):
-    def __init__(self, hidden_size, epsilon=1e-6):
+    def __init__(self, hidden_size, epsilon=1e-6,**kwargs):
         super().__init__()
-        self.weight = torch.nn.Parameter(torch.empty(hidden_size))
+        self.weight = torch.nn.Parameter(torch.empty(hidden_size,**kwargs))
         self.epsilon = epsilon
 
     def forward(self, hidden_states):
@@ -80,11 +80,12 @@ class MLP(torch.nn.Module):
             hidden_size: int,
             intermediate_size: int,
             hidden_act: str,
+            device=None
     ):
         super().__init__()
-        self.gate_proj = torch.nn.Linear(hidden_size, intermediate_size, bias=False)
-        self.down_proj = torch.nn.Linear(intermediate_size, hidden_size, bias=False)
-        self.up_proj = torch.nn.Linear(hidden_size, intermediate_size, bias=False)
+        self.gate_proj = torch.nn.Linear(hidden_size, intermediate_size, bias=False,device=device)
+        self.down_proj = torch.nn.Linear(intermediate_size, hidden_size, bias=False,device=device)
+        self.up_proj = torch.nn.Linear(hidden_size, intermediate_size, bias=False,device=device)
         self.act_fn = ACT2FN[hidden_act]
 
     def forward(self, x):
@@ -93,7 +94,7 @@ class MLP(torch.nn.Module):
 
 class BaichuanAttention(torch.nn.Module):
 
-    def __init__(self, config: BaichuanConfig):
+    def __init__(self, config: BaichuanConfig,**kwargs):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
@@ -105,8 +106,8 @@ class BaichuanAttention(torch.nn.Module):
             raise ValueError(
                 f"hidden_size {self.hidden_size} is not divisible by num_heads {self.num_heads}"
             )
-        self.W_pack = torch.nn.Linear(self.hidden_size, 3 * self.hidden_size, bias=False)
-        self.o_proj = torch.nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
+        self.W_pack = torch.nn.Linear(self.hidden_size, 3 * self.hidden_size, bias=False,**kwargs)
+        self.o_proj = torch.nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False,**kwargs)
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
@@ -161,17 +162,18 @@ class BaichuanAttention(torch.nn.Module):
 
 
 class BaichuanLayer(torch.nn.Module):
-    def __init__(self, config: BaichuanConfig):
+    def __init__(self, config: BaichuanConfig,**kwargs):
         super().__init__()
         self.hidden_size = config.hidden_size
-        self.self_attn = BaichuanAttention(config=config)
+        self.self_attn = BaichuanAttention(config=config,**kwargs)
         self.mlp = MLP(
             hidden_size=self.hidden_size,
             intermediate_size=config.intermediate_size,
             hidden_act=config.hidden_act,
+            **kwargs
         )
-        self.input_layernorm = RMSNorm(config.hidden_size, epsilon=config.rms_norm_eps)
-        self.post_attention_layernorm = RMSNorm(config.hidden_size, epsilon=config.rms_norm_eps)
+        self.input_layernorm = RMSNorm(config.hidden_size, epsilon=config.rms_norm_eps,**kwargs)
+        self.post_attention_layernorm = RMSNorm(config.hidden_size, epsilon=config.rms_norm_eps,**kwargs)
 
     def forward(
             self,
@@ -218,6 +220,8 @@ class BaichuanPreTrainedModel(PreTrainedModel):
     _keys_to_ignore_on_load_unexpected = [r"decoder\.version"]
 
     def _init_weights(self, module):
+        if not getattr(self.config,'initializer_weight',False):
+            return
         std = self.config.initializer_range
         if isinstance(module, torch.nn.Linear):
             module.weight.data.normal_(mean=0.0, std=std)
@@ -235,14 +239,14 @@ class BaichuanPreTrainedModel(PreTrainedModel):
 
 
 class BaichuanModel(BaichuanPreTrainedModel):
-    def __init__(self, config: BaichuanConfig):
+    def __init__(self, config: BaichuanConfig,**kwargs):
         super().__init__(config)
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
         self.n_head = config.num_attention_heads
-        self.embed_tokens = torch.nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
-        self.layers = torch.nn.ModuleList([BaichuanLayer(config) for _ in range(config.num_hidden_layers)])
-        self.norm = RMSNorm(config.hidden_size, epsilon=config.rms_norm_eps)
+        self.embed_tokens = torch.nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx,**kwargs)
+        self.layers = torch.nn.ModuleList([BaichuanLayer(config,**kwargs) for _ in range(config.num_hidden_layers)])
+        self.norm = RMSNorm(config.hidden_size, epsilon=config.rms_norm_eps,**kwargs)
 
         self.gradient_checkpointing = config.gradient_checkpointing
         self.post_init()
@@ -362,14 +366,14 @@ class BaichuanModel(BaichuanPreTrainedModel):
     
 
 class BaichuanForCausalLM(BaichuanPreTrainedModel):
-    def __init__(self, config):
+    def __init__(self, config,**kwargs):
         super().__init__(config)
 
         global skip_init_function
         init_method = skip_init_function
 
-        self.model = init_method(BaichuanModel,config)
-        self.lm_head = init_method(torch.nn.Linear,config.hidden_size, config.vocab_size, bias=False)
+        self.model = init_method(BaichuanModel,config,**kwargs)
+        self.lm_head = init_method(torch.nn.Linear,config.hidden_size, config.vocab_size, bias=False,**kwargs)
 
         # Initialize weights and apply final processing
         self.post_init()
