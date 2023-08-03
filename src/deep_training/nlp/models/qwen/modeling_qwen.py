@@ -16,6 +16,7 @@ from torch.nn import CrossEntropyLoss
 from transformers import PreTrainedTokenizer, GenerationConfig, StoppingCriteriaList
 from transformers.generation.logits_process import LogitsProcessorList
 
+from ..transformer_base import TransformerBase
 from ...utils.torch_utils import skip_init
 
 if TYPE_CHECKING:
@@ -900,6 +901,7 @@ class QWenLMHeadModel(QWenPreTrainedModel):
         history: Optional[HistoryType],
         system: str = "You are a helpful assistant.",
         append_history: bool = True,
+        **kwargs
     ) -> Tuple[str, HistoryType]:
 
         if history is None:
@@ -923,6 +925,7 @@ class QWenLMHeadModel(QWenPreTrainedModel):
             input_ids,
             stop_words_ids=stop_words_ids,
             return_dict_in_generate=False,
+            **kwargs,
         )
 
         response = decode_tokens(
