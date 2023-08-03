@@ -20,13 +20,10 @@
 """ PyTorch InternLM model."""
 import math
 from typing import List, Optional, Tuple, Union
-
 import torch
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
-from ...utils.torch_utils import skip_init
-
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast, SequenceClassifierOutputWithPast
 from transformers.modeling_utils import PreTrainedModel
@@ -34,6 +31,7 @@ from transformers.generation.streamers import BaseStreamer
 from transformers.utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging, replace_return_docstrings
 from .configuration_internlm import InternLMConfig
 from ..transformer_base import TransformerBase
+from ...utils.torch_utils import skip_init
 
 logger = logging.get_logger(__name__)
 
@@ -640,6 +638,10 @@ class InternLMForCausalLM(InternLMPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
+        self.quantized = False
+        if self.config.quantization_bit:
+            self.quantize(self.config.quantization_bit, empty_init=True)
+
     def get_input_embeddings(self):
         return self.model.embed_tokens
 
@@ -860,6 +862,18 @@ class InternLMForCausalLM(InternLMPreTrainedModel):
             eos_token_id=eos_token_id,
             **kwargs
         )
+
+    def quantize(self, bits: int, empty_init=False, device=None, **kwarg):
+        if bits == 0:
+            return
+        from .quantization import quantize
+        if self.quantized:
+            logger.info("Already quantized.")
+            return self
+        quantize(self, bits=bits, empty_init=empty_init, device=device, **kwarg)
+        self.config.quantization_bit = bits
+        self.quantized = True
+        return self
                 
 
 @add_start_docstrings(
@@ -982,6 +996,7 @@ class InternLMForSequenceClassification(InternLMPreTrainedModel):
             hidden_states=transformer_outputs.hidden_states,
             attentions=transformer_outputs.attentions,
         )
+
 
 
 class TransformerInternLMHeadModel(TransformerBase):

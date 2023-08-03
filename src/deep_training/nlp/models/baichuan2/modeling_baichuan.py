@@ -375,12 +375,14 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
         self.model = init_method(BaichuanModel,config,**kwargs)
         self.lm_head = init_method(torch.nn.Linear,config.hidden_size, config.vocab_size, bias=False,**kwargs)
 
+        # Initialize weights and apply final processing
+        self.post_init()
+
         self.quantized = False
         if self.config.quantization_bit is not None and self.config.quantization_bit not in [0,32]:
             self.quantize(self.config.quantization_bit,empty_init=True)
 
-        # Initialize weights and apply final processing
-        self.post_init()
+
 
     def get_input_embeddings(self):
         return self.model.embed_tokens
@@ -481,66 +483,16 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
         )
 
 
-    def quantize(self, bits: int, empty_init=False, device=None,dtype=None, **kwarg):
+    def quantize(self, bits: int, empty_init=False, device=None, **kwarg):
         if bits == 0:
             return
-        from .quantizer import QLinear
-
+        from .quantization import quantize
         if self.quantized:
             logger.info("Already quantized.")
             return self
-
+        quantize(self,bits=bits,empty_init=empty_init,device=device,**kwarg)
         self.config.quantization_bit = bits
         self.quantized = True
-
-        for layer in self.model.layers:
-            device_ = layer.self_attn.W_pack.weight.device if device is None else device
-            layer.self_attn.W_pack = QLinear(
-                bits=bits,
-                weight=layer.self_attn.W_pack.weight.to(torch.cuda.current_device()),
-                bias = None,
-                empty_init=empty_init,
-                device=device_,
-                dtype=layer.self_attn.W_pack.weight.dtype,
-                **kwarg
-            )
-            layer.self_attn.o_proj = QLinear(
-                bits=bits,
-                weight=layer.self_attn.o_proj.weight.to(torch.cuda.current_device()),
-                bias = None,
-                empty_init=empty_init,
-                dtype=layer.self_attn.W_pack.weight.dtype,
-                device=device_,
-                **kwarg
-            )
-            layer.mlp.gate_proj = QLinear(
-                bits=bits,
-                weight=layer.mlp.gate_proj.weight.to(torch.cuda.current_device()),
-                bias = None,
-                empty_init=empty_init,
-                dtype=layer.self_attn.W_pack.weight.dtype,
-                device=device_,
-                **kwarg
-            )
-            layer.mlp.down_proj = QLinear(
-                bits=bits,
-                weight=layer.mlp.down_proj.weight.to(torch.cuda.current_device()),
-                bias = None,
-                empty_init=empty_init,
-                dtype=layer.self_attn.W_pack.weight.dtype,
-                device=device_,
-                **kwarg
-            )
-            layer.mlp.up_proj = QLinear(
-                bits=bits,
-                weight=layer.mlp.up_proj.weight.to(torch.cuda.current_device()),
-                bias = None,
-                empty_init=empty_init,
-                dtype=layer.self_attn.W_pack.weight.dtype,
-                device=device_,
-                **kwarg
-            )
-
         return self
 
     def _build_chat_input(self, tokenizer, messages: List[dict], max_new_tokens: int=0):
@@ -563,9 +515,7 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
             elif message['role'] == 'assistant':
                 round_input = [
                     self.generation_config.assistant_token_id
-                ] + content_tokens + [
-                    self.generation_config.eos_token_id
-                ] + round_input
+                ] + content_tokens + round_input
             else:
                 raise ValueError(f"message role not supported yet: {message['role']}")
         total_input = total_input[-max_input_tokens:]  # truncate left

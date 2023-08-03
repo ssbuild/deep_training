@@ -874,8 +874,8 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
         self.max_sequence_length = config.max_length
         self.transformer = ChatGLMModel(config,  device=device)
         self.config = config
-        self.quantized = False
 
+        self.quantized = False
         if self.config.quantization_bit:
             self.quantize(self.config.quantization_bit, empty_init=True)
 
@@ -1203,7 +1203,7 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
             if unfinished_sequences.max() == 0 or stopping_criteria(input_ids, scores):
                 break
 
-    def quantize(self, bits: int, empty_init=False, device=None, **kwargs):
+    def quantize(self, bits: int, empty_init=False, device=None):
         if bits == 0:
             return
 
@@ -1217,6 +1217,5 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
 
         self.config.quantization_bit = bits
 
-        self.transformer.encoder = quantize(self.transformer.encoder, bits, empty_init=empty_init, device=device,
-                                            **kwargs)
+        self.transformer.encoder = quantize(self.transformer.encoder, bits, empty_init=empty_init, device=device)
         return self

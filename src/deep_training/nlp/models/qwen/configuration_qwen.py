@@ -41,6 +41,7 @@ class QWenConfig(PretrainedConfig):
         ffn_hidden_size=22016,
         no_bias=True,
         tie_word_embeddings=False,
+        quantization_bit = 0,
         initializer_weight=False,
         **kwargs,
     ):
@@ -69,6 +70,7 @@ class QWenConfig(PretrainedConfig):
         self.ffn_hidden_size = ffn_hidden_size
         self.no_bias = no_bias
         self.tie_word_embeddings = tie_word_embeddings
+        self.quantization_bit = quantization_bit
         self.initializer_weight = initializer_weight
 
         super().__init__(

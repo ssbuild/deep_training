@@ -98,6 +98,7 @@ class InternLMConfig(PretrainedConfig):
             eos_token_id=2,
             tie_word_embeddings=False,
             bias=True,
+            quantization_bit=0,
             initializer_weight=False,
             **kwargs,
     ):
@@ -112,6 +113,7 @@ class InternLMConfig(PretrainedConfig):
         self.rms_norm_eps = rms_norm_eps
         self.use_cache = use_cache
         self.bias = bias
+        self.quantization_bit = quantization_bit
         self.initializer_weight = initializer_weight
         super().__init__(
             pad_token_id=pad_token_id,

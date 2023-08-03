@@ -572,6 +572,10 @@ class BaiChuanForCausalLM(PreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
+        self.quantized = False
+        if self.config.quantization_bit is not None and self.config.quantization_bit not in [0, 32]:
+            self.quantize(self.config.quantization_bit, empty_init=True)
+
     def get_input_embeddings(self):
         return self.model.embed_tokens
 
@@ -713,6 +717,17 @@ class BaiChuanForCausalLM(PreTrainedModel):
             reordered_past += (tuple(past_state.index_select(0, beam_idx) for past_state in layer_past),)
         return reordered_past
 
+    def quantize(self, bits: int, empty_init=False, device=None, **kwarg):
+        if bits == 0:
+            return
+        from .quantization import quantize
+        if self.quantized:
+            logger.info("Already quantized.")
+            return self
+        quantize(self, bits=bits, empty_init=empty_init, device=device, **kwarg)
+        self.config.quantization_bit = bits
+        self.quantized = True
+        return self
 
 
 class TransformerBaiChuanLMHeadModel(TransformerBase):

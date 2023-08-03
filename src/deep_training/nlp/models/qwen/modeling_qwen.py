@@ -776,6 +776,10 @@ class QWenLMHeadModel(QWenPreTrainedModel):
         self.lm_head = init_method(nn.Linear,config.n_embd, config.vocab_size, bias=False,**kwargs)
         self.post_init()
 
+        self.quantized = False
+        if self.config.quantization_bit is not None and self.config.quantization_bit not in [0, 32]:
+            self.quantize(self.config.quantization_bit, empty_init=True)
+
     def get_output_embeddings(self):
         return self.lm_head
 
@@ -978,6 +982,18 @@ class QWenLMHeadModel(QWenPreTrainedModel):
             streamer,
             **kwargs,
         )
+
+    def quantize(self, bits: int, empty_init=False, device=None, **kwarg):
+        if bits == 0:
+            return
+        from .quantization import quantize
+        if self.quantized:
+            logger.info("Already quantized.")
+            return self
+        quantize(self, bits=bits, empty_init=empty_init, device=device, **kwarg)
+        self.config.quantization_bit = bits
+        self.quantized = True
+        return self
 
 
 class RotaryEmbedding(torch.nn.Module):
