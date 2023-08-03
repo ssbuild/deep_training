@@ -375,13 +375,12 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
         self.model = init_method(BaichuanModel,config,**kwargs)
         self.lm_head = init_method(torch.nn.Linear,config.hidden_size, config.vocab_size, bias=False,**kwargs)
 
+        self.quantized = False
+        if self.config.quantization_bit is not None and self.config.quantization_bit not in [0,32]:
+            self.quantize(self.config.quantization_bit,empty_init=True)
+
         # Initialize weights and apply final processing
         self.post_init()
-
-        self.quantized = False
-
-        if self.config.quantization_bit not in [0,32]:
-            self.quantize(self.config.quantization_bit)
 
     def get_input_embeddings(self):
         return self.model.embed_tokens
@@ -482,41 +481,67 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
         )
 
 
-    def quantize(self, bits: int):
-        try:
-            from .quantizer import QLinear
-        except ImportError:
-            raise ImportError(
-                f"Needs QLinear to run quantize."
-            )
-        
+    def quantize(self, bits: int, empty_init=False, device=None,dtype=None, **kwarg):
+        if bits == 0:
+            return
+        from .quantizer import QLinear
+
+        if self.quantized:
+            logger.info("Already quantized.")
+            return self
+
+        self.config.quantization_bit = bits
+        self.quantized = True
+
         for layer in self.model.layers:
+            device_ = layer.self_attn.W_pack.weight.device if device is None else device
             layer.self_attn.W_pack = QLinear(
                 bits=bits,
-                weight=layer.self_attn.W_pack.weight,
+                weight=layer.self_attn.W_pack.weight.to(torch.cuda.current_device()),
                 bias = None,
+                empty_init=empty_init,
+                device=device_,
+                dtype=layer.self_attn.W_pack.weight.dtype,
+                **kwarg
             )
             layer.self_attn.o_proj = QLinear(
                 bits=bits,
-                weight=layer.self_attn.o_proj.weight,
+                weight=layer.self_attn.o_proj.weight.to(torch.cuda.current_device()),
                 bias = None,
+                empty_init=empty_init,
+                dtype=layer.self_attn.W_pack.weight.dtype,
+                device=device_,
+                **kwarg
             )
             layer.mlp.gate_proj = QLinear(
                 bits=bits,
-                weight=layer.mlp.gate_proj.weight,
+                weight=layer.mlp.gate_proj.weight.to(torch.cuda.current_device()),
                 bias = None,
+                empty_init=empty_init,
+                dtype=layer.self_attn.W_pack.weight.dtype,
+                device=device_,
+                **kwarg
             )
             layer.mlp.down_proj = QLinear(
                 bits=bits,
-                weight=layer.mlp.down_proj.weight,
+                weight=layer.mlp.down_proj.weight.to(torch.cuda.current_device()),
                 bias = None,
+                empty_init=empty_init,
+                dtype=layer.self_attn.W_pack.weight.dtype,
+                device=device_,
+                **kwarg
             )
             layer.mlp.up_proj = QLinear(
                 bits=bits,
-                weight=layer.mlp.up_proj.weight,
+                weight=layer.mlp.up_proj.weight.to(torch.cuda.current_device()),
                 bias = None,
+                empty_init=empty_init,
+                dtype=layer.self_attn.W_pack.weight.dtype,
+                device=device_,
+                **kwarg
             )
-        return self 
+
+        return self
 
     def _build_chat_input(self, tokenizer, messages: List[dict], max_new_tokens: int=0):
         max_new_tokens = max_new_tokens or self.generation_config.max_new_tokens

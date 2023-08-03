@@ -5,6 +5,8 @@ from typing import List
 import bz2
 import base64
 import ctypes
+
+from torch.nn import Parameter
 from transformers.utils import logging
 logger = logging.get_logger(__name__)
 
@@ -38,25 +40,26 @@ except Exception as exception:
     logger.warning("Failed to load kernels:" + str(exception))
 
 def quant4(weight: torch.Tensor, scale: torch.Tensor):
-    stream = torch.cuda.current_stream()
-    num_row = weight.size(0)
-    num_chan_fp16 = weight.size(1)
-    # 4bit
-    num_chan_int = num_chan_fp16 // 8
-    qweight = torch.zeros((num_row, num_chan_int), dtype=torch.int32, device=weight.device)
-    intweight = torch.empty(num_row, num_chan_fp16, dtype = torch.int32)
-    intweight = torch.clip(torch.round(weight.to(scale.dtype) / scale[:, None]),-16, 15).to(dtype=torch.int32)
+    with torch.cuda.device(weight.device):
+        stream = torch.cuda.current_stream()
+        num_row = weight.size(0)
+        num_chan_fp16 = weight.size(1)
+        # 4bit
+        num_chan_int = num_chan_fp16 // 8
+        qweight = torch.zeros((num_row, num_chan_int), dtype=torch.int8, device=weight.device)
+        # intweight = torch.empty(num_row, num_chan_fp16, dtype = torch.int32)
+        intweight = torch.clip(torch.round(weight.to(scale.dtype) / scale[:, None]),-16, 15).to(dtype=torch.int8)
 
-    for j in range(num_chan_int):
-        qweight[:, j] = ((intweight[:, j*8+7] & 0x0f) << 28) \
-            | ((intweight[:, j*8+6] & 0x0f) << 24) \
-            | ((intweight[:, j*8+5] & 0x0f) << 20) \
-            | ((intweight[:, j*8+4] & 0x0f) << 16) \
-            | ((intweight[:, j*8+3] & 0x0f) << 12) \
-            | ((intweight[:, j*8+2] & 0x0f) << 8) \
-            | ((intweight[:, j*8+1] & 0x0f) << 4) \
-            | ((intweight[:, j*8] & 0x0f))
-    return qweight
+        for j in range(num_chan_int):
+            qweight[:, j] = ((intweight[:, j*8+7] & 0x0f) << 28) \
+                | ((intweight[:, j*8+6] & 0x0f) << 24) \
+                | ((intweight[:, j*8+5] & 0x0f) << 20) \
+                | ((intweight[:, j*8+4] & 0x0f) << 16) \
+                | ((intweight[:, j*8+3] & 0x0f) << 12) \
+                | ((intweight[:, j*8+2] & 0x0f) << 8) \
+                | ((intweight[:, j*8+1] & 0x0f) << 4) \
+                | ((intweight[:, j*8] & 0x0f))
+        return qweight
 
 def dequant4(qweight: torch.Tensor, scale: torch.Tensor, input: torch.Tensor):
     stream = torch.cuda.current_stream()
@@ -90,18 +93,28 @@ def dequant4(qweight: torch.Tensor, scale: torch.Tensor, input: torch.Tensor):
     return out
 
 class QLinear(torch.nn.Module):
-    def __init__(self, bits: int, weight: torch.Tensor, bias=None):
+    def __init__(self, bits: int, weight: torch.Tensor, bias=None, empty_init=False,device=None,
+                dtype=None,**kwarg):
         super().__init__()
         self.quant_bits = bits
-        self.scale = weight.abs().max(dim=-1).values / ((2 ** (bits - 1)) - 1)
-        self.scale = self.scale.to(torch.float32)
-        if self.quant_bits == 4:
-            self.weight = quant4(weight, self.scale)
-        elif self.quant_bits == 8:
-            self.weight = torch.round(weight.to(self.scale.dtype) / self.scale[:, None]).to(torch.int8)
-        if self.quant_bits == 8:
-            self.weight = self.weight.T
-        self.bias = None
+
+        if empty_init:
+            shape = weight.shape
+            self.weight = torch.empty(shape[0], shape[1] * bits // 8, dtype=torch.int8, device=device,**kwarg)
+            self.scale = torch.empty(shape[0], device=device,dtype=dtype,**kwarg)
+        else:
+
+            self.scale = weight.abs().max(dim=-1).values / ((2 ** (bits - 1)) - 1)
+            self.scale = self.scale.to(torch.float32)
+            if self.quant_bits == 4:
+                self.weight = quant4(weight, self.scale)
+            elif self.quant_bits == 8:
+                self.weight = torch.round(weight.to(self.scale.dtype) / self.scale[:, None]).to(torch.int8)
+            if self.quant_bits == 8:
+                self.weight = self.weight.T
+        self.weight = Parameter(self.weight.to(device), requires_grad=False)
+        self.scale = Parameter(self.scale.to(device), requires_grad=False)
+        self.bias = Parameter(bias.to(device), requires_grad=False) if bias is not None else None
 
     def forward(self, input):
         if self.quant_bits == 4:
