@@ -1050,3 +1050,11 @@ class RMSNorm(torch.nn.Module):
         else:
             output = self._norm(x.float()).type_as(x)
             return output * self.weight
+
+
+
+
+class TransformerQWenLMHeadModel(TransformerBase):
+    def __init__(self, *args,**kwargs):
+        super(TransformerQWenLMHeadModel, self).__init__(*args,**kwargs)
+        self.set_model(self.from_pretrained(QWenLMHeadModel, *args, **kwargs))
