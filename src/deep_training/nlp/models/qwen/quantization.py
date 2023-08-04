@@ -160,7 +160,7 @@ def quantize(model, bits, empty_init=False, device=None,**kwarg):
                     QuantizedLinear(
                         bits=bits,
                         weight=w.weight.to(torch.cuda.current_device()),
-                        bias=None,
+                        bias=w.bias.to(torch.cuda.current_device()),
                         empty_init=empty_init,
                         device=w.weight.device if device is None else device,
                         dtype=w.weight.dtype,
@@ -175,7 +175,7 @@ def quantize(model, bits, empty_init=False, device=None,**kwarg):
                     QuantizedLinear(
                         bits=bits,
                         weight=w.weight.to(torch.cuda.current_device()),
-                        bias=None,
+                        bias=w.bias.to(torch.cuda.current_device()),
                         empty_init=empty_init,
                         device=w.weight.device if device is None else device,
                         dtype=w.weight.dtype,

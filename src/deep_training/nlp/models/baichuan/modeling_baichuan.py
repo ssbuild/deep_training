@@ -584,7 +584,7 @@ class BaiChuanForCausalLM(PreTrainedModel):
         self.post_init()
 
         self.quantized = False
-        if self.config.quantization_bit is not None and self.config.quantization_bit not in [0, 32]:
+        if self.config.quantization_bit in [4,8]:
             self.quantize(self.config.quantization_bit, empty_init=True)
 
     def get_input_embeddings(self):

@@ -1071,7 +1071,7 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
         self.config = config
         self.quantized = False
 
-        if self.config.quantization_bit:
+        if self.config.quantization_bit in [4,8]:
             self.quantize(self.config.quantization_bit, empty_init=True,dtype=self.transformer.params_dtype or torch.half)
 
     def get_output_embeddings(self):
