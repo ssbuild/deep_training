@@ -243,6 +243,7 @@ class QWenAttention(nn.Module):
         self.attn_dropout = nn.Dropout(config.attn_pdrop)
 
     def _attn(self, query, key, value, attention_mask=None, head_mask=None):
+        query = query.type_as(key)
         attn_weights = torch.matmul(query, key.transpose(-1, -2))
 
         if self.scale_attn_weights:
