@@ -306,8 +306,8 @@ class InternLMDecoderLayer(nn.Module):
             hidden_states=hidden_states,
             attention_mask=attention_mask,
             position_ids=position_ids,
-            past_key_value=past_key_value,
             output_attentions=output_attentions,
+            past_key_value=past_key_value,
             use_cache=use_cache,
         )
         hidden_states = residual + hidden_states
