@@ -30,8 +30,8 @@ from transformers.modeling_utils import PreTrainedModel
 from transformers.generation.streamers import BaseStreamer
 from transformers.utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging, replace_return_docstrings
 from .configuration_internlm import InternLMConfig
-from ..transformer_base import TransformerBase
-from ...utils.torch_utils import skip_init
+from deep_training.nlp.models.transformer_base import TransformerBase
+from deep_training.nlp.utils.torch_utils import skip_init
 
 logger = logging.get_logger(__name__)
 
@@ -639,7 +639,7 @@ class InternLMForCausalLM(InternLMPreTrainedModel):
         self.post_init()
 
         self.quantized = False
-        if self.config.quantization_bit:
+        if self.config.quantization_bit is not None and self.config.quantization_bit in [4,8]:
             self.quantize(self.config.quantization_bit, empty_init=True)
 
     def get_input_embeddings(self):
