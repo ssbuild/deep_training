@@ -217,12 +217,13 @@ class RwkvSelfAttention(nn.Module):
         #     self.time_mix_k = nn.Parameter(torch.pow(ddd, ratio_1_to_almost0))
         #     self.time_mix_v = nn.Parameter(torch.pow(ddd, ratio_1_to_almost0) + 0.3 * ratio_0_to_1)
         #     self.time_mix_r = nn.Parameter(torch.pow(ddd, 0.5 * ratio_1_to_almost0))
-
+        global skip_init_function
+        init_method = skip_init_function
         self.time_shift = nn.ZeroPad2d((0, 0, 1, -1))
-        self.key = nn.Linear(config.n_embd, config.dim_att, bias=False,**kwargs)
-        self.value = nn.Linear(config.n_embd, config.dim_att, bias=False,**kwargs)
-        self.receptance = nn.Linear(config.n_embd, config.dim_att, bias=False,**kwargs)
-        self.output = nn.Linear(config.dim_att, config.n_embd, bias=False,**kwargs)
+        self.key = init_method(nn.Linear,config.n_embd, config.dim_att, bias=False,**kwargs)
+        self.value = init_method(nn.Linear,config.n_embd, config.dim_att, bias=False,**kwargs)
+        self.receptance = init_method(nn.Linear,config.n_embd, config.dim_att, bias=False,**kwargs)
+        self.output = init_method(nn.Linear,config.dim_att, config.n_embd, bias=False,**kwargs)
 
     def jit_func(self, x, state=None):
         # Mix x with the previous timestep to produce xk, xv, xr
@@ -351,11 +352,13 @@ class RwkvBlock(nn.Module):
                 self.pos_emb_x = nn.Parameter(torch.zeros((1, config.pos_emb_size, config.n_embd),**kwargs))
                 self.pos_emb_y = nn.Parameter(torch.zeros((config.pos_emb_size, 1, config.n_embd),**kwargs))
 
+        global skip_init_function
+        init_method = skip_init_function
 
         self.att = RwkvSelfAttention(config, layer_id,**kwargs)
         # if 'g' in os.environ["RWKV_MY_TESTING"]:
         #     self.ffn = MishGLU(config, layer_id)
-        self.ffn = RwkvFeedForward(config, layer_id,**kwargs)
+        self.ffn = init_method(RwkvFeedForward(config, layer_id,**kwargs))
 
 
     def forward(self, x, x_emb=None,state=None, use_cache=False, output_attentions=False):
@@ -529,9 +532,13 @@ class RwkvModel(RwkvPreTrainedModel):
     def __init__(self, config: RwkvConfig,**kwargs):
         super().__init__(config)
         self.config: RwkvConfig = config
-        self.emb = nn.Embedding(config.vocab_size, config.n_embd,**kwargs)
+
+        global skip_init_function
+        init_method = skip_init_function
+
+        self.emb = init_method(nn.Embedding,config.vocab_size, config.n_embd,**kwargs)
         self.blocks = nn.ModuleList([RwkvBlock(config, i,**kwargs) for i in range(config.n_layers)])
-        self.ln_out = nn.LayerNorm(config.n_embd,**kwargs)
+        self.ln_out = init_method(nn.LayerNorm,config.n_embd,**kwargs)
 
         self._is_weight_rescaled = False
         # Initialize weights and apply final processing
@@ -706,7 +713,7 @@ class RwkvForCausalLM(RwkvPreTrainedModel):
         super().__init__(config)
         global skip_init_function
         init_method = skip_init_function
-        self.rwkv = init_method(RwkvModel,config,**kwargs)
+        self.rwkv = RwkvModel(config,**kwargs)
         self.head = init_method(nn.Linear,config.n_embd, config.vocab_size, bias=False,**kwargs)
 
         # Initialize weights and apply final processing

@@ -101,8 +101,7 @@ class FlashSelfAttention(torch.nn.Module):
         self,
         causal=False,
         softmax_scale=None,
-        attention_dropout=0.0,
-        **kwargs
+        attention_dropout=0.0
     ):
         super().__init__()
         assert flash_attn_unpadded_func is not None, (
@@ -195,9 +194,12 @@ class QWenAttention(nn.Module):
             self.projection_size // config.num_attention_heads
         )
 
-        self.c_attn = nn.Linear(config.hidden_size, 3 * self.projection_size,**kwargs)
+        global skip_init_function
+        init_method = skip_init_function
 
-        self.c_proj = nn.Linear(
+        self.c_attn = init_method(nn.Linear,config.hidden_size, 3 * self.projection_size,**kwargs)
+
+        self.c_proj = init_method(nn.Linear,
             config.hidden_size, self.projection_size, bias=not config.no_bias,**kwargs
         )
 
@@ -486,17 +488,20 @@ class QWenBlock(nn.Module):
         )
         self.bf16 = config.bf16
 
-        self.ln_1 = RMSNorm(
+        global skip_init_function
+        init_method = skip_init_function
+
+        self.ln_1 = init_method(RMSNorm,
             hidden_size,
             eps=config.layer_norm_epsilon,**kwargs
         )
         self.attn = QWenAttention(config, layer_number=layer_idx,**kwargs)
-        self.ln_2 = RMSNorm(
+        self.ln_2 = init_method(RMSNorm,
             hidden_size,
             eps=config.layer_norm_epsilon,**kwargs
         )
 
-        self.mlp = QWenMLP(config,**kwargs)
+        self.mlp = init_method(QWenMLP,config,**kwargs)
 
     def forward(
         self,
@@ -609,7 +614,10 @@ class QWenModel(QWenPreTrainedModel):
             self.wpe = None
             self._position_embeddings_key = ""
 
-        self.wte = nn.Embedding(self.vocab_size, self.embed_dim,**kwargs)
+        global skip_init_function
+        init_method = skip_init_function
+
+        self.wte = init_method(nn.Embedding,self.vocab_size, self.embed_dim,**kwargs)
 
         self.drop = nn.Dropout(config.embd_pdrop)
         self.h = nn.ModuleList(
@@ -622,7 +630,7 @@ class QWenModel(QWenPreTrainedModel):
                 for i in range(config.num_hidden_layers)
             ]
         )
-        self.ln_f = RMSNorm(
+        self.ln_f = init_method(RMSNorm,
             self.embed_dim,
             eps=config.layer_norm_epsilon,
             **kwargs
@@ -801,7 +809,7 @@ class QWenLMHeadModel(QWenPreTrainedModel):
         global skip_init_function
         init_method = skip_init_function
 
-        self.transformer = init_method(QWenModel,config,**kwargs)
+        self.transformer = QWenModel(config,**kwargs)
         self.lm_head = init_method(nn.Linear,config.n_embd, config.vocab_size, bias=False,**kwargs)
         assert not (
             config.bf16 and config.fp16

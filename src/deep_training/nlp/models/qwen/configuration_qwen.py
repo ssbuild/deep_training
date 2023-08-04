@@ -46,6 +46,11 @@ class QWenConfig(PretrainedConfig):
         **kwargs,
     ):
         self.eos_token_id = eos_token_id
+        super().__init__(
+            eos_token_id=eos_token_id, tie_word_embeddings=tie_word_embeddings, **kwargs
+        )
+
+
         self.vocab_size = vocab_size
         self.n_embd = n_embd
         self.n_layer = n_layer
@@ -72,7 +77,3 @@ class QWenConfig(PretrainedConfig):
         self.tie_word_embeddings = tie_word_embeddings
         self.quantization_bit = quantization_bit
         self.initializer_weight = initializer_weight
-
-        super().__init__(
-            eos_token_id=eos_token_id, tie_word_embeddings=tie_word_embeddings, **kwargs
-        )

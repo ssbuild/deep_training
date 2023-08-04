@@ -184,8 +184,12 @@ class Attention(nn.Module):
                 f"hidden_size must be divisible by num_heads (got `hidden_size`: {self.hidden_size}"
                 f" and `num_heads`: {self.num_heads})."
             )
-        self.W_pack = nn.Linear(self.hidden_size, 3 * self.hidden_size, bias=False,**kwargs)
-        self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False,**kwargs)
+
+        global skip_init_function
+        init_method = skip_init_function
+
+        self.W_pack = init_method(nn.Linear,self.hidden_size, 3 * self.hidden_size, bias=False,**kwargs)
+        self.o_proj = init_method(nn.Linear,self.num_heads * self.head_dim, self.hidden_size, bias=False,**kwargs)
         self.rotary_emb = RotaryEmbedding(self.head_dim, max_position_embeddings=self.max_position_embeddings,**kwargs)
         self.cos, self.sin = None, None
 
@@ -290,14 +294,18 @@ class DecoderLayer(nn.Module):
         super().__init__()
         self.hidden_size = config.hidden_size
         self.self_attn = Attention(config=config,**kwargs)
-        self.mlp = MLP(
+
+        global skip_init_function
+        init_method = skip_init_function
+
+        self.mlp = init_method(MLP,
             hidden_size=self.hidden_size,
             intermediate_size=config.intermediate_size,
             hidden_act=config.hidden_act,
             **kwargs
         )
-        self.input_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps,**kwargs)
-        self.post_attention_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps,**kwargs)
+        self.input_layernorm = init_method(RMSNorm,config.hidden_size, eps=config.rms_norm_eps,**kwargs)
+        self.post_attention_layernorm = init_method(RMSNorm,config.hidden_size, eps=config.rms_norm_eps,**kwargs)
 
     def forward(
             self,
@@ -393,9 +401,12 @@ class Model(PreTrainedModel):
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
 
-        self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx,**kwargs)
+        global skip_init_function
+        init_method = skip_init_function
+
+        self.embed_tokens = init_method(nn.Embedding,config.vocab_size, config.hidden_size, self.padding_idx,**kwargs)
         self.layers = nn.ModuleList([DecoderLayer(config,**kwargs) for _ in range(config.num_hidden_layers)])
-        self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps,**kwargs)
+        self.norm = init_method(RMSNorm,config.hidden_size, eps=config.rms_norm_eps,**kwargs)
 
         self.gradient_checkpointing = False
         # Initialize weights and apply final processing
@@ -566,7 +577,7 @@ class BaiChuanForCausalLM(PreTrainedModel):
         global skip_init_function
         init_method = skip_init_function
 
-        self.model = init_method(Model,config,**kwargs)
+        self.model = Model(config,**kwargs)
         self.lm_head = init_method(nn.Linear,config.hidden_size, config.vocab_size, bias=False,**kwargs)
 
         # Initialize weights and apply final processing
