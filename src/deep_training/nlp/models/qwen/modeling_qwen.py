@@ -1041,12 +1041,6 @@ class QWenLMHeadModel(QWenPreTrainedModel):
         inputs: Optional[torch.Tensor] = None,
         generation_config: Optional[GenerationConfig] = None,
         logits_processor: Optional[LogitsProcessorList] = None,
-        stopping_criteria: Optional[StoppingCriteriaList] = None,
-        prefix_allowed_tokens_fn: Optional[
-            Callable[[int, torch.Tensor], List[int]]
-        ] = None,
-        synced_gpus: Optional[bool] = None,
-        streamer: Optional["BaseStreamer"] = None,
         **kwargs,
     ) -> Union[GenerateOutput, torch.LongTensor]:
         # Process stop_words_ids.
@@ -1068,12 +1062,8 @@ class QWenLMHeadModel(QWenPreTrainedModel):
 
         return super().generate(
             inputs,
-            generation_config,
-            logits_processor,
-            stopping_criteria,
-            prefix_allowed_tokens_fn,
-            synced_gpus,
-            streamer,
+            generation_config=generation_config,
+            logits_processor=logits_processor,
             **kwargs,
         )
     def quantize(self, bits: int, empty_init=False, device=None, **kwarg):
