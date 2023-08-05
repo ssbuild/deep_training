@@ -48,6 +48,7 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
 - <strong>2023-08-05</strong>
   - support qwen(千问)  完整训练 [qwen_finetuning](https://github.com/ssbuild/qwen_finetuning)
   - 0.1.13.post2 fix quantization bug
+  - 0.1.14 release fix qwen stream
 
 - <strong>2023-07-18</strong>
   - support InternLm(书生)  完整训练 [internlm_finetuning](https://github.com/ssbuild/internlm_finetuning)
