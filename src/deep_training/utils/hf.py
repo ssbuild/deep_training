@@ -23,10 +23,7 @@ def _model_register(self, key, value, exist_ok=False):
         model_type = self._reverse_config_mapping[key.__name__]
         if model_type in self._model_mapping.keys() and not exist_ok:
             raise ValueError(f"'{key}' is already used by a Transformers model.")
-
-    print(key,value)
     self._extra_content[key] = value
-    print(self._extra_content)
 
 
 def _parse_transformer_version():
