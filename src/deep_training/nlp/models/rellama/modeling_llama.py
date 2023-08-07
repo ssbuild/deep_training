@@ -66,12 +66,12 @@ def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] 
 
 
 class LlamaRMSNorm(nn.Module):
-    def __init__(self, hidden_size, eps=1e-6):
+    def __init__(self, hidden_size, eps=1e-6,**kwargs):
         """
         LlamaRMSNorm is equivalent to T5LayerNorm
         """
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(hidden_size))
+        self.weight = nn.Parameter(torch.ones(hidden_size,**kwargs))
         self.variance_epsilon = eps
 
     def forward(self, hidden_states):
@@ -137,12 +137,12 @@ class LlamaMLP(nn.Module):
         self,
         hidden_size: int,
         intermediate_size: int,
-        hidden_act: str,
+        hidden_act: str,**kwargs
     ):
         super().__init__()
-        self.gate_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
-        self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False)
-        self.up_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
+        self.gate_proj = nn.Linear(hidden_size, intermediate_size, bias=False,**kwargs)
+        self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False,**kwargs)
+        self.up_proj = nn.Linear(hidden_size, intermediate_size, bias=False,**kwargs)
         self.act_fn = ACT2FN[hidden_act]
 
     def forward(self, x):
@@ -152,7 +152,7 @@ class LlamaMLP(nn.Module):
 class LlamaAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
-    def __init__(self, config: LlamaConfig):
+    def __init__(self, config: LlamaConfig,**kwargs):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
@@ -167,10 +167,10 @@ class LlamaAttention(nn.Module):
             )
         global skip_init_function
         init_method = skip_init_function
-        self.q_proj = init_method(nn.Linear,self.hidden_size, self.num_heads * self.head_dim, bias=False)
-        self.k_proj = init_method(nn.Linear,self.hidden_size, self.num_heads * self.head_dim, bias=False)
-        self.v_proj = init_method(nn.Linear,self.hidden_size, self.num_heads * self.head_dim, bias=False)
-        self.o_proj = init_method(nn.Linear,self.num_heads * self.head_dim, self.hidden_size, bias=False)
+        self.q_proj = init_method(nn.Linear,self.hidden_size, self.num_heads * self.head_dim, bias=False,**kwargs)
+        self.k_proj = init_method(nn.Linear,self.hidden_size, self.num_heads * self.head_dim, bias=False,**kwargs)
+        self.v_proj = init_method(nn.Linear,self.hidden_size, self.num_heads * self.head_dim, bias=False,**kwargs)
+        self.o_proj = init_method(nn.Linear,self.num_heads * self.head_dim, self.hidden_size, bias=False,**kwargs)
         self.rotary_emb = LlamaRotaryEmbedding(self.head_dim, max_position_embeddings=self.max_position_embeddings)
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
@@ -245,7 +245,7 @@ class LlamaAttention(nn.Module):
 
 
 class LlamaDecoderLayer(nn.Module):
-    def __init__(self, config: LlamaConfig):
+    def __init__(self, config: LlamaConfig,**kwargs):
         super().__init__()
         global skip_init_function
         init_method = skip_init_function
@@ -255,10 +255,10 @@ class LlamaDecoderLayer(nn.Module):
         self.mlp = init_method(LlamaMLP,
             hidden_size=self.hidden_size,
             intermediate_size=config.intermediate_size,
-            hidden_act=config.hidden_act,
+            hidden_act=config.hidden_act,**kwargs
         )
-        self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.input_layernorm = init_method(LlamaRMSNorm,config.hidden_size, eps=config.rms_norm_eps,**kwargs)
+        self.post_attention_layernorm = init_method(LlamaRMSNorm,config.hidden_size, eps=config.rms_norm_eps,**kwargs)
 
     def forward(
         self,
@@ -440,7 +440,7 @@ class LlamaModel(LlamaPreTrainedModel):
         config: LlamaConfig
     """
 
-    def __init__(self, config: LlamaConfig):
+    def __init__(self, config: LlamaConfig,**kwargs):
         super().__init__(config)
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
@@ -448,9 +448,9 @@ class LlamaModel(LlamaPreTrainedModel):
         global skip_init_function
         init_method = skip_init_function
 
-        self.embed_tokens = init_method(nn.Embedding,config.vocab_size, config.hidden_size, self.padding_idx)
+        self.embed_tokens = init_method(nn.Embedding,config.vocab_size, config.hidden_size, self.padding_idx,**kwargs)
         self.layers = nn.ModuleList([LlamaDecoderLayer(config) for _ in range(config.num_hidden_layers)])
-        self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.norm = init_method(LlamaRMSNorm,config.hidden_size, eps=config.rms_norm_eps,**kwargs)
 
         self.gradient_checkpointing = False
         # Initialize weights and apply final processing
@@ -616,20 +616,18 @@ class LlamaModel(LlamaPreTrainedModel):
 
 
 class LlamaForCausalLM(LlamaPreTrainedModel):
-    def __init__(self, config):
+    def __init__(self, config,**kwargs):
         super().__init__(config)
-        self.model = LlamaModel(config)
+        self.model = LlamaModel(config,**kwargs)
 
         global skip_init_function
         init_method = skip_init_function
-
-        self.lm_head = init_method(nn.Linear,config.hidden_size, config.vocab_size, bias=False)
-
+        self.lm_head = init_method(nn.Linear,config.hidden_size, config.vocab_size, bias=False,**kwargs)
         # Initialize weights and apply final processing
         self.post_init()
 
         self.quantized = False
-        if getattr(self.config,'quantization_bit',None) is not None and self.config.quantization_bit in [4, 8]:
+        if getattr(self.config, 'quantization_bit', None) in [4, 8]:
             self.quantize(self.config.quantization_bit, empty_init=True)
 
     def get_input_embeddings(self):
@@ -913,7 +911,7 @@ class LlamaForSequenceClassification(LlamaPreTrainedModel):
 
 
 
-class TransformerLlamaLMHeadModel(TransformerBase):
-    def __init__(self, *args,**kwargs):
-        super(TransformerLlamaLMHeadModel, self).__init__(*args,**kwargs)
-        self.set_model(self.from_pretrained(LlamaForCausalLM, *args, **kwargs))
+# class TransformerLlamaLMHeadModel(TransformerBase):
+#     def __init__(self, *args,**kwargs):
+#         super(TransformerLlamaLMHeadModel, self).__init__(*args,**kwargs)
+#         self.set_model(self.from_pretrained(LlamaForCausalLM, *args, **kwargs))

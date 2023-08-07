@@ -2,7 +2,6 @@
 # @Author  : ssbuild
 # @Time    : 2023/8/7 14:01
 from functools import partial
-
 import transformers
 from transformers import TOKENIZER_MAPPING,CONFIG_MAPPING,AutoTokenizer,AutoConfig
 
@@ -25,7 +24,9 @@ def _model_register(self, key, value, exist_ok=False):
         if model_type in self._model_mapping.keys() and not exist_ok:
             raise ValueError(f"'{key}' is already used by a Transformers model.")
 
+    print(key,value)
     self._extra_content[key] = value
+    print(self._extra_content)
 
 
 def _parse_transformer_version():
@@ -57,7 +58,6 @@ def register_transformer_model(model_class,transormer_auto_class, exist_ok=True)
         register = partial(transormer_auto_class._model_mapping.register, self)
     else:
         register = transormer_auto_class._model_mapping.register
-
     register(model_class.config_class,model_class,exist_ok=exist_ok)
     if old_fn_back:
         transormer_auto_class._model_mapping.register = old_fn_back
