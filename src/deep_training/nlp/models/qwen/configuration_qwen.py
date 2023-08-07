@@ -31,7 +31,9 @@ class QWenConfig(PretrainedConfig):
         use_cache=True,
         eos_token_id=151643,
         apply_residual_connection_post_layernorm=False,
-        bf16=True,
+        bf16=False,
+        fp16=False,
+        fp32=False,
         kv_channels=128,
         rotary_pct=1.0,
         rotary_emb_base=10000,
@@ -66,6 +68,8 @@ class QWenConfig(PretrainedConfig):
             apply_residual_connection_post_layernorm
         )
         self.bf16 = bf16
+        self.fp16 = fp16
+        self.fp32 = fp32
         self.kv_channels = kv_channels
         self.rotary_pct = rotary_pct
         self.rotary_emb_base = rotary_emb_base

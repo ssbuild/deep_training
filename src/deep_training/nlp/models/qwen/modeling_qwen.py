@@ -6,7 +6,6 @@
 import importlib
 import math
 from typing import TYPE_CHECKING, Optional, Tuple, Union, Callable, List, Any, Generator
-
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
@@ -35,26 +34,7 @@ except ImportError:
     rearrange = None
 from torch import nn
 
-try:
-    from flash_attn.layers.rotary import apply_rotary_emb_func
-    from einops import rearrange
 
-    use_flash_rotary = True
-except ImportError:
-    use_flash_rotary = False
-    print(
-        "Warning: import flash_attn rotary fail, please install FlashAttention rotary to get better performance "
-        "https://github.com/Dao-AILab/flash-attention/tree/main/csrc/rotary"
-    )
-
-try:
-    from flash_attn.ops.rms_norm import rms_norm
-except ImportError:
-    rms_norm = None
-    print(
-        "Warning: import flash_attn rms_norm fail, please install FlashAttention layer_norm to get better performance "
-        "https://github.com/Dao-AILab/flash-attention/tree/main/csrc/layer_norm"
-    )
 
 from .configuration_qwen import QWenConfig
 from .qwen_generation_utils import (
@@ -73,6 +53,53 @@ _CONFIG_FOR_DOC = "QWenConfig"
 
 QWen_PRETRAINED_MODEL_ARCHIVE_LIST = ["qwen-7b"]
 
+_ERROR_BAD_CHAT_FORMAT = """\
+We detect you are probably using the pretrained model (rather than chat model) for chatting, since the chat_format in generation_config is not "chatml".
+If you are directly using the model downloaded from Huggingface, please make sure you are using our "Qwen/Qwen-7B-Chat" Huggingface model (rather than "Qwen/Qwen-7B") when you call model.chat().
+我们检测到您可能在使用预训练模型（而非chat模型）进行多轮chat，因为您当前在generation_config指定的chat_format，并未设置为我们在对话中所支持的"chatml"格式。
+如果您在直接使用我们从Huggingface提供的模型，请确保您在调用model.chat()时，使用的是"Qwen/Qwen-7B-Chat"模型（而非"Qwen/Qwen-7B"预训练模型）。
+"""
+
+SUPPORT_CUDA = torch.cuda.is_available()
+SUPPORT_BF16 = SUPPORT_CUDA and torch.cuda.is_bf16_supported()
+SUPPORT_FP16 = SUPPORT_CUDA and torch.cuda.get_device_capability(0)[0] >= 6
+
+apply_rotary_emb_func,rms_norm,flash_attn_unpadded_func = None,None,None
+
+
+
+def _import_flash_attn():
+    global apply_rotary_emb_func, rms_norm, flash_attn_unpadded_func
+    try:
+        from flash_attn.layers.rotary import apply_rotary_emb_func as __apply_rotary_emb_func
+        apply_rotary_emb_func = __apply_rotary_emb_func
+    except ImportError:
+        logger.warning(
+            "Warning: import flash_attn rotary fail, please install FlashAttention rotary to get higher efficiency "
+            "https://github.com/Dao-AILab/flash-attention/tree/main/csrc/rotary"
+        )
+
+    try:
+        from flash_attn.ops.rms_norm import rms_norm as __rms_norm
+        rms_norm = __rms_norm
+    except ImportError:
+        logger.warning(
+            "Warning: import flash_attn rms_norm fail, please install FlashAttention layer_norm to get higher efficiency "
+            "https://github.com/Dao-AILab/flash-attention/tree/main/csrc/layer_norm"
+        )
+
+    try:
+        import flash_attn
+        if int(flash_attn.__version__.split(".")[0]) >= 2:
+            from flash_attn.flash_attn_interface import flash_attn_varlen_func as __flash_attn_unpadded_func
+        else:
+            from flash_attn.flash_attn_interface import flash_attn_unpadded_func as __flash_attn_unpadded_func
+        flash_attn_unpadded_func = __flash_attn_unpadded_func
+    except ImportError:
+        logger.warning(
+            "Warning: import flash_attn fail, please install FlashAttention to get higher efficiency "
+            "https://github.com/Dao-AILab/flash-attention"
+        )
 
 
 def default_init(cls, *args, **kwargs):
@@ -85,15 +112,6 @@ def setup_model_profile(skip_init_flag=True):
     else:
         skip_init_function = default_init
 
-
-try:
-    from flash_attn.flash_attn_interface import flash_attn_unpadded_func
-except ImportError:
-    flash_attn_unpadded_func = None
-    print(
-        "Warning: import flash_attn fail, please install FlashAttention "
-        "https://github.com/Dao-AILab/flash-attention"
-    )
 
 
 class FlashSelfAttention(torch.nn.Module):
@@ -410,7 +428,7 @@ class QWenAttention(nn.Module):
 
 
         if self.use_logn_attn and not self.training:
-            if self.logn_tensor.device != query.device:
+            if self.logn_tensor.device != query.device or self.logn_tensor.dtype != query.dtype:
                 self.logn_tensor = self.logn_tensor.to(query.device).type_as(query)
             seq_start = key.size(1) - query.size(1)
             seq_end = key.size(1)
@@ -566,27 +584,66 @@ class QWenPreTrainedModel(PreTrainedModel):
     def _init_weights(self, module):
         if not getattr(self.config,'initializer_weight',False):
             return
+        config = self.config
         """Initialize the weights."""
-        if isinstance(module, nn.Linear):
-            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
-            if module.bias is not None:
-                module.bias.data.zero_()
-        elif isinstance(module, nn.Embedding):
-            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
-            if module.padding_idx is not None:
-                module.weight.data[module.padding_idx].zero_()
-        elif isinstance(module, RMSNorm):
-            module.weight.data.fill_(1.0)
+        assert (
+                config.bf16 + config.fp16 + config.fp32 <= 1
+        ), "Only one of \"bf16\", \"fp16\", \"fp32\" can be true"
 
-        for name, p in module.named_parameters():
-            if name == "c_proj.weight":
-                p.data.normal_(
-                    mean=0.0,
-                    std=(
-                        self.config.initializer_range
-                        / math.sqrt(2 * self.config.n_layer)
-                    ),
+        autoset_precision = config.bf16 + config.fp16 + config.fp32 == 0
+
+        if autoset_precision:
+            if SUPPORT_BF16:
+                logger.warning(
+                    "The model is automatically converting to bf16 for faster inference. "
+                    "If you want to disable the automatic precision, please manually add bf16/fp16/fp32=True to \"AutoModelForCausalLM.from_pretrained\"."
                 )
+                config.bf16 = True
+            elif SUPPORT_FP16:
+                logger.warning(
+                    "The model is automatically converting to fp16 for faster inference. "
+                    "If you want to disable the automatic precision, please manually add bf16/fp16/fp32=True to \"AutoModelForCausalLM.from_pretrained\"."
+                )
+                config.fp16 = True
+            else:
+                config.fp32 = True
+
+        if config.bf16 and SUPPORT_CUDA and not SUPPORT_BF16:
+            logger.warning(
+                "Your device does NOT seem to support bf16, you can switch to fp16 or fp32 by by passing fp16/fp32=True in \"AutoModelForCausalLM.from_pretrained\".")
+        if config.fp16 and SUPPORT_CUDA and not SUPPORT_FP16:
+            logger.warning(
+                "Your device does NOT support faster inference with fp16, please switch to fp32 which is likely to be faster")
+        if config.fp32:
+            if SUPPORT_BF16:
+                logger.warning(
+                    "Your device support faster inference by passing bf16=True in \"AutoModelForCausalLM.from_pretrained\".")
+            elif SUPPORT_FP16:
+                logger.warning(
+                    "Your device support faster inference by passing fp16=True in \"AutoModelForCausalLM.from_pretrained\".")
+
+        if config.use_flash_attn == "auto":
+            if config.bf16 or config.fp16:
+                logger.warning("Try importing flash-attention for faster inference...")
+                config.use_flash_attn = True
+            else:
+                config.use_flash_attn = False
+        if config.use_flash_attn and config.fp32:
+            logger.warning("Flash attention will be disabled because it does NOT support fp32.")
+
+        if config.use_flash_attn:
+            _import_flash_attn()
+
+        self.transformer = QWenModel(config)
+        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+
+        if config.bf16:
+            self.transformer.bfloat16()
+            self.lm_head.bfloat16()
+        if config.fp16:
+            self.transformer.half()
+            self.lm_head.half()
+        self.post_init()
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, QWenModel):
@@ -955,6 +1012,8 @@ class QWenLMHeadModel(QWenPreTrainedModel):
         **kwargs
     ) -> Tuple[str, HistoryType]:
 
+        assert self.generation_config.chat_format == 'chatml', _ERROR_BAD_CHAT_FORMAT
+
         if history is None:
             history = []
 
@@ -1002,9 +1061,15 @@ class QWenLMHeadModel(QWenPreTrainedModel):
             **kwargs
     ) -> Generator[str, Any, None]:
 
+        assert self.generation_config.chat_format == 'chatml', _ERROR_BAD_CHAT_FORMAT
         if history is None:
             history = []
 
+        stop_words_ids = kwargs.pop('stop_words_ids',[])
+        if not isinstance(stop_words_ids,list):
+            stop_words_ids = [stop_words_ids]
+
+        logits_processor = kwargs.pop('logits_processor',None)
         raw_text, context_tokens = make_context(
             tokenizer,
             query,
@@ -1014,26 +1079,37 @@ class QWenLMHeadModel(QWenPreTrainedModel):
             chat_format=self.generation_config.chat_format,
         )
 
-        stop_words_ids = get_stop_words_ids(
+        stop_words_ids.extend(get_stop_words_ids(
             self.generation_config.chat_format, tokenizer
-        )
+        ))
+        if stop_words_ids is not None:
+            stop_words_logits_processor = StopWordsLogitsProcessor(
+                stop_words_ids=stop_words_ids,
+                eos_token_id=self.generation_config.eos_token_id,
+            )
+            if logits_processor is None:
+                logits_processor = LogitsProcessorList([stop_words_logits_processor])
+            else:
+                logits_processor.append(stop_words_logits_processor)
         input_ids = torch.tensor([context_tokens]).to(self.device)
 
-        assert self.generation_config.chat_format == 'chatml'
         from transformers_stream_generator.main import NewGenerationMixin, StreamGenerationConfig
-        self.__class__.generate = NewGenerationMixin.generate
+        self.__class__.generate_stream = NewGenerationMixin.generate
         self.__class__.sample_stream = NewGenerationMixin.sample_stream
-        stream_config = StreamGenerationConfig(**self.generation_config.to_dict(), **kwargs, do_stream=True)
+        stream_config = StreamGenerationConfig(**self.generation_config.to_dict(), do_stream=True)
 
         def stream_generator():
             outputs = []
-            for token in self.generate(input_ids, return_dict_in_generate=False, generation_config=stream_config):
+            for token in self.generate_stream(
+                    input_ids,
+                    return_dict_in_generate=False,
+                    generation_config=stream_config,
+                    logits_processor=logits_processor,
+                    **kwargs):
                 outputs.append(token.item())
-                if outputs[-1] in (tokenizer.im_end_id, tokenizer.im_start_id):
-                    break
-                yield tokenizer.decode(outputs, skip_special_tokens=True)
-
+                yield tokenizer.decode(outputs, skip_special_tokens=True, erros='ignore')
         return stream_generator()
+
 
 
     def generate(
@@ -1125,8 +1201,8 @@ def _rotate_half(x):
     return torch.cat((-x2, x1), dim=-1)
 
 
-def apply_rotary_pos_emb(t, freqs, use_flash_rotary=False):
-    if use_flash_rotary:
+def apply_rotary_pos_emb(t, freqs):
+    if apply_rotary_emb_func is not None:
         t_ = t.float()
         freqs = freqs.squeeze(0).squeeze(1)
         cos = freqs[:, : freqs.shape[-1] // 2].cos()
