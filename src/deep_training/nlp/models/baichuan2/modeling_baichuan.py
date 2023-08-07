@@ -500,10 +500,15 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
         max_input_tokens = self.config.model_max_length - max_new_tokens
         max_input_tokens = max(self.config.model_max_length // 2, max_input_tokens)
         total_input, round_input = [], []
+        user_token_id = getattr(self.generation_config,'user_token_id',None)
+        assistant_token_id = getattr(self.generation_config,'assistant_token_id',None)
+        user_token_id = [] if user_token_id is None else [user_token_id]
+        assistant_token_id = [] if assistant_token_id is None else [assistant_token_id]
+
         for i, message in enumerate(messages[::-1]):
             content_tokens = tokenizer.encode(message['content'])
             if message['role'] == 'user':
-                round_input = [self.generation_config.user_token_id] + content_tokens + round_input
+                round_input = user_token_id + content_tokens + round_input
                 if total_input and len(total_input) + len(round_input) > max_input_tokens:
                     break
                 else:
@@ -513,9 +518,7 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
                     else:
                         round_input = []
             elif message['role'] == 'assistant':
-                round_input = [
-                    self.generation_config.assistant_token_id
-                ] + content_tokens + round_input
+                round_input = assistant_token_id + content_tokens + round_input
             else:
                 raise ValueError(f"message role not supported yet: {message['role']}")
         total_input = total_input[-max_input_tokens:]  # truncate left
