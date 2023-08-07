@@ -4,6 +4,7 @@
 import inspect
 import torch
 
+
 def skip_init(module_cls, *args, **kwargs):
     r"""
     Given a module class object and args / kwargs, instantiates the module without initializing
@@ -52,3 +53,5 @@ def skip_init(module_cls, *args, **kwargs):
     final_device = kwargs.pop('device', 'cpu')
     kwargs['device'] = 'meta'
     return module_cls(*args, **kwargs).to_empty(device=final_device)
+
+

@@ -8,9 +8,6 @@ __all__ = [
     'copy_dataclass'
 ]
 
-
-
-
 def copy_dataclass(d_obj, **kw):
     D_class = d_obj.__class__
     input = {**kw}
@@ -21,3 +18,4 @@ def copy_dataclass(d_obj, **kw):
 
     copy_d = D_class(**input)
     return copy_d
+
