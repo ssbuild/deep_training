@@ -21,6 +21,16 @@ logger = logging.get_logger(__name__)
 
 _CONFIG_FOR_DOC = "LlamaConfig"
 
+def default_init(cls, *args, **kwargs):
+    return cls(*args, **kwargs)
+skip_init_function = skip_init
+
+def setup_model_profile(skip_init_flag=True):
+    global skip_init_function
+    if skip_init_flag:
+        skip_init_function = skip_init
+    else:
+        skip_init_function = default_init
 
 # Copied from transformers.models.bart.modeling_bart._make_causal_mask
 def _make_causal_mask(
@@ -335,6 +345,10 @@ class LlamaPreTrainedModel(PreTrainedModel):
     _keys_to_ignore_on_load_unexpected = [r"decoder\.version"]
 
     def _init_weights(self, module):
+
+        if not getattr(self.config,'initializer_weight',False):
+            return
+
         std = self.config.initializer_range
         if isinstance(module, nn.Linear):
             module.weight.data.normal_(mean=0.0, std=std)
