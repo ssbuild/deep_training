@@ -647,7 +647,7 @@ class XverseForCausalLM(XversePreTrainedModel):
         self.post_init()
 
         self.quantized = False
-        if self.config.quantization_bit in [4, 8]:
+        if getattr(self.config,'quantization_bit',False) in [4, 8]:
             self.quantize(self.config.quantization_bit, empty_init=True)
 
     def get_input_embeddings(self):
