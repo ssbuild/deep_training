@@ -155,7 +155,7 @@ def quantize(model, bits, empty_init=False, device=None,**kwarg):
     for layer in model.model.layers:
         objs = ['q_proj','k_proj','v_proj','o_proj']
         for k in objs:
-            w = getattr(layer.attn,k)
+            w = getattr(layer.self_attn,k)
             setattr(layer.self_attn,k,
                     QuantizedLinear(
                         bits=bits,
