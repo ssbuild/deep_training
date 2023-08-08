@@ -1110,7 +1110,7 @@ class QWenLMHeadModel(QWenPreTrainedModel):
                     logits_processor=logits_processor,
                     **kwargs):
                 outputs.append(token.item())
-                yield tokenizer.decode(outputs, skip_special_tokens=True, erros='ignore')
+                yield tokenizer.decode(outputs, skip_special_tokens=True, errors='ignore')
         return stream_generator()
 
 
