@@ -90,13 +90,16 @@ def _import_flash_attn():
 
     try:
         import flash_attn
-        if int(flash_attn.__version__.split(".")[0]) >= 2:
-            from flash_attn.flash_attn_interface import flash_attn_varlen_func as __flash_attn_unpadded_func
-        else:
+        if not hasattr(flash_attn, '__version__'):
             from flash_attn.flash_attn_interface import flash_attn_unpadded_func as __flash_attn_unpadded_func
+        else:
+            if int(flash_attn.__version__.split(".")[0]) >= 2:
+                from flash_attn.flash_attn_interface import flash_attn_varlen_func as __flash_attn_unpadded_func
+            else:
+                from flash_attn.flash_attn_interface import flash_attn_unpadded_func as __flash_attn_unpadded_func
         flash_attn_unpadded_func = __flash_attn_unpadded_func
     except ImportError:
-        logger.warning(
+        logger.warn(
             "Warning: import flash_attn fail, please install FlashAttention to get higher efficiency "
             "https://github.com/Dao-AILab/flash-attention"
         )
