@@ -59,13 +59,14 @@ If you are directly using the model downloaded from Huggingface, please make sur
 我们检测到您可能在使用预训练模型（而非chat模型）进行多轮chat，因为您当前在generation_config指定的chat_format，并未设置为我们在对话中所支持的"chatml"格式。
 如果您在直接使用我们从Huggingface提供的模型，请确保您在调用model.chat()时，使用的是"Qwen/Qwen-7B-Chat"模型（而非"Qwen/Qwen-7B"预训练模型）。
 """
-
-SUPPORT_CUDA = torch.cuda.is_available()
-SUPPORT_BF16 = SUPPORT_CUDA and torch.cuda.is_bf16_supported()
-SUPPORT_FP16 = SUPPORT_CUDA and torch.cuda.get_device_capability(0)[0] >= 6
+SUPPORT_CUDA,SUPPORT_BF16,SUPPORT_FP16 = True,True,False
+def _AutoDetect():
+    global SUPPORT_CUDA,SUPPORT_BF16,SUPPORT_FP16
+    SUPPORT_CUDA = torch.cuda.is_available()
+    SUPPORT_BF16 = SUPPORT_CUDA and torch.cuda.is_bf16_supported()
+    SUPPORT_FP16 = SUPPORT_CUDA and torch.cuda.get_device_capability(0)[0] >= 6
 
 apply_rotary_emb_func,rms_norm,flash_attn_unpadded_func = None,None,None
-
 
 
 def _import_flash_attn():
@@ -833,11 +834,10 @@ class QWenLMHeadModel(QWenPreTrainedModel):
         global skip_init_function
         init_method = skip_init_function
 
+
         config = self.config
-
-
         autoset_precision = config.bf16 + config.fp16 + config.fp32 == 0
-
+        _AutoDetect()
         if autoset_precision:
             if SUPPORT_BF16:
                 logger.warning(
@@ -1044,7 +1044,7 @@ class QWenLMHeadModel(QWenPreTrainedModel):
             chat_format=self.generation_config.chat_format,
         )
 
-        stop_words_ids.append(get_stop_words_ids(
+        stop_words_ids.extend(get_stop_words_ids(
             self.generation_config.chat_format, tokenizer
         ))
         input_ids = torch.tensor([context_tokens]).to(self.device)
