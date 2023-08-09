@@ -135,8 +135,8 @@ def make_context(
 
         def _tokenize_str(role, content):
             return f"{role}\n{content}", tokenizer.encode(
-                role
-            ) + nl_tokens + tokenizer.encode(content)
+                role, allowed_special=set()
+            ) + nl_tokens + tokenizer.encode(content, allowed_special=set())
 
         system_text, system_tokens_part = _tokenize_str("system", system)
         system_tokens = im_start_tokens + system_tokens_part + im_end_tokens
@@ -198,8 +198,9 @@ def _decode_default(
     raw_text_len: int,
     verbose: bool = False,
     return_end_reason: bool = False,
+    errors: str='replace',
 ):
-    trim_decode_tokens = tokenizer.decode(tokens)[raw_text_len:]
+    trim_decode_tokens = tokenizer.decode(tokens, errors=errors)[raw_text_len:]
     if verbose:
         print("\nRaw Generate: ", trim_decode_tokens)
 
@@ -231,6 +232,7 @@ def _decode_chatml(
     context_length: int,
     verbose: bool = False,
     return_end_reason: bool = False,
+    errors: str='replace'
 ):
     end_reason = f"Gen length {len(tokens)}"
     eod_token_idx = context_length
@@ -239,9 +241,9 @@ def _decode_chatml(
             end_reason = f"Gen {tokenizer.decode([tokens[eod_token_idx]])!r}"
             break
 
-    trim_decode_tokens = tokenizer.decode(tokens[:eod_token_idx])[raw_text_len:]
+    trim_decode_tokens = tokenizer.decode(tokens[:eod_token_idx], errors=errors)[raw_text_len:]
     if verbose:
-        print("\nRaw Generate w/o EOD:", tokenizer.decode(tokens)[raw_text_len:])
+        print("\nRaw Generate w/o EOD:", tokenizer.decode(tokens, errors=errors)[raw_text_len:])
         print("\nRaw Generate:", trim_decode_tokens)
         print("\nEnd Reason:", end_reason)
     for stop_word in stop_words:
@@ -264,6 +266,7 @@ def decode_tokens(
     chat_format: str,
     verbose: bool = False,
     return_end_reason: bool = False,
+    errors: str="replace",
 ) -> str:
     if torch.is_tensor(tokens):
         tokens = tokens.cpu().numpy().tolist()
@@ -278,6 +281,7 @@ def decode_tokens(
             context_length=context_length,
             verbose=verbose,
             return_end_reason=return_end_reason,
+            errors=errors,
         )
     elif chat_format == "raw":
         return _decode_default(
@@ -288,6 +292,7 @@ def decode_tokens(
             raw_text_len=raw_text_len,
             verbose=verbose,
             return_end_reason=return_end_reason,
+            errors=errors,
         )
     else:
         raise NotImplementedError(f"Unknown chat format {chat_format!r}")
@@ -296,7 +301,6 @@ def decode_tokens(
 class StopWordsLogitsProcessor(LogitsProcessor):
     """
     :class:`transformers.LogitsProcessor` that enforces that when specified sequences appear, stop geration.
-
     Args:
         stop_words_ids (:obj:`List[List[int]]`):
             List of list of token ids of stop ids. In order to get the tokens of the words

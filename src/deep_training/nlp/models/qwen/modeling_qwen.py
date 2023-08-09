@@ -258,7 +258,7 @@ class QWenAttention(nn.Module):
             math.log(i, self.seq_length) if i > self.seq_length else 1
             for i in range(1, 32768)
         ]
-        self.logn_tensor = torch.Tensor(logn_list)[None, :, None, None]
+        self.logn_tensor = torch.tensor(logn_list)[None, :, None, None]
         self._ntk_cached = 1.0
 
         self.attn_dropout = nn.Dropout(config.attn_pdrop)
@@ -587,66 +587,29 @@ class QWenPreTrainedModel(PreTrainedModel):
     def _init_weights(self, module):
         if not getattr(self.config,'initializer_weight',False):
             return
-        config = self.config
+
         """Initialize the weights."""
-        assert (
-                config.bf16 + config.fp16 + config.fp32 <= 1
-        ), "Only one of \"bf16\", \"fp16\", \"fp32\" can be true"
+        if isinstance(module, nn.Linear):
+            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
+            if module.bias is not None:
+                module.bias.data.zero_()
+        elif isinstance(module, nn.Embedding):
+            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
+            if module.padding_idx is not None:
+                module.weight.data[module.padding_idx].zero_()
+        elif isinstance(module, RMSNorm):
+            module.weight.data.fill_(1.0)
 
-        autoset_precision = config.bf16 + config.fp16 + config.fp32 == 0
-
-        if autoset_precision:
-            if SUPPORT_BF16:
-                logger.warning(
-                    "The model is automatically converting to bf16 for faster inference. "
-                    "If you want to disable the automatic precision, please manually add bf16/fp16/fp32=True to \"AutoModelForCausalLM.from_pretrained\"."
+        for name, p in module.named_parameters():
+            if name == "c_proj.weight":
+                p.data.normal_(
+                    mean=0.0,
+                    std=(
+                            self.config.initializer_range
+                            / math.sqrt(2 * self.config.n_layer)
+                    ),
                 )
-                config.bf16 = True
-            elif SUPPORT_FP16:
-                logger.warning(
-                    "The model is automatically converting to fp16 for faster inference. "
-                    "If you want to disable the automatic precision, please manually add bf16/fp16/fp32=True to \"AutoModelForCausalLM.from_pretrained\"."
-                )
-                config.fp16 = True
-            else:
-                config.fp32 = True
 
-        if config.bf16 and SUPPORT_CUDA and not SUPPORT_BF16:
-            logger.warning(
-                "Your device does NOT seem to support bf16, you can switch to fp16 or fp32 by by passing fp16/fp32=True in \"AutoModelForCausalLM.from_pretrained\".")
-        if config.fp16 and SUPPORT_CUDA and not SUPPORT_FP16:
-            logger.warning(
-                "Your device does NOT support faster inference with fp16, please switch to fp32 which is likely to be faster")
-        if config.fp32:
-            if SUPPORT_BF16:
-                logger.warning(
-                    "Your device support faster inference by passing bf16=True in \"AutoModelForCausalLM.from_pretrained\".")
-            elif SUPPORT_FP16:
-                logger.warning(
-                    "Your device support faster inference by passing fp16=True in \"AutoModelForCausalLM.from_pretrained\".")
-
-        if config.use_flash_attn == "auto":
-            if config.bf16 or config.fp16:
-                logger.warning("Try importing flash-attention for faster inference...")
-                config.use_flash_attn = True
-            else:
-                config.use_flash_attn = False
-        if config.use_flash_attn and config.fp32:
-            logger.warning("Flash attention will be disabled because it does NOT support fp32.")
-
-        if config.use_flash_attn:
-            _import_flash_attn()
-
-        self.transformer = QWenModel(config)
-        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-
-        if config.bf16:
-            self.transformer.bfloat16()
-            self.lm_head.bfloat16()
-        if config.fp16:
-            self.transformer.half()
-            self.lm_head.half()
-        self.post_init()
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, QWenModel):
@@ -870,11 +833,59 @@ class QWenLMHeadModel(QWenPreTrainedModel):
         global skip_init_function
         init_method = skip_init_function
 
+        config = self.config
+
+
+        autoset_precision = config.bf16 + config.fp16 + config.fp32 == 0
+
+        if autoset_precision:
+            if SUPPORT_BF16:
+                logger.warning(
+                    "The model is automatically converting to bf16 for faster inference. "
+                    "If you want to disable the automatic precision, please manually add bf16/fp16/fp32=True to \"AutoModelForCausalLM.from_pretrained\"."
+                )
+                config.bf16 = True
+            elif SUPPORT_FP16:
+                logger.warning(
+                    "The model is automatically converting to fp16 for faster inference. "
+                    "If you want to disable the automatic precision, please manually add bf16/fp16/fp32=True to \"AutoModelForCausalLM.from_pretrained\"."
+                )
+                config.fp16 = True
+            else:
+                config.fp32 = True
+
+        if config.bf16 and SUPPORT_CUDA and not SUPPORT_BF16:
+            logger.warning(
+                "Your device does NOT seem to support bf16, you can switch to fp16 or fp32 by by passing fp16/fp32=True in \"AutoModelForCausalLM.from_pretrained\".")
+        if config.fp16 and SUPPORT_CUDA and not SUPPORT_FP16:
+            logger.warning(
+                "Your device does NOT support faster inference with fp16, please switch to fp32 which is likely to be faster")
+        if config.fp32:
+            if SUPPORT_BF16:
+                logger.warning(
+                    "Your device support faster inference by passing bf16=True in \"AutoModelForCausalLM.from_pretrained\".")
+            elif SUPPORT_FP16:
+                logger.warning(
+                    "Your device support faster inference by passing fp16=True in \"AutoModelForCausalLM.from_pretrained\".")
+
+        assert (
+                config.bf16 + config.fp16 + config.fp32 <= 1
+        ), "Only one of \"bf16\", \"fp16\", \"fp32\" can be true"
+
+        if config.use_flash_attn == "auto":
+            if config.bf16 or config.fp16:
+                logger.warning("Try importing flash-attention for faster inference...")
+                config.use_flash_attn = True
+            else:
+                config.use_flash_attn = False
+        if config.use_flash_attn and config.fp32:
+            logger.warning("Flash attention will be disabled because it does NOT support fp32.")
+
+        if config.use_flash_attn:
+            _import_flash_attn()
+
         self.transformer = QWenModel(config,**kwargs)
         self.lm_head = init_method(nn.Linear,config.n_embd, config.vocab_size, bias=False,**kwargs)
-        assert not (
-            config.bf16 and config.fp16
-        ), "In config, bf16 and fp16 cannot both be true"
         if config.bf16:
             self.transformer.bfloat16()
             self.lm_head.bfloat16()
@@ -1012,6 +1023,7 @@ class QWenLMHeadModel(QWenPreTrainedModel):
         history: Optional[HistoryType],
         system: str = "You are a helpful assistant.",
         append_history: bool = True,
+        stop_words_ids: Optional[List[List[int]]] = None,
         **kwargs
     ) -> Tuple[str, HistoryType]:
 
@@ -1019,6 +1031,9 @@ class QWenLMHeadModel(QWenPreTrainedModel):
 
         if history is None:
             history = []
+
+        if stop_words_ids is None:
+            stop_words_ids = []
 
         raw_text, context_tokens = make_context(
             tokenizer,
@@ -1029,9 +1044,9 @@ class QWenLMHeadModel(QWenPreTrainedModel):
             chat_format=self.generation_config.chat_format,
         )
 
-        stop_words_ids = get_stop_words_ids(
+        stop_words_ids.append(get_stop_words_ids(
             self.generation_config.chat_format, tokenizer
-        )
+        ))
         input_ids = torch.tensor([context_tokens]).to(self.device)
 
         outputs = self.generate(
@@ -1182,9 +1197,9 @@ class RotaryEmbedding(torch.nn.Module):
                     / self.dim
                 )
             )
-            self._seq_len_cached = seqlen
+            self._seq_len_cached = max(2 * seqlen, 16)
             self._ntk_alpha_cached = ntk_alpha
-            seq = torch.arange(seqlen, device=self.inv_freq.device)
+            seq = torch.arange(self._seq_len_cached, device=self.inv_freq.device)
             freqs = torch.outer(seq.type_as(self.inv_freq), self.inv_freq)
             emb = torch.cat((freqs, freqs), dim=-1)
             from einops import rearrange
@@ -1205,7 +1220,7 @@ def _rotate_half(x):
 
 
 def apply_rotary_pos_emb(t, freqs):
-    if apply_rotary_emb_func is not None:
+    if apply_rotary_emb_func is not None and t.is_cuda:
         t_ = t.float()
         freqs = freqs.squeeze(0).squeeze(1)
         cos = freqs[:, : freqs.shape[-1] // 2].cos()

@@ -52,7 +52,6 @@ class QWenConfig(PretrainedConfig):
             eos_token_id=eos_token_id, tie_word_embeddings=tie_word_embeddings, **kwargs
         )
 
-
         self.vocab_size = vocab_size
         self.n_embd = n_embd
         self.n_layer = n_layer
