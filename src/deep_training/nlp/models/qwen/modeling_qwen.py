@@ -196,7 +196,6 @@ class QWenAttention(nn.Module):
         )
         self.register_buffer("masked_bias", torch.tensor(-1e4), persistent=False)
         self.layer_number = max(1, layer_number)
-        self.params_dtype = config.params_dtype
         self.seq_length = config.seq_length
 
         self.hidden_size = config.hidden_size
@@ -232,7 +231,7 @@ class QWenAttention(nn.Module):
             and not self.is_fp32
         ):
             self.core_attention_flash = FlashSelfAttention(
-                causal=True, attention_dropout=config.attn_pdrop,**kwargs
+                causal=True, attention_dropout=config.attn_dropout_prob,**kwargs
             )
 
         self.bf16 = config.bf16
@@ -262,7 +261,7 @@ class QWenAttention(nn.Module):
         self.logn_tensor = torch.tensor(logn_list)[None, :, None, None]
         self._ntk_cached = 1.0
 
-        self.attn_dropout = nn.Dropout(config.attn_pdrop)
+        self.attn_dropout = nn.Dropout(config.attn_dropout_prob)
 
     def _attn(self, query, key, value, attention_mask=None, head_mask=None):
         query = query.type_as(key)
@@ -481,12 +480,12 @@ class QWenMLP(nn.Module):
     def __init__(self, config,**kwargs):
         super().__init__()
         self.w1 = nn.Linear(
-            config.hidden_size, config.ffn_hidden_size // 2, bias=not config.no_bias,**kwargs
+            config.hidden_size, config.intermediate_size // 2, bias=not config.no_bias,**kwargs
         )
         self.w2 = nn.Linear(
-            config.hidden_size, config.ffn_hidden_size // 2, bias=not config.no_bias,**kwargs
+            config.hidden_size, config.intermediate_size // 2, bias=not config.no_bias,**kwargs
         )
-        ff_dim_in = config.ffn_hidden_size // 2
+        ff_dim_in = config.intermediate_size // 2
         self.c_proj = nn.Linear(ff_dim_in, config.hidden_size, bias=not config.no_bias,**kwargs)
 
     def forward(self, hidden_states):
@@ -502,9 +501,6 @@ class QWenBlock(nn.Module):
         super().__init__()
         self.num_expert = num_expert
         self.layer_number = layer_idx
-        self.apply_residual_connection_post_layernorm = (
-            config.apply_residual_connection_post_layernorm
-        )
         hidden_size = config.hidden_size
         self.apply_residual_connection_post_layernorm = (
             config.apply_residual_connection_post_layernorm
@@ -607,7 +603,7 @@ class QWenPreTrainedModel(PreTrainedModel):
                     mean=0.0,
                     std=(
                             self.config.initializer_range
-                            / math.sqrt(2 * self.config.n_layer)
+                            / math.sqrt(2 * self.config.num_hidden_layers)
                     ),
                 )
 
@@ -622,7 +618,7 @@ class QWenModel(QWenPreTrainedModel):
 
     def __init__(self, config: QWenConfig,**kwargs):
         super().__init__(config)
-        self.vocab_size = config.padded_vocab_size
+        self.vocab_size = config.vocab_size
         self.num_hidden_layers = config.num_hidden_layers
         self.embed_dim = config.hidden_size
 
@@ -644,7 +640,7 @@ class QWenModel(QWenPreTrainedModel):
 
         self.wte = init_method(nn.Embedding,self.vocab_size, self.embed_dim,**kwargs)
 
-        self.drop = nn.Dropout(config.embd_pdrop)
+        self.drop = nn.Dropout(config.emb_dropout_prob)
         self.h = nn.ModuleList(
             [
                 QWenBlock(
@@ -745,7 +741,7 @@ class QWenModel(QWenPreTrainedModel):
             attention_mask = (1.0 - attention_mask) * torch.finfo(self.dtype).min
 
         encoder_attention_mask = None
-        head_mask = self.get_head_mask(head_mask, self.config.n_layer)
+        head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
 
         if inputs_embeds is None:
             inputs_embeds = self.wte(input_ids)
@@ -811,6 +807,9 @@ class QWenModel(QWenPreTrainedModel):
 
         hidden_states = self.ln_f(hidden_states)
         hidden_states = hidden_states.view(output_shape)
+        # Add last hidden state
+        if output_hidden_states:
+            all_hidden_states = all_hidden_states + (hidden_states,)
 
         if not return_dict:
             return tuple(
@@ -885,7 +884,7 @@ class QWenLMHeadModel(QWenPreTrainedModel):
             _import_flash_attn()
 
         self.transformer = QWenModel(config,**kwargs)
-        self.lm_head = init_method(nn.Linear,config.n_embd, config.vocab_size, bias=False,**kwargs)
+        self.lm_head = init_method(nn.Linear,config.hidden_size, config.vocab_size, bias=False,**kwargs)
         if config.bf16:
             self.transformer.bfloat16()
             self.lm_head.bfloat16()
@@ -1035,12 +1034,15 @@ class QWenLMHeadModel(QWenPreTrainedModel):
         if stop_words_ids is None:
             stop_words_ids = []
 
+        max_window_size = kwargs.pop('max_window_size', None)
+        if max_window_size is None:
+            max_window_size = self.generation_config.max_window_size
         raw_text, context_tokens = make_context(
             tokenizer,
             query,
             history=history,
             system=system,
-            max_window_size=6144,
+            max_window_size=max_window_size,
             chat_format=self.generation_config.chat_format,
         )
 
@@ -1063,6 +1065,7 @@ class QWenLMHeadModel(QWenPreTrainedModel):
             context_length=len(context_tokens),
             chat_format=self.generation_config.chat_format,
             verbose=False,
+            errors='replace',                
         )
 
         if append_history:
@@ -1087,13 +1090,18 @@ class QWenLMHeadModel(QWenPreTrainedModel):
         if not isinstance(stop_words_ids,list):
             stop_words_ids = [stop_words_ids]
 
+
+
+        max_window_size = kwargs.get('max_window_size', None)
+        if max_window_size is None:
+            max_window_size = self.generation_config.max_window_size
         logits_processor = kwargs.pop('logits_processor',None)
         raw_text, context_tokens = make_context(
             tokenizer,
             query,
             history=history,
             system=system,
-            max_window_size=6144,
+            max_window_size=max_window_size,
             chat_format=self.generation_config.chat_format,
         )
 

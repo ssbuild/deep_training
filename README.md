@@ -44,9 +44,13 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
  
   
 ## update
+- <strong>2023-08-09</strong>
+  - 0.1.17 update qwen model
+  - 0.1.17.post0 update qwen config
+
 - <strong>2023-08-08</strong>
   - 0.1.15.rc2 support XVERSE-13B  完整训练 [xverse_finetuning](https://github.com/ssbuild/xverse_finetuning)
-  - 0.1.17 update qwen model
+
   
 - <strong>2023-08-05</strong>
   - support qwen(千问)  完整训练 [qwen_finetuning](https://github.com/ssbuild/qwen_finetuning)
