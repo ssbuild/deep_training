@@ -27,14 +27,8 @@ from transformers.modeling_outputs import (
 )
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import logging
-
-try:
-    from einops import rearrange
-except ImportError:
-    rearrange = None
+from einops import rearrange
 from torch import nn
-
-
 
 from .configuration_qwen import QWenConfig
 from .qwen_generation_utils import (
@@ -65,6 +59,8 @@ def _AutoDetect():
     SUPPORT_CUDA = torch.cuda.is_available()
     SUPPORT_BF16 = SUPPORT_CUDA and torch.cuda.is_bf16_supported()
     SUPPORT_FP16 = SUPPORT_CUDA and torch.cuda.get_device_capability(0)[0] >= 6
+
+_AutoDetect()
 
 apply_rotary_emb_func,rms_norm,flash_attn_unpadded_func = None,None,None
 
@@ -833,10 +829,11 @@ class QWenLMHeadModel(QWenPreTrainedModel):
         global skip_init_function
         init_method = skip_init_function
 
+        global SUPPORT_CUDA, SUPPORT_BF16, SUPPORT_FP16
 
         config = self.config
         autoset_precision = config.bf16 + config.fp16 + config.fp32 == 0
-        _AutoDetect()
+
         if autoset_precision:
             if SUPPORT_BF16:
                 logger.warning(
@@ -1210,7 +1207,7 @@ class RotaryEmbedding(torch.nn.Module):
             seq = torch.arange(self._seq_len_cached, device=self.inv_freq.device)
             freqs = torch.outer(seq.type_as(self.inv_freq), self.inv_freq)
             emb = torch.cat((freqs, freqs), dim=-1)
-            from einops import rearrange
+            # from einops import rearrange
 
             self._rotary_pos_emb_cache = rearrange(emb, "n d -> 1 n 1 d")
 
@@ -1220,7 +1217,7 @@ class RotaryEmbedding(torch.nn.Module):
 
 
 def _rotate_half(x):
-    from einops import rearrange
+    # from einops import rearrange
 
     x = rearrange(x, "... (j d) -> ... j d", j=2)
     x1, x2 = x.unbind(dim=-2)
