@@ -47,12 +47,14 @@ class DynamicScaledRotary(torch.nn.Module):
 
 
 class DynamicScaledRotaryGLM(torch.nn.Module):
-    def __init__(self, dim, base=10000, ntk=False,device=None):
+    def __init__(self, dim,max_position_embeddings=2048, base=10000, ntk=False,device=None,learnable=False):
         super().__init__()
         self.ntk = ntk
         inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float().to(device) / dim))
         self.register_buffer("inv_freq", inv_freq)
         self.max_seq_len_cached = None
+        self.max_position_embeddings = max_position_embeddings
+        self.learnable = learnable
 
 
     def forward(self, x, seq_dim=1, seq_len=None):

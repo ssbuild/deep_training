@@ -35,19 +35,20 @@ class NTKScaledRotary(torch.nn.Module):
 
 
 class NTKScaledRotaryGLM(torch.nn.Module):
-    def __init__(self, dim, base=10000, alpha=1, device=None):
+    def __init__(self, dim, max_position_embeddings=2048,base=10000, alpha=1, device=None,learnable=False):
         super().__init__()
         base = base * alpha ** (dim / (dim - 2))
         inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float().to(device) / dim))
         self.register_buffer('inv_freq', inv_freq)
         self.max_seq_len_cached = None
-
+        self.max_position_embeddings = max_position_embeddings
+        self.learnable = learnable
 
     def forward(self, x, seq_dim=1, seq_len=None):
         if seq_len is None:
             seq_len = x.shape[seq_dim]
         if self.max_seq_len_cached is None or (seq_len > self.max_seq_len_cached):
-            self.max_seq_len_cached = None if self.learnable else seq_len
+            self.max_seq_len_cached = None if self.learnable else max(seq_len,self.max_position_embeddings)
             t = torch.arange(seq_len, device=x.device, dtype=self.inv_freq.dtype)
             freqs = torch.einsum('i,j->ij', t, self.inv_freq)
             # Different from paper, but it uses a different permutation in order to obtain the same calculation
@@ -61,7 +62,7 @@ class NTKScaledRotaryGLM(torch.nn.Module):
 
 
 class NTKScaledRotaryGLM2(torch.nn.Module):
-    def __init__(self, dim,rope_ratio=1.0, original_impl=False,base=10000, alpha=1, device=None):
+    def __init__(self, dim,rope_ratio=1.0, original_impl=False,max_position_embeddings=2048,base=10000, alpha=1, device=None):
         super().__init__()
         base = base * alpha ** (dim / (dim - 2))
         inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float().to(device) / dim))
@@ -69,6 +70,7 @@ class NTKScaledRotaryGLM2(torch.nn.Module):
         self.dim = dim
         self.original_impl = original_impl
         self.rope_ratio = rope_ratio
+        self.max_position_embeddings = max_position_embeddings
 
     def forward_impl(
             self, seq_len: int, n_elem: int, dtype: torch.dtype, device: torch.device, base: int = 10000
