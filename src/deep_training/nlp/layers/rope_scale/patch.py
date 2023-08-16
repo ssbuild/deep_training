@@ -17,24 +17,36 @@ __all__ = [
 ]
 
 def patch_for_dynamic_scaled_rotary_embeddings(model,name='rotary_emb',max_position_embeddings=None,
-                                               base=10000, ntk=False):
+                                               base=10000, ntk=False,model_type=None):
     assert name
-    from .DynamicScaledRotary import DynamicScaledRotary
+    if model_type is not None:
+        model_type = model_type.lower()
+    from .DynamicScaledRotary import DynamicScaledRotary,DynamicScaledRotaryGLM,DynamicScaledRotaryGLM2
     for n,p in model.named_modules():
         if n.endswith(name):
             inv_freq: nn.Module = getattr(p,'inv_freq',None)
             if inv_freq is None:
                 continue
             dim = inv_freq.size(-1) * 2
-            setattr(model,n,DynamicScaledRotary(dim=dim,
+            if model_type == 'chatglm':
+                class_name = DynamicScaledRotaryGLM
+            elif  model_type == 'chatglm2':
+                class_name = DynamicScaledRotaryGLM2
+            else:
+                class_name = DynamicScaledRotary
+            rope_module = class_name(dim=dim,
                                                 max_position_embeddings= max_position_embeddings or p.max_position_embeddings,
                                                 ntk=ntk,
                                                 base=base,
-                                                device=inv_freq.device))
+                                                device=inv_freq.device)
+            setattr(model.get_submodule('.'.join(n.split('.')[:-1])), name, rope_module)
 
 def patch_for_dynamic_part_ntk_rotary_embeddings(model,name='rotary_emb', max_position_embeddings=2048,original_max_position_embeddings=None ,
-                                                 base=10000, ntk_factor=1.0, extrapolation_factor=1.0, finetuned=False):
+                                                 base=10000, ntk_factor=1.0, extrapolation_factor=1.0, finetuned=False,model_type=None):
     assert name
+    if model_type is not None:
+        model_type = model_type.lower()
+    assert model_type not in ['chatglm', 'chatglm2'], ValueError('NotImplemented')
     from .DynamicPartNTKScaledRotary import DynamicPartNTKScaledRotary
     for n,p in model.named_modules():
         if n.endswith(name):
@@ -42,48 +54,72 @@ def patch_for_dynamic_part_ntk_rotary_embeddings(model,name='rotary_emb', max_po
             if inv_freq is None:
                 continue
             dim = inv_freq.size(-1) * 2
-            setattr(model,n,DynamicPartNTKScaledRotary(dim=dim,
-                                                       max_position_embeddings=max_position_embeddings,
-                                                       original_max_position_embeddings=original_max_position_embeddings or p.max_position_embeddings,
-                                                       base=base,
-                                                       ntk_factor=ntk_factor,
-                                                       extrapolation_factor=extrapolation_factor,
-                                                       finetuned=finetuned,
-                                                       device=inv_freq.device))
+            rope_module = DynamicPartNTKScaledRotary(dim=dim,
+                                       max_position_embeddings=max_position_embeddings,
+                                       original_max_position_embeddings=original_max_position_embeddings or p.max_position_embeddings,
+                                       base=base,
+                                       ntk_factor=ntk_factor,
+                                       extrapolation_factor=extrapolation_factor,
+                                       finetuned=finetuned,
+                                       device=inv_freq.device)
+            setattr(model.get_submodule('.'.join(n.split('.')[:-1])), name, rope_module)
 
-def patch_for_ntk_scaled_rotary_embeddings(model,name='rotary_emb', max_position_embeddings=None, base=10000, alpha=1.0):
+def patch_for_ntk_scaled_rotary_embeddings(model,name='rotary_emb', max_position_embeddings=None, base=10000, alpha=1.0,model_type=None):
     assert name
-    from .NTKScaledRotary import NTKScaledRotary
+    if model_type is not None:
+        model_type = model_type.lower()
+    from .NTKScaledRotary import NTKScaledRotary,NTKScaledRotaryGLM,NTKScaledRotaryGLM2
     for n,p in model.named_modules():
         if n.endswith(name):
             inv_freq: nn.Module = getattr(p,'inv_freq',None)
             if inv_freq is None:
                 continue
             dim = inv_freq.size(-1) * 2
-            setattr(model,n,NTKScaledRotary(dim=dim,
+            if model_type == 'chatglm':
+                class_name = NTKScaledRotaryGLM
+            elif  model_type == 'chatglm2':
+                class_name = NTKScaledRotaryGLM2
+            else:
+                class_name = NTKScaledRotary
+            rope_module = class_name(dim=dim,
                                             max_position_embeddings=max_position_embeddings or p.max_position_embeddings,
                                             base=base,
                                             alpha=alpha,
-                                            device=inv_freq.device))
+                                            device=inv_freq.device)
 
-def patch_for_linear_scaled_rotary_embeddings(model,name='rotary_emb', max_position_embeddings=None, base=10000, scale=1.0):
+            setattr(model.get_submodule('.'.join(n.split('.')[:-1])), name, rope_module)
+
+
+def patch_for_linear_scaled_rotary_embeddings(model,name='rotary_emb', max_position_embeddings=None, base=10000, scale=1.0,model_type=None):
     assert name
-    from .LinearScaledRotary import LinearScaledRotary
+    if model_type is not None:
+        model_type = model_type.lower()
+    from .LinearScaledRotary import LinearScaledRotary,LinearScaledRotaryGLM,LinearScaledRotaryGLM2
     for n, p in model.named_modules():
         if n.endswith(name):
             inv_freq: nn.Module = getattr(p, 'inv_freq', None)
             if inv_freq is None:
                 continue
             dim = inv_freq.size(-1) * 2
-            setattr(model, n, LinearScaledRotary(dim=dim,
-                                              max_position_embeddings=max_position_embeddings or p.max_position_embeddings,
-                                              base=base,
-                                              scale=scale,
-                                              device=inv_freq.device))
+            if model_type == 'chatglm':
+                class_name = LinearScaledRotaryGLM
+            elif  model_type == 'chatglm2':
+                class_name = LinearScaledRotaryGLM2
+            else:
+                class_name = LinearScaledRotary
+            rope_module = class_name(dim=dim,
+                               max_position_embeddings=max_position_embeddings or p.max_position_embeddings,
+                               base=base,
+                               scale=scale,
+                               device=inv_freq.device)
+            setattr(model.get_submodule('.'.join(n.split('.')[:-1])), name, rope_module)
 
 def patch_for_part_ntk_scaled_rotary_embeddings(model,name='rotary_emb', original_max_position_embeddings=None,max_position_embeddings=2048,
-                                                base=10000, scale=1.0, ntk_factor=1.0, extrapolation_factor=1.0):
+                                                base=10000, scale=1.0, ntk_factor=1.0, extrapolation_factor=1.0,model_type=None):
     assert name
+    if model_type is not None:
+        model_type = model_type.lower()
+    assert model_type not in ['chatglm','chatglm2'],ValueError('NotImplemented')
     from .PartNTKScaledRotary import PartNTKScaledRotary
     for n, p in model.named_modules():
         if n.endswith(name):
@@ -91,22 +127,21 @@ def patch_for_part_ntk_scaled_rotary_embeddings(model,name='rotary_emb', origina
             if inv_freq is None:
                 continue
             dim = inv_freq.size(-1) * 2
-            setattr(model, n, PartNTKScaledRotary(dim=dim,
-                                                  original_max_position_embeddings=original_max_position_embeddings or p.max_position_embeddings,
-                                                  max_position_embeddings=max_position_embeddings,
-                                                  base=base,
-                                                  scale=scale,
-                                                  ntk_factor=ntk_factor,
-                                                  extrapolation_factor=extrapolation_factor,
-                                                  device=inv_freq.device))
-
-
+            rope_module = PartNTKScaledRotary(dim=dim,
+                                original_max_position_embeddings=original_max_position_embeddings or p.max_position_embeddings,
+                                max_position_embeddings=max_position_embeddings,
+                                base=base,
+                                scale=scale,
+                                ntk_factor=ntk_factor,
+                                extrapolation_factor=extrapolation_factor,
+                                device=inv_freq.device)
+            setattr(model.get_submodule('.'.join(n.split('.')[:-1])), name, rope_module)
 
 
 
 @dataclass
 class RopeBaseArguments:
-    method: Optional[str] = field(default=None, metadata={"help": "one of dynamic_scaled,dynamic_part_ntk,ntk_scaled,linear_scaled,part_ntk_scaled"})
+    model_type: Optional[str] = field(default=None, metadata={"help": "name of model"})
     name: Optional[str] = field(default="rotary_emb", metadata={"help": "name of rope layer"})
     base: int = field(default=10000, metadata={"help": "base default 10000"})
 
@@ -157,7 +192,8 @@ def inject_rope_scale_layer(model,rope_args):
     if isinstance(rope_args,RotaryDynamicScaledArguments):
         rope_args: RotaryDynamicScaledArguments
         patch_for_dynamic_scaled_rotary_embeddings(model,name=rope_args.name,max_position_embeddings=rope_args.max_position_embeddings,
-                                               base=rope_args.base, ntk=rope_args.ntk)
+                                                   base=rope_args.base, ntk=rope_args.ntk,
+                                                   model_type=rope_args.model_type)
     elif isinstance(rope_args,RotaryDynamicPartNtkArguments):
         rope_args: RotaryDynamicPartNtkArguments
         patch_for_dynamic_part_ntk_rotary_embeddings(model, name=rope_args.name,
@@ -166,20 +202,23 @@ def inject_rope_scale_layer(model,rope_args):
                                                      base=rope_args.base,
                                                      ntk_factor=rope_args.ntk_factor,
                                                      extrapolation_factor=rope_args.extrapolation_factor,
-                                                     finetuned=rope_args.finetuned)
+                                                     finetuned=rope_args.finetuned,
+                                                     model_type=rope_args.model_type)
 
     elif isinstance(rope_args, RotaryNtkScaledArguments):
         rope_args: RotaryNtkScaledArguments
         patch_for_ntk_scaled_rotary_embeddings(model, name=rope_args.name,
                                                max_position_embeddings=rope_args.max_position_embeddings,
                                                base=rope_args.base,
-                                               alpha=rope_args.alpha)
+                                               alpha=rope_args.alpha,
+                                               model_type=rope_args.model_type)
     elif isinstance(rope_args, RotaryLinearScaledArguments):
         rope_args: RotaryLinearScaledArguments
         patch_for_linear_scaled_rotary_embeddings(model, name=rope_args.name,
                                                   max_position_embeddings=rope_args.max_position_embeddings,
                                                   base=rope_args.base,
-                                                  scale=rope_args.scale)
+                                                  scale=rope_args.scale,
+                                                  model_type=rope_args.model_type)
     elif isinstance(rope_args, RotaryPartNtkScaledArguments):
         rope_args: RotaryPartNtkScaledArguments
         patch_for_part_ntk_scaled_rotary_embeddings(model, name=rope_args.name,
@@ -188,7 +227,8 @@ def inject_rope_scale_layer(model,rope_args):
                                                     base=rope_args.base,
                                                     scale=rope_args.scale,
                                                     ntk_factor=rope_args.ntk_factor,
-                                                    extrapolation_factor=rope_args.extrapolation_factor)
+                                                    extrapolation_factor=rope_args.extrapolation_factor,
+                                                    model_type=rope_args.model_type)
     else:
         return None
     return model

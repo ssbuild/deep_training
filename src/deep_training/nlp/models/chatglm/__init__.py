@@ -9,7 +9,6 @@ import os
 import re
 
 import warnings
-from enum import Enum
 from typing import Optional, Tuple, Union, List, Callable, Any, Dict
 
 import torch
