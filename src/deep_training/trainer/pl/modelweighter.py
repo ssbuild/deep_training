@@ -177,7 +177,7 @@ class ModelWeightMixin:
 
         assert self.lora_args is not None and self.lora_args.with_lora
 
-        lora_model: LoraModel = pl_model.backbone  # noqa
+        lora_model: LoraModel = self.backbone  # noqa
 
         lora_model.save_pretrained(output_peft_dir)
 
