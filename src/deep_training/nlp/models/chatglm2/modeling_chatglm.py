@@ -128,12 +128,13 @@ def split_tensor_along_last_dim(
 
 
 class RotaryEmbedding(nn.Module):
-    def __init__(self, dim, original_impl=False, device=None, dtype=None):
+    def __init__(self, dim,rope_ratio=1.0, original_impl=False, device=None, dtype=None):
         super().__init__()
         inv_freq = 1.0 / (10000 ** (torch.arange(0, dim, 2, device=device).to(dtype=dtype) / dim))
         self.register_buffer("inv_freq", inv_freq)
         self.dim = dim
         self.original_impl = original_impl
+        self.rope_ratio = rope_ratio
 
     def forward_impl(
             self, seq_len: int, n_elem: int, dtype: torch.dtype, device: torch.device, base: int = 10000
@@ -763,7 +764,8 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
             config.hidden_size // config.num_attention_heads if config.kv_channels is None else config.kv_channels
         )
 
-        self.rotary_pos_emb = RotaryEmbedding(rotary_dim // 2, original_impl=config.original_rope, device=device,
+        self.rotary_pos_emb = RotaryEmbedding(rotary_dim // 2, rope_ratio=config.rope_ratio,
+                                              original_impl=config.original_rope, device=device,
                                               dtype=config.torch_dtype)
         self.encoder = init_method(GLMTransformer, config, **init_kwargs)
         self.output_layer = init_method(nn.Linear, config.hidden_size, config.padded_vocab_size, bias=False,

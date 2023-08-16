@@ -11,6 +11,7 @@ from transformers import PreTrainedModel, HfArgumentParser, AutoConfig
 from ...data_helper import ModelArguments, TrainingArguments, DataArguments
 from ...nlp.models.prompt import PromptLearningConfig, PromptModel,PromptArguments,get_prompt_model
 from ...nlp.models.lora.v2 import LoraModel, LoraArguments,LoraConfig
+from ...nlp.models.transformer_base import TransformerBase
 from ...utils.save_checkpoint import save_checkpoint_to_hf_format
 
 __all__ = [
@@ -171,5 +172,41 @@ class ModelWeightMixin:
                              llm_weight_only=llm_weight_only,
                              max_shard_size=max_shard_size)
 
+    def save_peft_weight(self,output_peft_dir):
+        from peft import LoraConfig as PeftLoraConfig, TaskType
+
+        assert self.lora_args is not None and self.lora_args.with_lora
+
+        lora_model: LoraModel = pl_model.backbone  # noqa
+
+        lora_model.save_pretrained(output_peft_dir)
+
+        model_base: TransformerBase = self.backbone.model
+        # 权重修改
+        weight_file = os.path.join(output_peft_dir, 'adapter_model.bin')
+        m = torch.load(weight_file)
+
+        replace_str = 'model.' +  model_base.base_model_prefix
+        m_new = {}
+        for k, v in m.items():
+            m_new[re.sub(replace_str, 'model', k)] = v
+        torch.save(m_new, weight_file)
+
+        lora_args = self.lora_args
+
+        peft_config = PeftLoraConfig(
+            task_type=TaskType.CAUSAL_LM,
+            inference_mode=True,
+            r=lora_args.r,
+            lora_alpha=lora_args.lora_alpha,
+            lora_dropout=lora_args.lora_dropout,
+            bias=lora_args.bias,
+            modules_to_save=lora_args.modules_to_save,
+            layers_to_transform=lora_args.layers_to_transform,
+            layers_pattern=lora_args.layers_pattern,
+            target_modules=lora_args.target_modules
+        )
+        # 覆盖配置文件
+        peft_config.save_pretrained(output_peft_dir)
 
 ModelWeightMinMax = ModelWeightMixin
