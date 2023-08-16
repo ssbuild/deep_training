@@ -92,3 +92,95 @@ def patch_for_part_ntk_scaled_rotary_embeddings(model,name='rotary_emb', origina
                                                   extrapolation_factor=extrapolation_factor,
                                                   device=inv_freq.device))
 
+
+
+
+
+@dataclass
+class RopeBaseArguments:
+    method: Optional[str] = field(default=None, metadata={"help": "one of dynamic_scaled,dynamic_part_ntk,ntk_scaled,linear_scaled,part_ntk_scaled"})
+    name: Optional[str] = field(default="rotary_emb", metadata={"help": "name of rope layer"})
+    base: int = field(default=10000, metadata={"help": "base default 10000"})
+
+
+@dataclass
+class RotaryDynamicScaledArguments(RopeBaseArguments):
+    max_position_embeddings: int = field(default=2048, metadata={"help": "max_position_embeddings"})
+    ntk : Optional[Union[bool,float]] = field(default=False, metadata={"help": "ntk"})
+
+
+@dataclass
+class RotaryDynamicPartNtkArguments(RopeBaseArguments):
+    max_position_embeddings: int = field(default=2048, metadata={"help": "max_position_embeddings"})
+    original_max_position_embeddings: int = field(default=2048, metadata={"help": "original_max_position_embeddings"})
+    ntk_factor : Optional[float] = field(default=1, metadata={"help": "ntk_factor"})
+    extrapolation_factor: Optional[float] = field(default=1, metadata={"help": "extrapolation_factor"})
+    finetuned: Optional[bool] = field(default=False, metadata={"help": "finetuned"})
+
+
+@dataclass
+class RotaryNtkScaledArguments(RopeBaseArguments):
+    max_position_embeddings: int = field(default=2048, metadata={"help": "max_position_embeddings"})
+    alpha: Optional[float] = field(default=1, metadata={"help": "alpha"})
+
+
+
+@dataclass
+class RotaryLinearScaledArguments(RopeBaseArguments):
+    max_position_embeddings: int = field(default=2048, metadata={"help": "max_position_embeddings"})
+    scale: Optional[float] = field(default=1, metadata={"help": "alpha"})
+
+
+@dataclass
+class RotaryPartNtkScaledArguments(RopeBaseArguments):
+    original_max_position_embeddings: int = field(default=2048, metadata={"help": "original_max_position_embeddings"})
+    max_position_embeddings: int = field(default=2048, metadata={"help": "max_position_embeddings"})
+    scale: Optional[float] = field(default=1, metadata={"help": "alpha"})
+    ntk_factor: Optional[float] = field(default=1, metadata={"help": "ntk_factor"})
+    extrapolation_factor: Optional[float] = field(default=1, metadata={"help": "extrapolation_factor"})
+
+
+
+
+
+def inject_rope_scale_layer(model,rope_args):
+    if rope_args is None:
+        return None
+    if isinstance(rope_args,RotaryDynamicScaledArguments):
+        rope_args: RotaryDynamicScaledArguments
+        patch_for_dynamic_scaled_rotary_embeddings(model,name=rope_args.name,max_position_embeddings=rope_args.max_position_embeddings,
+                                               base=rope_args.base, ntk=rope_args.ntk)
+    elif isinstance(rope_args,RotaryDynamicPartNtkArguments):
+        rope_args: RotaryDynamicPartNtkArguments
+        patch_for_dynamic_part_ntk_rotary_embeddings(model, name=rope_args.name,
+                                                     max_position_embeddings=rope_args.max_position_embeddings,
+                                                     original_max_position_embeddings=rope_args.original_max_position_embeddings ,
+                                                     base=rope_args.base,
+                                                     ntk_factor=rope_args.ntk_factor,
+                                                     extrapolation_factor=rope_args.extrapolation_factor,
+                                                     finetuned=rope_args.finetuned)
+
+    elif isinstance(rope_args, RotaryNtkScaledArguments):
+        rope_args: RotaryNtkScaledArguments
+        patch_for_ntk_scaled_rotary_embeddings(model, name=rope_args.name,
+                                               max_position_embeddings=rope_args.max_position_embeddings,
+                                               base=rope_args.base,
+                                               alpha=rope_args.alpha)
+    elif isinstance(rope_args, RotaryLinearScaledArguments):
+        rope_args: RotaryLinearScaledArguments
+        patch_for_linear_scaled_rotary_embeddings(model, name=rope_args.name,
+                                                  max_position_embeddings=rope_args.max_position_embeddings,
+                                                  base=rope_args.base,
+                                                  scale=rope_args.scale)
+    elif isinstance(rope_args, RotaryPartNtkScaledArguments):
+        rope_args: RotaryPartNtkScaledArguments
+        patch_for_part_ntk_scaled_rotary_embeddings(model, name=rope_args.name,
+                                                    original_max_position_embeddings=rope_args.original_max_position_embeddings,
+                                                    max_position_embeddings=rope_args.max_position_embeddings,
+                                                    base=rope_args.base,
+                                                    scale=rope_args.scale,
+                                                    ntk_factor=rope_args.ntk_factor,
+                                                    extrapolation_factor=rope_args.extrapolation_factor)
+    else:
+        return None
+    return model
