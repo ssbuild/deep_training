@@ -149,7 +149,7 @@ class RotaryEmbedding(nn.Module):
         theta = 1.0 / (base ** (torch.arange(0, n_elem, 2, dtype=dtype, device=device) / n_elem))
 
         # Create position indexes `[0, 1, ..., seq_len - 1]`
-        seq_idx = torch.arange(seq_len, dtype=dtype, device=device)
+        seq_idx = torch.arange(seq_len, dtype=dtype, device=device) / self.rope_ratio
 
         # Calculate the product of position index and $\theta_i$
         idx_theta = torch.outer(seq_idx, theta).float()
