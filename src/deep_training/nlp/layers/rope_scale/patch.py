@@ -1,11 +1,19 @@
 from torch import nn
+from dataclasses import dataclass, field
+from typing import Optional, Union
 
 __all__ = [
+    'RotaryDynamicScaledArguments',
+    'RotaryDynamicPartNtkArguments',
+    'RotaryNtkScaledArguments',
+    'RotaryLinearScaledArguments',
+    'RotaryPartNtkScaledArguments',
     "patch_for_dynamic_scaled_rotary_embeddings",
     "patch_for_dynamic_part_ntk_rotary_embeddings",
     "patch_for_ntk_scaled_rotary_embeddings",
     "patch_for_linear_scaled_rotary_embeddings",
     "patch_for_part_ntk_scaled_rotary_embeddings",
+    "inject_rope_scale_layer"
 ]
 
 def patch_for_dynamic_scaled_rotary_embeddings(model,name='rotary_emb',max_position_embeddings=None,
@@ -25,7 +33,7 @@ def patch_for_dynamic_scaled_rotary_embeddings(model,name='rotary_emb',max_posit
                                                 device=inv_freq.device))
 
 def patch_for_dynamic_part_ntk_rotary_embeddings(model,name='rotary_emb', max_position_embeddings=2048,original_max_position_embeddings=None ,
-                                                 base=10000, ntk_factor=1, extrapolation_factor=1, finetuned=False):
+                                                 base=10000, ntk_factor=1.0, extrapolation_factor=1.0, finetuned=False):
     assert name
     from .DynamicPartNTKScaledRotary import DynamicPartNTKScaledRotary
     for n,p in model.named_modules():
@@ -43,7 +51,7 @@ def patch_for_dynamic_part_ntk_rotary_embeddings(model,name='rotary_emb', max_po
                                                        finetuned=finetuned,
                                                        device=inv_freq.device))
 
-def patch_for_ntk_scaled_rotary_embeddings(model,name='rotary_emb', max_position_embeddings=None, base=10000, alpha=1):
+def patch_for_ntk_scaled_rotary_embeddings(model,name='rotary_emb', max_position_embeddings=None, base=10000, alpha=1.0):
     assert name
     from .NTKScaledRotary import NTKScaledRotary
     for n,p in model.named_modules():
@@ -58,7 +66,7 @@ def patch_for_ntk_scaled_rotary_embeddings(model,name='rotary_emb', max_position
                                             alpha=alpha,
                                             device=inv_freq.device))
 
-def patch_for_linear_scaled_rotary_embeddings(model,name='rotary_emb', max_position_embeddings=None, base=10000, scale=1):
+def patch_for_linear_scaled_rotary_embeddings(model,name='rotary_emb', max_position_embeddings=None, base=10000, scale=1.0):
     assert name
     from .LinearScaledRotary import LinearScaledRotary
     for n, p in model.named_modules():
@@ -74,7 +82,7 @@ def patch_for_linear_scaled_rotary_embeddings(model,name='rotary_emb', max_posit
                                               device=inv_freq.device))
 
 def patch_for_part_ntk_scaled_rotary_embeddings(model,name='rotary_emb', original_max_position_embeddings=None,max_position_embeddings=2048,
-                                                base=10000, scale=1, ntk_factor=1, extrapolation_factor=1):
+                                                base=10000, scale=1.0, ntk_factor=1.0, extrapolation_factor=1.0):
     assert name
     from .PartNTKScaledRotary import PartNTKScaledRotary
     for n, p in model.named_modules():
@@ -113,31 +121,31 @@ class RotaryDynamicScaledArguments(RopeBaseArguments):
 class RotaryDynamicPartNtkArguments(RopeBaseArguments):
     max_position_embeddings: int = field(default=2048, metadata={"help": "max_position_embeddings"})
     original_max_position_embeddings: int = field(default=2048, metadata={"help": "original_max_position_embeddings"})
-    ntk_factor : Optional[float] = field(default=1, metadata={"help": "ntk_factor"})
-    extrapolation_factor: Optional[float] = field(default=1, metadata={"help": "extrapolation_factor"})
-    finetuned: Optional[bool] = field(default=False, metadata={"help": "finetuned"})
+    ntk_factor : float = field(default=1, metadata={"help": "ntk_factor"})
+    extrapolation_factor: float = field(default=1, metadata={"help": "extrapolation_factor"})
+    finetuned: bool = field(default=False, metadata={"help": "finetuned"})
 
 
 @dataclass
 class RotaryNtkScaledArguments(RopeBaseArguments):
     max_position_embeddings: int = field(default=2048, metadata={"help": "max_position_embeddings"})
-    alpha: Optional[float] = field(default=1, metadata={"help": "alpha"})
+    alpha: float = field(default=1, metadata={"help": "alpha"})
 
 
 
 @dataclass
 class RotaryLinearScaledArguments(RopeBaseArguments):
     max_position_embeddings: int = field(default=2048, metadata={"help": "max_position_embeddings"})
-    scale: Optional[float] = field(default=1, metadata={"help": "alpha"})
+    scale: float = field(default=1, metadata={"help": "alpha"})
 
 
 @dataclass
 class RotaryPartNtkScaledArguments(RopeBaseArguments):
     original_max_position_embeddings: int = field(default=2048, metadata={"help": "original_max_position_embeddings"})
     max_position_embeddings: int = field(default=2048, metadata={"help": "max_position_embeddings"})
-    scale: Optional[float] = field(default=1, metadata={"help": "alpha"})
-    ntk_factor: Optional[float] = field(default=1, metadata={"help": "ntk_factor"})
-    extrapolation_factor: Optional[float] = field(default=1, metadata={"help": "extrapolation_factor"})
+    scale: float = field(default=1, metadata={"help": "alpha"})
+    ntk_factor: float = field(default=1, metadata={"help": "ntk_factor"})
+    extrapolation_factor: float = field(default=1, metadata={"help": "extrapolation_factor"})
 
 
 
