@@ -8,11 +8,12 @@ __all__ = [
     "patch_for_part_ntk_scaled_rotary_embeddings",
 ]
 
-def patch_for_dynamic_scaled_rotary_embeddings(model,max_position_embeddings=None,
+def patch_for_dynamic_scaled_rotary_embeddings(model,name='rotary_emb',max_position_embeddings=None,
                                                base=10000, ntk=False):
+    assert name
     from .DynamicScaledRotary import DynamicScaledRotary
     for n,p in model.named_modules():
-        if n.endswith('rotary_emb'):
+        if n.endswith(name):
             inv_freq: nn.Module = getattr(p,'inv_freq',None)
             if inv_freq is None:
                 continue
@@ -23,11 +24,12 @@ def patch_for_dynamic_scaled_rotary_embeddings(model,max_position_embeddings=Non
                                                 base=base,
                                                 device=inv_freq.device))
 
-def patch_for_dynamic_part_ntk_rotary_embeddings(model, max_position_embeddings=2048,original_max_position_embeddings=None ,
+def patch_for_dynamic_part_ntk_rotary_embeddings(model,name='rotary_emb', max_position_embeddings=2048,original_max_position_embeddings=None ,
                                                  base=10000, ntk_factor=1, extrapolation_factor=1, finetuned=False):
+    assert name
     from .DynamicPartNTKScaledRotary import DynamicPartNTKScaledRotary
     for n,p in model.named_modules():
-        if n.endswith('rotary_emb'):
+        if n.endswith(name):
             inv_freq: nn.Module = getattr(p,'inv_freq',None)
             if inv_freq is None:
                 continue
@@ -41,10 +43,11 @@ def patch_for_dynamic_part_ntk_rotary_embeddings(model, max_position_embeddings=
                                                        finetuned=finetuned,
                                                        device=inv_freq.device))
 
-def patch_for_ntk_scaled_rotary_embeddings(model, max_position_embeddings=None, base=10000, alpha=1):
+def patch_for_ntk_scaled_rotary_embeddings(model,name='rotary_emb', max_position_embeddings=None, base=10000, alpha=1):
+    assert name
     from .NTKScaledRotary import NTKScaledRotary
     for n,p in model.named_modules():
-        if n.endswith('rotary_emb'):
+        if n.endswith(name):
             inv_freq: nn.Module = getattr(p,'inv_freq',None)
             if inv_freq is None:
                 continue
@@ -55,10 +58,11 @@ def patch_for_ntk_scaled_rotary_embeddings(model, max_position_embeddings=None, 
                                             alpha=alpha,
                                             device=inv_freq.device))
 
-def patch_for_linear_scaled_rotary_embeddings(model, max_position_embeddings=None, base=10000, scale=1):
+def patch_for_linear_scaled_rotary_embeddings(model,name='rotary_emb', max_position_embeddings=None, base=10000, scale=1):
+    assert name
     from .LinearScaledRotary import LinearScaledRotary
     for n, p in model.named_modules():
-        if n.endswith('rotary_emb'):
+        if n.endswith(name):
             inv_freq: nn.Module = getattr(p, 'inv_freq', None)
             if inv_freq is None:
                 continue
@@ -69,11 +73,12 @@ def patch_for_linear_scaled_rotary_embeddings(model, max_position_embeddings=Non
                                               scale=scale,
                                               device=inv_freq.device))
 
-def patch_for_part_ntk_scaled_rotary_embeddings(model, original_max_position_embeddings=None,max_position_embeddings=2048,
+def patch_for_part_ntk_scaled_rotary_embeddings(model,name='rotary_emb', original_max_position_embeddings=None,max_position_embeddings=2048,
                                                 base=10000, scale=1, ntk_factor=1, extrapolation_factor=1):
+    assert name
     from .PartNTKScaledRotary import PartNTKScaledRotary
     for n, p in model.named_modules():
-        if n.endswith('rotary_emb'):
+        if n.endswith(name):
             inv_freq: nn.Module = getattr(p, 'inv_freq', None)
             if inv_freq is None:
                 continue
