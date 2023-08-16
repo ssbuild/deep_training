@@ -192,7 +192,8 @@ def inject_rope_scale_layer(model,rope_args):
     if isinstance(rope_args,RotaryDynamicScaledArguments):
         rope_args: RotaryDynamicScaledArguments
         patch_for_dynamic_scaled_rotary_embeddings(model,name=rope_args.name,max_position_embeddings=rope_args.max_position_embeddings,
-                                               base=rope_args.base, ntk=rope_args.ntk)
+                                                   base=rope_args.base, ntk=rope_args.ntk,
+                                                   model_type=rope_args.model_type)
     elif isinstance(rope_args,RotaryDynamicPartNtkArguments):
         rope_args: RotaryDynamicPartNtkArguments
         patch_for_dynamic_part_ntk_rotary_embeddings(model, name=rope_args.name,
@@ -201,20 +202,23 @@ def inject_rope_scale_layer(model,rope_args):
                                                      base=rope_args.base,
                                                      ntk_factor=rope_args.ntk_factor,
                                                      extrapolation_factor=rope_args.extrapolation_factor,
-                                                     finetuned=rope_args.finetuned)
+                                                     finetuned=rope_args.finetuned,
+                                                     model_type=rope_args.model_type)
 
     elif isinstance(rope_args, RotaryNtkScaledArguments):
         rope_args: RotaryNtkScaledArguments
         patch_for_ntk_scaled_rotary_embeddings(model, name=rope_args.name,
                                                max_position_embeddings=rope_args.max_position_embeddings,
                                                base=rope_args.base,
-                                               alpha=rope_args.alpha)
+                                               alpha=rope_args.alpha,
+                                               model_type=rope_args.model_type)
     elif isinstance(rope_args, RotaryLinearScaledArguments):
         rope_args: RotaryLinearScaledArguments
         patch_for_linear_scaled_rotary_embeddings(model, name=rope_args.name,
                                                   max_position_embeddings=rope_args.max_position_embeddings,
                                                   base=rope_args.base,
-                                                  scale=rope_args.scale)
+                                                  scale=rope_args.scale,
+                                                  model_type=rope_args.model_type)
     elif isinstance(rope_args, RotaryPartNtkScaledArguments):
         rope_args: RotaryPartNtkScaledArguments
         patch_for_part_ntk_scaled_rotary_embeddings(model, name=rope_args.name,
@@ -223,7 +227,8 @@ def inject_rope_scale_layer(model,rope_args):
                                                     base=rope_args.base,
                                                     scale=rope_args.scale,
                                                     ntk_factor=rope_args.ntk_factor,
-                                                    extrapolation_factor=rope_args.extrapolation_factor)
+                                                    extrapolation_factor=rope_args.extrapolation_factor,
+                                                    model_type=rope_args.model_type)
     else:
         return None
     return model
