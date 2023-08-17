@@ -95,6 +95,7 @@ class MossConfig(PretrainedConfig):
             groupsize=128,
             wbits=32, #gptq
             quantization_bit=0,
+            rope_ratio=1.0,
             initializer_weight=False,
             **kwargs,
     ):
@@ -115,6 +116,7 @@ class MossConfig(PretrainedConfig):
         self.use_cache = use_cache
         self.wbits = wbits
         self.groupsize = groupsize
+        self.rope_ratio = rope_ratio
         self.quantization_bit = quantization_bit
 
         self.bos_token_id = bos_token_id

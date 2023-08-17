@@ -21,7 +21,7 @@ def patch_for_dynamic_scaled_rotary_embeddings(model,name='rotary_emb',max_posit
     assert name
     if model_type is not None:
         model_type = model_type.lower()
-    from .DynamicScaledRotary import DynamicScaledRotary,DynamicScaledRotaryGLM,DynamicScaledRotaryGLM2
+    from .DynamicScaledRotary import DynamicScaledRotary,DynamicScaledRotaryGLM,DynamicScaledRotaryGLM2,DynamicScaledRotaryMoss
     for n,p in model.named_modules():
         if n.endswith(name):
             inv_freq: nn.Module = getattr(p,'inv_freq',None)
@@ -32,6 +32,8 @@ def patch_for_dynamic_scaled_rotary_embeddings(model,name='rotary_emb',max_posit
                 class_name = DynamicScaledRotaryGLM
             elif  model_type == 'chatglm2':
                 class_name = DynamicScaledRotaryGLM2
+            elif model_type == 'moss':
+                class_name = DynamicScaledRotaryMoss
             else:
                 class_name = DynamicScaledRotary
             rope_module = class_name(dim=dim,
@@ -46,7 +48,7 @@ def patch_for_dynamic_part_ntk_rotary_embeddings(model,name='rotary_emb', max_po
     assert name
     if model_type is not None:
         model_type = model_type.lower()
-    assert model_type not in ['chatglm', 'chatglm2'], ValueError('NotImplemented')
+    assert model_type not in ['chatglm', 'chatglm2','moss'], ValueError('NotImplemented')
     from .DynamicPartNTKScaledRotary import DynamicPartNTKScaledRotary
     for n,p in model.named_modules():
         if n.endswith(name):
@@ -68,7 +70,7 @@ def patch_for_ntk_scaled_rotary_embeddings(model,name='rotary_emb', max_position
     assert name
     if model_type is not None:
         model_type = model_type.lower()
-    from .NTKScaledRotary import NTKScaledRotary,NTKScaledRotaryGLM,NTKScaledRotaryGLM2
+    from .NTKScaledRotary import NTKScaledRotary,NTKScaledRotaryGLM,NTKScaledRotaryGLM2,NTKScaledRotaryMoss
     for n,p in model.named_modules():
         if n.endswith(name):
             inv_freq: nn.Module = getattr(p,'inv_freq',None)
@@ -79,6 +81,8 @@ def patch_for_ntk_scaled_rotary_embeddings(model,name='rotary_emb', max_position
                 class_name = NTKScaledRotaryGLM
             elif  model_type == 'chatglm2':
                 class_name = NTKScaledRotaryGLM2
+            elif model_type == 'moss':
+                class_name = NTKScaledRotaryMoss
             else:
                 class_name = NTKScaledRotary
             rope_module = class_name(dim=dim,
@@ -94,7 +98,7 @@ def patch_for_linear_scaled_rotary_embeddings(model,name='rotary_emb', max_posit
     assert name
     if model_type is not None:
         model_type = model_type.lower()
-    from .LinearScaledRotary import LinearScaledRotary,LinearScaledRotaryGLM,LinearScaledRotaryGLM2
+    from .LinearScaledRotary import LinearScaledRotary,LinearScaledRotaryGLM,LinearScaledRotaryGLM2,LinearScaledRotaryMoss
     for n, p in model.named_modules():
         if n.endswith(name):
             inv_freq: nn.Module = getattr(p, 'inv_freq', None)
@@ -105,6 +109,8 @@ def patch_for_linear_scaled_rotary_embeddings(model,name='rotary_emb', max_posit
                 class_name = LinearScaledRotaryGLM
             elif  model_type == 'chatglm2':
                 class_name = LinearScaledRotaryGLM2
+            elif model_type == 'moss':
+                class_name = LinearScaledRotaryMoss
             else:
                 class_name = LinearScaledRotary
             rope_module = class_name(dim=dim,
@@ -119,7 +125,7 @@ def patch_for_part_ntk_scaled_rotary_embeddings(model,name='rotary_emb', origina
     assert name
     if model_type is not None:
         model_type = model_type.lower()
-    assert model_type not in ['chatglm','chatglm2'],ValueError('NotImplemented')
+    assert model_type not in ['chatglm', 'chatglm2','moss'], ValueError('NotImplemented')
     from .PartNTKScaledRotary import PartNTKScaledRotary
     for n, p in model.named_modules():
         if n.endswith(name):
