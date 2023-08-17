@@ -601,7 +601,7 @@ class MossForCausalLM(MossPreTrainedModel):
         super().__init__(config)
         if config.wbits not in [4, 8, 32]:
             logger.warning(f'Specify `wbits` with 4, 8 or 32 to load the model. ')
-        if config.wbits in [4, 8]:
+        if config.quantization_bit not in [4, 8] and config.wbits in [4, 8]:
             def noop(*args, **kwargs):
                 pass
 
@@ -618,12 +618,19 @@ class MossForCausalLM(MossPreTrainedModel):
         self.transformer = init_method(MossModel,config,**kwargs)
         self.lm_head = init_method(nn.Linear,config.n_embd, config.vocab_size,**kwargs)
 
-        if config.wbits in [4, 8]:
-            torch.set_default_dtype(torch.float)
-            transformers.modeling_utils._init_weights = True
-            self.quantize(config.wbits, config.groupsize)
         # Initialize weights and apply final processing
         self.post_init()
+
+        self.quantized = False
+
+        if config.quantization_bit in [4, 8]:
+            self.quantize(config.quantization_bit, empty_init=True)
+        elif config.wbits in [4, 8]:
+            torch.set_default_dtype(torch.float)
+            transformers.modeling_utils._init_weights = True
+            self.quantize_gptq(config.wbits, config.groupsize)
+
+
 
     def get_output_embeddings(self):
         return self.lm_head
@@ -744,6 +751,22 @@ class MossForCausalLM(MossPreTrainedModel):
             for layer_past in past_key_values
         )
 
-    def quantize(self, wbits, groupsize):
+    def quantize_gptq(self, wbits, groupsize):
+        if wbits == 0 or wbits == 32:
+            return
         from .quantization import quantize_with_gptq
+        self.config.wbits = wbits
+        self.quantized = True
         return quantize_with_gptq(self, wbits, groupsize)
+
+    def quantize(self, bits: int, empty_init=False, device=None, **kwarg):
+        if bits == 0:
+            return
+        from .quantization2 import quantize
+        if self.quantized:
+            logger.info("Already quantized.")
+            return self
+        quantize(self, bits=bits, empty_init=empty_init, device=device, **kwarg)
+        self.config.quantization_bit = bits
+        self.quantized = True
+        return self
