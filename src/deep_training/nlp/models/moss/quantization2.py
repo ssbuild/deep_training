@@ -149,13 +149,16 @@ class QuantizedLinear(torch.nn.Module):
         return output
 
 
-def quantize(model, bits, empty_init=False, device=None,**kwarg):
+def quantize(model, bits, empty_init=False, device=None,ignore_4=('fc_out',),ignore_8=None,**kwarg):
     """Replace fp16 linear with quantized linear"""
 
     for layer in model.transformer.h:
-
         objs = ['qkv_proj','out_proj']
         for k in objs:
+            if bits == 4 and ignore_4 and k in ignore_4:
+                continue
+            if bits == 8 and ignore_8 and k in ignore_8:
+                continue
             w = getattr(layer.attn,k)
             setattr(layer.attn,k,
                     QuantizedLinear(
@@ -171,6 +174,10 @@ def quantize(model, bits, empty_init=False, device=None,**kwarg):
 
         objs = ['fc_in', 'fc_out']
         for k in objs:
+            if bits == 4 and ignore_4 and k in ignore_4:
+                continue
+            if bits == 8 and ignore_8 and k in ignore_8:
+                continue
             w = getattr(layer.mlp, k)
             setattr(layer.mlp, k,
                     QuantizedLinear(
