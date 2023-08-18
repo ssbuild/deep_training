@@ -878,8 +878,13 @@ class MossForCausalLM(MossPreTrainedModel):
         inputs = inputs.to(self.device)
         return inputs
 
+    def process_response(self,response):
+        return response
+
     @torch.no_grad()
-    def chat(self, tokenizer, query: str,
+    def chat(self,
+             tokenizer,
+             query: str,
              history: List[Tuple[str, str]] = None,
              meta_instruction = None,
              plugin_instruction = None,
