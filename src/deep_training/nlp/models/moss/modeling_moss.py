@@ -50,8 +50,8 @@ def setup_model_profile(skip_init_flag=True):
 class RotaryEmbedding(nn.Module):
     def __init__(self, dim,max_position_embeddings=2048,base=10000,rope_ratio=1.0, original_impl=False, device=None, dtype=None):
         super().__init__()
-        # inv_freq = 1.0 / (10000 ** (torch.arange(0, dim, 2, device=device).to(dtype=dtype) / dim))
-        # self.register_buffer("inv_freq", inv_freq)
+        inv_freq = 1.0 / (10000 ** (torch.arange(0, dim, 2, device=device).to(dtype=dtype) / dim))
+        self.register_buffer("inv_freq", inv_freq)
         self.device = device
         self.dtype = dtype
         self.dim = dim
@@ -671,7 +671,7 @@ class MossModel(MossPreTrainedModel):
 )
 class MossForCausalLM(MossPreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"h\.\d+\.attn\.causal_mask",r"h\.\d+\.attn\.embed_positions\.inv_freq"]
-
+    _keys_to_ignore_on_save = [r"h\.\d+\.attn\.embed_positions\.inv_freq"]
     def __init__(self, config,**kwargs):
         super().__init__(config)
         if config.wbits not in [4, 8, 32]:

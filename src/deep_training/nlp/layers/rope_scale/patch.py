@@ -86,10 +86,10 @@ def patch_for_ntk_scaled_rotary_embeddings(model,name='rotary_emb', max_position
             else:
                 class_name = NTKScaledRotary
             rope_module = class_name(dim=dim,
-                                            max_position_embeddings=max_position_embeddings or p.max_position_embeddings,
-                                            base=base,
-                                            alpha=alpha,
-                                            device=inv_freq.device)
+                                    max_position_embeddings=max_position_embeddings or p.max_position_embeddings,
+                                    base=base,
+                                    alpha=alpha,
+                                    device=inv_freq.device)
 
             setattr(model.get_submodule('.'.join(n.split('.')[:-1])), name, rope_module)
 
