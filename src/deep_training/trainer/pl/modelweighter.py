@@ -11,7 +11,7 @@ from torch.nn.modules.module import _IncompatibleKeys
 from transformers import PreTrainedModel, HfArgumentParser, AutoConfig
 from ...data_helper import ModelArguments, TrainingArguments, DataArguments
 from ...nlp.models.prompt import PromptLearningConfig, PromptModel,PromptArguments,get_prompt_model
-from ...nlp.models.lora.v2 import LoraModel, LoraArguments,LoraConfig
+from ...nlp.models.lora.v2 import LoraModel, LoraArguments,LoraConfig,AdaLoraConfig
 from ...nlp.models.transformer_base import TransformerBase
 from ...utils.save_checkpoint import save_checkpoint_to_hf_format
 
@@ -21,6 +21,7 @@ __all__ = [
     'LoraModel',
     'LoraArguments',
     'LoraConfig',
+    'AdaLoraConfig',
     'AutoConfig',
     'PromptLearningConfig',
     'PromptModel',
@@ -177,18 +178,19 @@ class ModelWeightMixin:
     def load_peft_weight(self,peft_dir,is_trainable=False,adapter_name='default'):
         from peft import LoraConfig as PeftLoraConfig, TaskType
         peft_config = PeftLoraConfig.from_pretrained(peft_dir)
-        lora_args = LoraConfig(
-            with_lora=True,
-            lora_type='lora',
-            inference_mode=not is_trainable,
-            r=peft_config.r,
-            lora_alpha=peft_config.lora_alpha,
-            lora_dropout=peft_config.lora_dropout,
-            bias=peft_config.bias,
-            modules_to_save=peft_config.modules_to_save,
-            layers_to_transform=peft_config.layers_to_transform,
-            layers_pattern=peft_config.layers_pattern,
-            target_modules=peft_config.target_modules)
+        peft_dict = peft_config.to_dict()
+        peft_type = peft_dict.pop('peft_type',None)
+        task_type = peft_dict.pop('task_type', None)
+        if peft_type == 'adalora':
+            lora_args = AdaLoraConfig.from_memory(with_lora=True,
+                                                  lora_type='adalora',
+                                                  json_object=peft_dict)
+
+        else:
+            lora_args = LoraConfig.from_memory(
+                with_lora=True,
+                lora_type='lora',
+                json_object=peft_dict)
 
         self.lora_args = lora_args
         self.inject_model()
