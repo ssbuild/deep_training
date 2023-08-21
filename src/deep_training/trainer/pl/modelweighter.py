@@ -3,6 +3,7 @@
 # @Time    : 2023/5/29 9:49
 import os
 import re
+import typing
 from collections import OrderedDict
 import torch
 from torch import nn
@@ -171,6 +172,35 @@ class ModelWeightMixin:
                              merge_lora_weight=merge_lora_weight,
                              llm_weight_only=llm_weight_only,
                              max_shard_size=max_shard_size)
+
+
+    def load_peft_weight(self,peft_dir,is_trainable=False,adapter_name='default'):
+        from peft import LoraConfig as PeftLoraConfig, TaskType
+        peft_config = PeftLoraConfig.from_pretrained(peft_dir)
+        lora_args = LoraConfig(
+            with_lora=True,
+            lora_type='lora',
+            inference_mode=not is_trainable,
+            r=peft_config.r,
+            lora_alpha=peft_config.lora_alpha,
+            lora_dropout=peft_config.lora_dropout,
+            bias=peft_config.bias,
+            modules_to_save=peft_config.modules_to_save,
+            layers_to_transform=peft_config.layers_to_transform,
+            layers_pattern=peft_config.layers_pattern,
+            target_modules=peft_config.target_modules)
+
+        self.lora_args = lora_args
+        self.inject_model()
+        # 恢复权重
+        self.backbone: LoraModel
+
+        def map_preprocess(adapter_weight: typing.Dict):
+            model_base: TransformerBase = self.backbone.model
+            replace_str = 'base_model.model.' + model_base.base_model_prefix
+            weight_new = {re.sub('base_model.model',replace_str,k) : v for k,v in adapter_weight.items()}
+            return weight_new
+        self.backbone.load_adapter(peft_dir, adapter_name=adapter_name, is_trainable=is_trainable,map_preprocess=map_preprocess)
 
     def save_peft_weight(self,output_peft_dir):
         from peft import LoraConfig as PeftLoraConfig, TaskType

@@ -238,7 +238,8 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
                 self.modules_to_save = self.modules_to_save.update(lora_config.modules_to_save)
             _set_trainable(self, adapter_name)
 
-    def load_adapter(self, model_id, adapter_name, is_trainable=False,strict=False, **kwargs):
+    def load_adapter(self, model_id, adapter_name, is_trainable=False, strict=False,
+                     map_preprocess: typing.Optional[typing.Callable]=None, **kwargs):
 
         if adapter_name not in self.lora_config:
             # load the config
@@ -266,6 +267,8 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         )
         if 'state_dict' in adapters_weights:
             adapters_weights = adapters_weights['state_dict']
+        if map_preprocess is not None:
+            adapters_weights = map_preprocess(adapters_weights)
         # load the weights into the model
         set_lora_model_state_dict(self, adapters_weights, adapter_name=adapter_name,strict=strict)
 
