@@ -455,9 +455,7 @@ if is_bnb_available():
             elif self.r[self.active_adapter] > 0:
                 if not torch.is_autocast_enabled():
                     expected_dtype = result.dtype
-
-                    if x.dtype != torch.float32:
-                        x = x.float()
+                    x = x.to(self.lora_A[self.active_adapter].weight.dtype)
                     output = (
                         self.lora_B[self.active_adapter](
                             self.lora_A[self.active_adapter](self.lora_dropout[self.active_adapter](x))
