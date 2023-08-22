@@ -14,16 +14,16 @@ from transformers import PreTrainedModel
 from transformers.modeling_outputs import SequenceClassifierOutput, TokenClassifierOutput
 from transformers.utils import PushToHubMixin
 
-from ....utils.function import copy_dataclass
+from .....utils.function import copy_dataclass
 from .configuration import PromptLearningConfig, PromptType, PromptBaseArguments, PROMPT_TYPE_TO_CONFIG_MAPPING, \
     WEIGHTS_NAME, TaskType
 from .save_and_load import get_prompt_model_state_dict, set_prompt_model_state_dict
 from .utils import _prepare_prompt_learning_config
-from ..transformer_base import TransformerBase
-from ...layers.prompt.prefix_tuning import PrefixEncoder
-from ...layers.prompt.p_tuning import PromptEncoder
-from ...layers.prompt.prompt_tuning import PromptEmbedding
-from ...layers.prompt.utils import _set_trainable, _set_adapter, \
+from ...transformer_base import TransformerBase
+from ....layers.efficient.prompt.prefix_tuning import PrefixEncoder
+from ....layers.efficient.prompt.p_tuning import PromptEncoder
+from ....layers.efficient.prompt.prompt_tuning import PromptEmbedding
+from ....layers.efficient.utils import _set_trainable, _set_adapter, \
     TRANSFORMERS_MODELS_TO_PREFIX_TUNING_POSTPROCESS_MAPPING, shift_tokens_right
 
 
@@ -184,11 +184,6 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
         return model
 
 
-
-    def load_weight(self, pretrained_model_name_or_path, adapter_name="default", is_trainable=False, **kwargs):
-        self.load_adapter(pretrained_model_name_or_path, adapter_name,is_trainable=is_trainable, **kwargs)
-
-
     def _setup_prompt_encoder(self, adapter_name):
         config = self.prompt_config[adapter_name]
         self.prompt_encoder = torch.nn.ModuleDict({})
@@ -284,6 +279,11 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
             # if using DS Zero 3 and the weights are initialized empty
             if num_params == 0 and hasattr(param, "ds_numel"):
                 num_params = param.ds_numel
+            # Due to the design of 4bit linear layers from bitsandbytes
+            # one needs to multiply the number of parameters by 2 to get
+            # the correct number of parameters
+            if param.__class__.__name__ == "Params4bit":
+                num_params = num_params * 2
 
             all_param += num_params
             if param.requires_grad:
@@ -704,7 +704,7 @@ class PromptModelForCausalLM(PromptModel):
     def generate(self, **kwargs):
         prompt_config = self.active_prompt_config
         self.get_transformer_model().prepare_inputs_for_generation = self.prepare_inputs_for_generation
-        generate_fn = getattr(self.base_model,"generate",self.base_model.model.generate)
+        generate_fn = self.base_model.generate
         try:
             if not isinstance(prompt_config, PromptLearningConfig):
                 outputs = generate_fn(**kwargs)
@@ -926,7 +926,7 @@ class PromptModelForSeq2SeqLM(PromptModel):
         self.get_transformer_model()._prepare_encoder_decoder_kwargs_for_generation = (
             self._prepare_encoder_decoder_kwargs_for_generation
         )
-        generate_fn = getattr(self.base_model, "generate", self.base_model.model.generate)
+        generate_fn = self.base_model.generate
         try:
             if not isinstance(prompt_config, PromptLearningConfig):
                 outputs = generate_fn(**kwargs)

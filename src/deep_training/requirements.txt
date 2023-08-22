@@ -8,3 +8,4 @@ sentencepiece
 tensorboard
 tqdm
 six
+safetensors

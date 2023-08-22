@@ -15,11 +15,12 @@ install_requires = [
     'scikit-learn',
     'tensorboard',
     'tqdm',
-    'six'
+    'six',
+    'safetensors'
 ]
 setup(
     name='deep_training',
-    version='0.1.21.post2',
+    version='0.2.0.rc0',
     description='an easy training architecture',
     long_description='torch_training: https://github.com/ssbuild/deep_training.git',
     license='Apache License 2.0',

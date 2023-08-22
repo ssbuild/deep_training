@@ -10,8 +10,8 @@ from torch import nn
 from torch.nn.modules.module import _IncompatibleKeys
 from transformers import PreTrainedModel, HfArgumentParser, AutoConfig
 from ...data_helper import ModelArguments, TrainingArguments, DataArguments
-from ...nlp.models.prompt import PromptLearningConfig, PromptModel,PromptArguments,get_prompt_model
-from ...nlp.models.lora.v2 import LoraModel, LoraArguments,LoraConfig,AdaLoraConfig
+from ...nlp.models.efficient.prompt import PromptLearningConfig, PromptModel,PromptArguments,get_prompt_model
+from ...nlp.models.efficient import LoraModel, EffiArguments,LoraConfig,AdaLoraConfig
 from ...nlp.models.transformer_base import TransformerBase
 from ...utils.save_checkpoint import save_checkpoint_to_hf_format
 
@@ -19,7 +19,7 @@ __all__ = [
     'ModelWeightMinMax',
     'ModelWeightMixin',
     'LoraModel',
-    'LoraArguments',
+    'EffiArguments',
     'LoraConfig',
     'AdaLoraConfig',
     'AutoConfig',
@@ -41,7 +41,7 @@ class ModelWeightMixin:
     def save_pretrained_merge_lora(self,sft_weight_path: str,llm_weight_only = True,max_shard_size="10GB"):
         assert os.path.exists(os.path.dirname(sft_weight_path))
         assert self.lora_args is not None and self.lora_args.with_lora
-        lora_model : LoraModel = self.backbone
+        lora_model : LoraModel = self.backbone.model
         model: nn.Module = lora_model.merge_and_unload()
 
         if llm_weight_only:
@@ -65,13 +65,13 @@ class ModelWeightMixin:
         assert os.path.exists(sft_weight_path)
         if self.lora_args is not None and self.lora_args.with_lora:
             # 恢复权重
-            self.backbone: LoraModel
-            self.backbone.load_adapter(sft_weight_path, adapter_name=adapter_name, is_trainable=is_trainable, strict=strict)
+            lora_model: LoraModel = self.backbone.model
+            lora_model.load_adapter(sft_weight_path, adapter_name=adapter_name, is_trainable=is_trainable, strict=strict)
 
         elif self.prompt_args is not None and self.prompt_args.with_prompt:
             # 恢复权重
-            self.backbone: PromptModel
-            self.backbone.load_adapter(sft_weight_path, adapter_name=adapter_name, is_trainable=is_trainable, strict=strict)
+            lora_model: PromptModel = self.backbone.model
+            lora_model.load_adapter(sft_weight_path, adapter_name=adapter_name, is_trainable=is_trainable, strict=strict)
         else:
             weight_dict = torch.load(sft_weight_path)
             weights_dict_new = OrderedDict()
@@ -80,9 +80,9 @@ class ModelWeightMixin:
                 if k in weight_dict:
                     weight_dict = weight_dict[k]
                     break
-            pl_model_prefix = '_TransformerLightningModule__backbone'
+            pl_model_prefix = 'transformer_base'
             is_pl_weight = pl_model_prefix in ','.join(list(weight_dict.keys()))
-            base_model_prefix = self.backbone.base_model_prefix
+            base_model_prefix = self.backbone.model.base_model_prefix
             model_prefix = r'{}\.{}'.format(pl_model_prefix, base_model_prefix)
             for k, v in weight_dict.items():
                 if is_pl_weight:
@@ -151,9 +151,9 @@ class ModelWeightMixin:
                                                 max_shard_size=max_shard_size)
             else:
                 # 只保存 lora 权重
-                self.backbone.save_pretrained(sft_weight_path)
+                self.backbone.model.save_pretrained(sft_weight_path)
         elif self.prompt_args is not None and self.prompt_args.with_prompt:
-            self.backbone.save_pretrained(sft_weight_path)
+            self.backbone.model.save_pretrained(sft_weight_path)
         else:
             # 保存hf权重
             config = self.get_llm_model().config
@@ -175,70 +175,5 @@ class ModelWeightMixin:
                              max_shard_size=max_shard_size)
 
 
-    def load_peft_weight(self,peft_dir,is_trainable=False,adapter_name='default'):
-        from peft import LoraConfig as PeftLoraConfig, TaskType
-        peft_config = PeftLoraConfig.from_pretrained(peft_dir)
-        peft_dict = peft_config.to_dict()
-        peft_type = peft_dict.pop('peft_type',None)
-        task_type = peft_dict.pop('task_type', None)
-        if peft_type == 'adalora':
-            lora_args = AdaLoraConfig.from_memory(with_lora=True,
-                                                  lora_type='adalora',
-                                                  json_object=peft_dict)
-
-        else:
-            lora_args = LoraConfig.from_memory(
-                with_lora=True,
-                lora_type='lora',
-                json_object=peft_dict)
-
-        self.lora_args = lora_args
-        self.inject_model()
-        # 恢复权重
-        self.backbone: LoraModel
-
-        def map_preprocess(adapter_weight: typing.Dict):
-            model_base: TransformerBase = self.backbone.model
-            replace_str = 'base_model.model.' + model_base.base_model_prefix
-            weight_new = {re.sub('base_model.model',replace_str,k) : v for k,v in adapter_weight.items()}
-            return weight_new
-        self.backbone.load_adapter(peft_dir, adapter_name=adapter_name, is_trainable=is_trainable,map_preprocess=map_preprocess)
-
-    def save_peft_weight(self,output_peft_dir):
-        from peft import LoraConfig as PeftLoraConfig, TaskType
-
-        assert self.lora_args is not None and self.lora_args.with_lora
-
-        lora_model: LoraModel = self.backbone  # noqa
-
-        lora_model.save_pretrained(output_peft_dir)
-
-        model_base: TransformerBase = self.backbone.model
-        # 权重修改
-        weight_file = os.path.join(output_peft_dir, 'adapter_model.bin')
-        m = torch.load(weight_file)
-
-        replace_str = 'model.' +  model_base.base_model_prefix
-        m_new = {}
-        for k, v in m.items():
-            m_new[re.sub(replace_str, 'model', k)] = v
-        torch.save(m_new, weight_file)
-
-        lora_args = self.lora_args
-
-        peft_config = PeftLoraConfig(
-            task_type=TaskType.CAUSAL_LM,
-            inference_mode=True,
-            r=lora_args.r,
-            lora_alpha=lora_args.lora_alpha,
-            lora_dropout=lora_args.lora_dropout,
-            bias=lora_args.bias,
-            modules_to_save=lora_args.modules_to_save,
-            layers_to_transform=lora_args.layers_to_transform,
-            layers_pattern=lora_args.layers_pattern,
-            target_modules=lora_args.target_modules
-        )
-        # 覆盖配置文件
-        peft_config.save_pretrained(output_peft_dir)
 
 ModelWeightMinMax = ModelWeightMixin

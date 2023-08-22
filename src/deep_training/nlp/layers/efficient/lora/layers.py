@@ -1,39 +1,15 @@
 # @Time    : 2023/4/10 23:58
 # @Author  : tk
 # @FileName: layers
-
-import importlib
 import math
-import sys
 import warnings
 from typing import Union, Tuple
-
 import torch
 from torch import nn
 from torch.nn import functional as F
-from .utils import transpose
 
-if sys.version_info[0] < 3.8:
-    _is_python_greater_3_8 = False
-else:
-    _is_python_greater_3_8 = True
-
-
-def is_bnb_available():
-    return importlib.util.find_spec("bitsandbytes") is not None
-
-
-def is_bnb_4bit_available():
-    if _is_python_greater_3_8:
-        from importlib.metadata import version
-
-        bnb_version = version("bitsandbytes")
-    else:
-        from pkg_resources import get_distribution
-
-        bnb_version = get_distribution("bitsandbytes").version
-    return bnb_version >= "0.39.0"
-
+from ..efficient import EffiLayerAbstract
+from ..utils import transpose, is_bnb_available,is_bnb_4bit_available,is_auto_gptq_available,is_optimum_available
 
 if is_bnb_available():
     import bitsandbytes as bnb
@@ -57,7 +33,7 @@ def mark_only_lora_as_trainable(model: nn.Module, bias: str = "none") -> None:
         raise NotImplementedError
 
 
-class LoraLayer:
+class LoraLayer(EffiLayerAbstract):
     def __init__(
         self,
         in_features: int,
@@ -80,7 +56,7 @@ class LoraLayer:
         self.out_features = out_features
         self.kwargs = kwargs
 
-    def update_layer(self, adapter_name, r, lora_alpha, lora_dropout, init_lora_weights,dtype=None):
+    def update_layer(self, adapter_name, r, lora_alpha, lora_dropout, init_lora_weights):
         self.r[adapter_name] = r
         self.lora_alpha[adapter_name] = lora_alpha
         if lora_dropout > 0.0:
@@ -91,14 +67,14 @@ class LoraLayer:
         self.lora_dropout.update(nn.ModuleDict({adapter_name: lora_dropout_layer}))
         # Actual trainable parameters
         if r > 0:
-            self.lora_A.update(nn.ModuleDict({adapter_name: nn.Linear(self.in_features, r, bias=False,dtype=dtype)}))
-            self.lora_B.update(nn.ModuleDict({adapter_name: nn.Linear(r, self.out_features, bias=False,dtype=dtype)}))
+            self.lora_A.update(nn.ModuleDict({adapter_name: nn.Linear(self.in_features, r, bias=False)}))
+            self.lora_B.update(nn.ModuleDict({adapter_name: nn.Linear(r, self.out_features, bias=False)}))
             self.scaling[adapter_name] = lora_alpha / r
         if init_lora_weights:
             self.reset_lora_parameters(adapter_name)
         self.to(self.weight.device)
 
-    def update_layer_embedding(self, adapter_name, r, lora_alpha, lora_dropout, init_lora_weights,dtype=None):
+    def update_layer_embedding(self, adapter_name, r, lora_alpha, lora_dropout, init_lora_weights):
         self.r[adapter_name] = r
         self.lora_alpha[adapter_name] = lora_alpha
         if lora_dropout > 0.0:
@@ -109,18 +85,16 @@ class LoraLayer:
         self.lora_dropout.update(nn.ModuleDict({adapter_name: lora_dropout_layer}))
         # Actual trainable parameters
         if r > 0:
-            self.lora_embedding_A.update(
-                nn.ParameterDict({adapter_name: nn.Parameter(self.weight.new_zeros((r, self.in_features),dtype=dtype))})
-            )
-            self.lora_embedding_B.update(
-                nn.ParameterDict({adapter_name: nn.Parameter(self.weight.new_zeros((self.out_features, r),dtype=dtype))})
-            )
+            weight_A = torch.randn((r, self.in_features), dtype=self.weight.dtype, device=self.weight.device)
+            weight_B = torch.randn((self.out_features, r), dtype=self.weight.dtype, device=self.weight.device)
+            self.lora_embedding_A.update(nn.ParameterDict({adapter_name: nn.Parameter(weight_A)}))
+            self.lora_embedding_B.update(nn.ParameterDict({adapter_name: nn.Parameter(weight_B)}))
             self.scaling[adapter_name] = lora_alpha / r
         if init_lora_weights:
             self.reset_lora_parameters(adapter_name)
         self.to(self.weight.device)
 
-    def update_layer_conv2d(self, adapter_name, r, lora_alpha, lora_dropout, init_lora_weights,dtype=None):
+    def update_layer_conv2d(self, adapter_name, r, lora_alpha, lora_dropout, init_lora_weights):
         self.r[adapter_name] = r
         self.lora_alpha[adapter_name] = lora_alpha
         if lora_dropout > 0.0:
@@ -135,10 +109,10 @@ class LoraLayer:
             stride = self.kwargs["stride"]
             padding = self.kwargs["padding"]
             self.lora_A.update(
-                nn.ModuleDict({adapter_name: nn.Conv2d(self.in_features, r, kernel_size, stride, padding, bias=False,dtype=dtype)})
+                nn.ModuleDict({adapter_name: nn.Conv2d(self.in_features, r, kernel_size, stride, padding, bias=False)})
             )
             self.lora_B.update(
-                nn.ModuleDict({adapter_name: nn.Conv2d(r, self.out_features, (1, 1), (1, 1), bias=False,dtype=dtype)})
+                nn.ModuleDict({adapter_name: nn.Conv2d(r, self.out_features, (1, 1), (1, 1), bias=False)})
             )
             self.scaling[adapter_name] = lora_alpha / r
         if init_lora_weights:
@@ -156,6 +130,9 @@ class LoraLayer:
             nn.init.normal_(self.lora_embedding_B[adapter_name])
 
 
+
+
+
 class Linear(nn.Linear, LoraLayer):
     # Lora implemented in a dense layer
     def __init__(
@@ -167,6 +144,7 @@ class Linear(nn.Linear, LoraLayer):
         lora_alpha: int = 1,
         lora_dropout: float = 0.0,
         fan_in_fan_out: bool = False,  # Set this to True if the layer to replace stores weight like (fan_in, fan_out)
+        is_target_conv_1d_layer: bool = False,
         **kwargs,
     ):
         init_lora_weights = kwargs.pop("init_lora_weights", True)
@@ -181,8 +159,9 @@ class Linear(nn.Linear, LoraLayer):
             self.weight.data = self.weight.data.T
 
         nn.Linear.reset_parameters(self)
-        self.update_layer(adapter_name, r, lora_alpha, lora_dropout, init_lora_weights,dtype=kwargs.get('dtype',None))
+        self.update_layer(adapter_name, r, lora_alpha, lora_dropout, init_lora_weights)
         self.active_adapter = adapter_name
+        self.is_target_conv_1d_layer = is_target_conv_1d_layer
 
     def merge(self):
         if self.active_adapter not in self.lora_A.keys():
@@ -191,13 +170,7 @@ class Linear(nn.Linear, LoraLayer):
             warnings.warn("Already merged. Nothing to do.")
             return
         if self.r[self.active_adapter] > 0:
-            self.weight.data += (
-                transpose(
-                    self.lora_B[self.active_adapter].weight @ self.lora_A[self.active_adapter].weight,
-                    self.fan_in_fan_out,
-                )
-                * self.scaling[self.active_adapter]
-            )
+            self.weight.data += self.get_delta_weight(self.active_adapter)
             self.merged = True
 
     def unmerge(self):
@@ -207,14 +180,17 @@ class Linear(nn.Linear, LoraLayer):
             warnings.warn("Already unmerged. Nothing to do.")
             return
         if self.r[self.active_adapter] > 0:
-            self.weight.data -= (
-                transpose(
-                    self.lora_B[self.active_adapter].weight @ self.lora_A[self.active_adapter].weight,
-                    self.fan_in_fan_out,
-                )
-                * self.scaling[self.active_adapter]
-            )
+            self.weight.data -= self.get_delta_weight(self.active_adapter)
             self.merged = False
+
+    def get_delta_weight(self, adapter):
+        return (
+            transpose(
+                self.lora_B[adapter].weight @ self.lora_A[adapter].weight,
+                self.fan_in_fan_out,
+            )
+            * self.scaling[adapter]
+        )
 
     def forward(self, x: torch.Tensor):
         previous_dtype = x.dtype
@@ -243,8 +219,6 @@ class Linear(nn.Linear, LoraLayer):
         return result
 
 
-
-
 class Embedding(nn.Embedding, LoraLayer):
     # LoRA implemented in a Embedding layer
     def __init__(
@@ -265,20 +239,15 @@ class Embedding(nn.Embedding, LoraLayer):
         self.weight.requires_grad = False
 
         nn.Embedding.reset_parameters(self)
-        self.update_layer_embedding(adapter_name, r, lora_alpha, lora_dropout, init_lora_weights,dtype=kwargs.get('dtype',None))
+        self.update_layer_embedding(adapter_name, r, lora_alpha, lora_dropout, init_lora_weights)
         self.active_adapter = adapter_name
 
-    def unmerge(self, mode: bool = True):
+    def unmerge(self):
         if not self.merged:
             warnings.warn("Already unmerged. Nothing to do.")
             return
         if self.r[self.active_adapter] > 0:
-            self.weight.data -= (
-                transpose(
-                    self.lora_embedding_B[self.active_adapter] @ self.lora_embedding_A[self.active_adapter], True
-                )
-                * self.scaling[self.active_adapter]
-            )
+            self.weight.data -= self.get_delta_weight(self.active_adapter)
             self.merged = False
 
     def merge(self):
@@ -286,26 +255,16 @@ class Embedding(nn.Embedding, LoraLayer):
             warnings.warn("Already merged. Nothing to do.")
             return
         if self.r[self.active_adapter] > 0:
-            self.weight.data += (
-                transpose(
-                    self.lora_embedding_B[self.active_adapter] @ self.lora_embedding_A[self.active_adapter], True
-                )
-                * self.scaling[self.active_adapter]
-            )
+            self.weight.data += self.get_delta_weight(self.active_adapter)
             self.merged = True
+
+    def get_delta_weight(self, adapter):
+        return transpose(self.lora_embedding_B[adapter] @ self.lora_embedding_A[adapter], True) * self.scaling[adapter]
 
     def forward(self, x: torch.Tensor):
         if self.disable_adapters:
-            if self.r[self.active.adapter] > 0 and self.merged:
-                self.weight.data -= (
-                    transpose(
-                        self.lora_embedding_B[self.active_adapter].weight
-                        @ self.lora_embedding_A[self.active_adapter].weight,
-                        True,
-                    )
-                    * self.scaling[self.active_adapter]
-                )
-                self.merged = False
+            if self.r[self.active_adapter] > 0 and self.merged:
+                self.unmerge()
             return nn.Embedding.forward(self, x)
 
         elif self.r[self.active_adapter] > 0 and not self.merged:
@@ -324,7 +283,6 @@ class Embedding(nn.Embedding, LoraLayer):
             return result
         else:
             return nn.Embedding.forward(self, x)
-
 
 
 class Conv2d(nn.Conv2d, LoraLayer):
@@ -357,7 +315,7 @@ class Conv2d(nn.Conv2d, LoraLayer):
         self.weight.requires_grad = False
 
         nn.Conv2d.reset_parameters(self)
-        self.update_layer_conv2d(adapter_name, r, lora_alpha, lora_dropout, init_lora_weights,dtype=kwargs.get('dtype',None))
+        self.update_layer_conv2d(adapter_name, r, lora_alpha, lora_dropout, init_lora_weights)
         self.active_adapter = adapter_name
 
     def merge(self):
@@ -367,22 +325,7 @@ class Conv2d(nn.Conv2d, LoraLayer):
             warnings.warn("Already merged. Nothing to do.")
             return
         if self.r[self.active_adapter] > 0:
-            # https://github.com/bmaltais/kohya_ss/blob/feb6728762a8f463d15ba936d189d4c3abfaa1ab/networks/lora.py#L117
-            if self.weight.size()[2:4] == (1, 1):
-                # conv2d 1x1
-                self.weight.data += (
-                    self.lora_B[self.active_adapter].weight.squeeze(3).squeeze(2)
-                    @ self.lora_A[self.active_adapter].weight.squeeze(3).squeeze(2)
-                ).unsqueeze(2).unsqueeze(3) * self.scaling[self.active_adapter]
-            else:
-                # conv2d 3x3
-                self.weight.data += (
-                    F.conv2d(
-                        self.lora_A[self.active_adapter].weight.permute(1, 0, 2, 3),
-                        self.lora_B[self.active_adapter].weight,
-                    ).permute(1, 0, 2, 3)
-                    * self.scaling[self.active_adapter]
-                )
+            self.weight.data += self.get_delta_weight(self.active_adapter)
             self.merged = True
 
     def unmerge(self):
@@ -392,22 +335,25 @@ class Conv2d(nn.Conv2d, LoraLayer):
             warnings.warn("Already unmerged. Nothing to do.")
             return
         if self.r[self.active_adapter] > 0:
-            if self.weight.size()[2:4] == (1, 1):
-                # conv2d 1x1
-                self.weight.data -= (
-                    self.lora_B[self.active_adapter].weight.squeeze(3).squeeze(2)
-                    @ self.lora_A[self.active_adapter].weight.squeeze(3).squeeze(2)
-                ).unsqueeze(2).unsqueeze(3) * self.scaling[self.active_adapter]
-            else:
-                # conv2d 3x3
-                self.weight.data += (
-                    F.conv2d(
-                        self.lora_A[self.active_adapter].weight.permute(1, 0, 2, 3),
-                        self.lora_B[self.active_adapter].weight,
-                    ).permute(1, 0, 2, 3)
-                    * self.scaling[self.active_adapter]
-                )
+            self.weight.data -= self.get_delta_weight(self.active_adapter)
             self.merged = False
+
+    def get_delta_weight(self, adapter):
+        # https://github.com/bmaltais/kohya_ss/blob/feb6728762a8f463d15ba936d189d4c3abfaa1ab/networks/lora.py#L117
+        if self.weight.size()[2:4] == (1, 1):
+            # conv2d 1x1
+            return (
+                self.lora_B[adapter].weight.squeeze(3).squeeze(2) @ self.lora_A[adapter].weight.squeeze(3).squeeze(2)
+            ).unsqueeze(2).unsqueeze(3) * self.scaling[adapter]
+        else:
+            # conv2d 3x3
+            return (
+                F.conv2d(
+                    self.lora_A[adapter].weight.permute(1, 0, 2, 3),
+                    self.lora_B[adapter].weight,
+                ).permute(1, 0, 2, 3)
+                * self.scaling[adapter]
+            )
 
     def forward(self, x: torch.Tensor):
         previous_dtype = x.dtype
@@ -468,6 +414,7 @@ class Conv2d(nn.Conv2d, LoraLayer):
 
         return result
 
+
 if is_bnb_available():
 
     class Linear8bitLt(bnb.nn.Linear8bitLt, LoraLayer):
@@ -496,9 +443,8 @@ if is_bnb_available():
 
             # Freezing the pre-trained weight matrix
             self.weight.requires_grad = False
-
             init_lora_weights = kwargs.pop("init_lora_weights", True)
-            self.update_layer(adapter_name, r, lora_alpha, lora_dropout, init_lora_weights,dtype=kwargs.get('dtype',None))
+            self.update_layer(adapter_name, r, lora_alpha, lora_dropout, init_lora_weights)
             self.active_adapter = adapter_name
 
         def forward(self, x: torch.Tensor):
@@ -527,7 +473,6 @@ if is_bnb_available():
                     )
                 result += output
             return result
-
 
     if is_bnb_4bit_available():
 
@@ -558,7 +503,7 @@ if is_bnb_available():
                 self.weight.requires_grad = False
 
                 init_lora_weights = kwargs.pop("init_lora_weights", True)
-                self.update_layer(adapter_name, r, lora_alpha, lora_dropout, init_lora_weights,dtype=kwargs.get('dtype',None))
+                self.update_layer(adapter_name, r, lora_alpha, lora_dropout, init_lora_weights)
                 self.active_adapter = adapter_name
 
             def forward(self, x: torch.Tensor):
@@ -586,3 +531,55 @@ if is_bnb_available():
                         )
                     result += output
                 return result
+
+
+class QuantLinear(torch.nn.Module, LoraLayer):
+    def __init__(
+        self,
+        adapter_name,
+        quant_linear_module,
+        r: int = 0,
+        lora_alpha: int = 1,
+        lora_dropout: float = 0.0,
+        **kwargs,
+    ):
+        torch.nn.Module.__init__(self)
+        LoraLayer.__init__(
+            self, in_features=quant_linear_module.infeatures, out_features=quant_linear_module.outfeatures
+        )
+        self.quant_linear_module = quant_linear_module
+        self.weight = quant_linear_module.qweight
+        init_lora_weights = kwargs.pop("init_lora_weights", True)
+        self.update_layer(adapter_name, r, lora_alpha, lora_dropout, init_lora_weights)
+        self.active_adapter = adapter_name
+
+    def forward(self, x: torch.Tensor):
+        result = self.quant_linear_module(x)
+        if self.disable_adapters or self.active_adapter not in self.lora_A.keys():
+            return result
+        elif self.r[self.active_adapter] > 0:
+            result = result.clone()
+            if not torch.is_autocast_enabled():
+                expected_dtype = result.dtype
+                x = x.to(self.lora_A[self.active_adapter].weight.dtype)
+                output = (
+                    self.lora_B[self.active_adapter](
+                        self.lora_A[self.active_adapter](self.lora_dropout[self.active_adapter](x))
+                    ).to(expected_dtype)
+                    * self.scaling[self.active_adapter]
+                )
+            else:
+                output = (
+                    self.lora_B[self.active_adapter](
+                        self.lora_A[self.active_adapter](self.lora_dropout[self.active_adapter](x))
+                    )
+                    * self.scaling[self.active_adapter]
+                )
+            result += output
+        return result
+
+    # TODO: Check if it is better as suggested by users https://github.com/PanQiWei/AutoGPTQ/pull/102
+    # def reset_lora_parameters(self, adapter_name):
+    #     if adapter_name in self.lora_A.keys():
+    #         torch.nn.init.xavier_uniform_(self.lora_A[adapter_name].weight)
+    #         torch.nn.init.zeros_(self.lora_B[adapter_name].weight)

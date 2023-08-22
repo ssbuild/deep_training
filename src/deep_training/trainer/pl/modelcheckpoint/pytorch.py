@@ -38,19 +38,19 @@ class ModelCheckpointEx(ModelCheckpoint):
             bHandled = True
             model = trainer.strategy.lightning_module
             if isinstance(trainer.strategy, DeepSpeedStrategy):
-                checkpoints = model.backbone.get_all_state_dict()
+                checkpoints = model.backbone.model.get_all_state_dict()
                 gather_ds_state_dict(checkpoints,
                                      filepath,
                                      zero_stage_3=trainer.strategy.zero_stage_3,
                                      is_global_zero=trainer.strategy.is_global_zero,
-                                     config=model.backbone.config)
+                                     config=model.backbone.model.config)
             else:
 
                 if trainer.is_global_zero:
-                    model.backbone.save_pretrained(filepath)
+                    model.backbone.model.save_pretrained(filepath)
                     config_path = os.path.join(filepath, 'config.json')
                     if not os.path.exists(config_path):
-                        model.backbone.config.save_pretrained(filepath)
+                        model.backbone.model.config.save_pretrained(filepath)
 
                 # trainer.strategy.barrier()
         if not bHandled:
@@ -69,7 +69,7 @@ class ModelCheckpointEx(ModelCheckpoint):
     #     if self.lora_args or self.prompt_args:
     #         bHandled = True
     #         model = trainer.strategy.lightning_module
-    #         checkpoints = model.backbone.get_all_state_dict()
+    #         checkpoints = model.backbone.model.get_all_state_dict()
     #         m = trainer.strategy.model.module if isinstance(trainer.strategy, DeepSpeedStrategy) else model
     #         eng = trainer.strategy.model
     #         for adapter_name, state in checkpoints.items():
