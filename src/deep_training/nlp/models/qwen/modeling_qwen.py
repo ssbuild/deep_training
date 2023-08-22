@@ -1012,6 +1012,7 @@ class QWenLMHeadModel(QWenPreTrainedModel):
             for layer_past in past_key_values
         )
 
+    @torch.no_grad()
     def chat(
         self,
         tokenizer: PreTrainedTokenizer,
@@ -1070,6 +1071,7 @@ class QWenLMHeadModel(QWenPreTrainedModel):
 
         return response, history
 
+    @torch.no_grad()
     def chat_stream(
             self,
             tokenizer: PreTrainedTokenizer,
@@ -1133,8 +1135,7 @@ class QWenLMHeadModel(QWenPreTrainedModel):
                 yield tokenizer.decode(outputs, skip_special_tokens=True, errors='ignore')
         return stream_generator()
 
-
-
+    @torch.no_grad()
     def generate(
         self,
         inputs: Optional[torch.Tensor] = None,

@@ -101,3 +101,61 @@ class NTKScaledRotaryGLM2(torch.nn.Module):
         return self.forward_impl(
             max_seq_len, self.dim, dtype=self.inv_freq.dtype, device=self.inv_freq.device
         )
+
+class NTKScaledRotaryMoss(torch.nn.Module):
+    def __init__(self, dim,max_position_embeddings=2048,base=10000,rope_ratio=1.0, alpha=1, original_impl=False, device=None, dtype=None):
+        super().__init__()
+        # inv_freq = 1.0 / (10000 ** (torch.arange(0, dim, 2, device=device).to(dtype=dtype) / dim))
+        # self.register_buffer("inv_freq", inv_freq)
+        self.device = device
+        self.dtype = dtype
+        self.dim = dim
+        self.original_impl = original_impl
+        self.rope_ratio = rope_ratio
+        self.max_position_embeddings = max_position_embeddings
+        self.max_seq_len_cached = 0
+        self.base=base
+        self.alpha = alpha
+
+    def build_cache(
+            self, seq_len: int, n_elem: int, dtype: torch.dtype, device: torch.device,
+    ):
+        """Enhanced Transformer with Rotary Position Embedding.
+
+        Derived from: https://github.com/labmlai/annotated_deep_learning_paper_implementations/blob/master/labml_nn/
+        transformers/rope/__init__.py. MIT License:
+        https://github.com/labmlai/annotated_deep_learning_paper_implementations/blob/master/license.
+        """
+        # $\Theta = {\theta_i = 10000^{\frac{2(i-1)}{d}}, i \in [1, 2, ..., \frac{d}{2}]}$
+        self.max_seq_len_cached = seq_len
+        base = self.base
+        dim = n_elem
+        alpha = self.alpha
+        base = base * alpha ** (dim / (dim - 2))
+        inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float().to(device) / dim))
+
+        # Create position indexes `[0, 1, ..., seq_len - 1]`
+        seq_idx = torch.arange(seq_len, dtype=dtype, device=device) / self.rope_ratio
+
+        # Calculate the product of position index and $\theta_i$
+        idx_theta = torch.outer(seq_idx, inv_freq).float()
+
+        cache = torch.cat([torch.sin(idx_theta), torch.cos(idx_theta)], dim=1)
+
+        # this is to mimic the behaviour of complex32, else we will get different results
+        if dtype in (torch.float16, torch.bfloat16, torch.int8):
+            cache = cache.bfloat16() if dtype == torch.bfloat16 else cache.half()
+        return cache
+
+    def forward(self, x, offset=0):
+        max_seq_len = x.size(-1)
+        if max_seq_len > self.max_seq_len_cached:
+            self.cache = self.build_cache(max(self.max_position_embeddings,self.max_seq_len_cached,max_seq_len), self.dim,
+                                          # dtype=self.inv_freq.dtype,
+                                          # device=self.inv_freq.device
+                                          dtype=self.dtype,
+                                          device=x.device
+                                          )
+        if self.cache.device != x.device:
+            self.cache = self.cache.to(x.device)
+        return self.cache[x]

@@ -1280,15 +1280,13 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
         return response
 
     @torch.no_grad()
-    def chat(self, tokenizer, query: str, history: List[Tuple[str, str]] = None,
-             do_sample=True, top_p=0.7, temperature=0.95, logits_processor=None, **kwargs):
+    def chat(self, tokenizer, query: str, history: List[Tuple[str, str]] = None,logits_processor=None, **kwargs):
         if history is None:
             history = []
         if logits_processor is None:
             logits_processor = LogitsProcessorList()
         logits_processor.append(InvalidScoreLogitsProcessor())
-        gen_kwargs = {"do_sample": do_sample, "top_p": top_p,
-                      "temperature": temperature, "logits_processor": logits_processor, **kwargs}
+        gen_kwargs = {"logits_processor": logits_processor, **kwargs}
         if not history:
             prompt = query
         else:
@@ -1306,15 +1304,13 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
         return response, history
 
     @torch.no_grad()
-    def stream_chat(self, tokenizer, query: str, history: List[Tuple[str, str]] = None,
-                    do_sample=True, top_p=0.7, temperature=0.95, logits_processor=None, **kwargs):
+    def stream_chat(self, tokenizer, query: str, history: List[Tuple[str, str]] = None,logits_processor=None, **kwargs):
         if history is None:
             history = []
         if logits_processor is None:
             logits_processor = LogitsProcessorList()
         logits_processor.append(InvalidScoreLogitsProcessor())
-        gen_kwargs = {"do_sample": do_sample, "top_p": top_p,
-                      "temperature": temperature, "logits_processor": logits_processor, **kwargs}
+        gen_kwargs = {"logits_processor": logits_processor, **kwargs}
         if not history:
             prompt = query
         else:

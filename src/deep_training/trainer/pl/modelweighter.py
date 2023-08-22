@@ -3,6 +3,7 @@
 # @Time    : 2023/5/29 9:49
 import os
 import re
+import typing
 from collections import OrderedDict
 import torch
 from torch import nn
@@ -10,7 +11,7 @@ from torch.nn.modules.module import _IncompatibleKeys
 from transformers import PreTrainedModel, HfArgumentParser, AutoConfig
 from ...data_helper import ModelArguments, TrainingArguments, DataArguments
 from ...nlp.models.prompt import PromptLearningConfig, PromptModel,PromptArguments,get_prompt_model
-from ...nlp.models.lora.v2 import LoraModel, LoraArguments,LoraConfig
+from ...nlp.models.lora.v2 import LoraModel, LoraArguments,LoraConfig,AdaLoraConfig
 from ...nlp.models.transformer_base import TransformerBase
 from ...utils.save_checkpoint import save_checkpoint_to_hf_format
 
@@ -20,6 +21,7 @@ __all__ = [
     'LoraModel',
     'LoraArguments',
     'LoraConfig',
+    'AdaLoraConfig',
     'AutoConfig',
     'PromptLearningConfig',
     'PromptModel',
@@ -171,6 +173,36 @@ class ModelWeightMixin:
                              merge_lora_weight=merge_lora_weight,
                              llm_weight_only=llm_weight_only,
                              max_shard_size=max_shard_size)
+
+
+    def load_peft_weight(self,peft_dir,is_trainable=False,adapter_name='default'):
+        from peft import LoraConfig as PeftLoraConfig, TaskType
+        peft_config = PeftLoraConfig.from_pretrained(peft_dir)
+        peft_dict = peft_config.to_dict()
+        peft_type = peft_dict.pop('peft_type',None)
+        task_type = peft_dict.pop('task_type', None)
+        if peft_type == 'adalora':
+            lora_args = AdaLoraConfig.from_memory(with_lora=True,
+                                                  lora_type='adalora',
+                                                  json_object=peft_dict)
+
+        else:
+            lora_args = LoraConfig.from_memory(
+                with_lora=True,
+                lora_type='lora',
+                json_object=peft_dict)
+
+        self.lora_args = lora_args
+        self.inject_model()
+        # 恢复权重
+        self.backbone: LoraModel
+
+        def map_preprocess(adapter_weight: typing.Dict):
+            model_base: TransformerBase = self.backbone.model
+            replace_str = 'base_model.model.' + model_base.base_model_prefix
+            weight_new = {re.sub('base_model.model',replace_str,k) : v for k,v in adapter_weight.items()}
+            return weight_new
+        self.backbone.load_adapter(peft_dir, adapter_name=adapter_name, is_trainable=is_trainable,map_preprocess=map_preprocess)
 
     def save_peft_weight(self,output_peft_dir):
         from peft import LoraConfig as PeftLoraConfig, TaskType

@@ -46,7 +46,8 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
 ## update
 - <strong>2023-08-16</strong>
   - 0.1.21 release 增加 5种 rope scale 方法 ， fix chatglm2-6b-32k 推理 rope_ratio
-
+  - 0.1.21.post1 fix moss rope
+  
 - <strong>2023-08-09</strong>
   - 0.1.17 update qwen model
   - 0.1.17.post0 update qwen config
