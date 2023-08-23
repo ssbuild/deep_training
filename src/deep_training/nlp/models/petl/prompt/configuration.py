@@ -12,9 +12,6 @@ from transformers.utils import PushToHubMixin
 WEIGHTS_NAME = "adapter_model.bin"
 CONFIG_NAME = "adapter_config.json"
 
-_PRECISION_INPUT_INT = Literal[64, 32, 16]
-_PRECISION_INPUT_STR = Literal["64", "32", "16", "bf16"]
-_PRECISION_INPUT = Union[_PRECISION_INPUT_INT, _PRECISION_INPUT_STR]
 
 class TaskType(str, enum.Enum):
     SEQ_CLS = "seq_cls"

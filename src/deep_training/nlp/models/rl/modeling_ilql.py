@@ -20,7 +20,7 @@ __all__ = [
     'AutoModelForSeq2SeqLMWithILQLHeads',
 ]
 
-from ...layers.lora_v2.utils import ModulesToSaveWrapper
+from ...layers.petl.utils import ModulesToSaveWrapper
 
 
 def topk_mask(xs: torch.FloatTensor, k: int):

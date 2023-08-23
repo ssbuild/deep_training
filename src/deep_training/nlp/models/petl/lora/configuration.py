@@ -8,19 +8,12 @@ import os
 from dataclasses import dataclass, field, asdict
 from typing import Union, Optional, List, Literal, AnyStr
 from transformers.utils import PushToHubMixin
-
-WEIGHTS_NAME = "adapter_model.bin"
-CONFIG_NAME = "adapter_config.json"
-
-_PRECISION_INPUT_INT = Literal[64, 32, 16]
-_PRECISION_INPUT_STR = Literal["64", "32", "16", "bf16"]
-_PRECISION_INPUT = Union[_PRECISION_INPUT_INT, _PRECISION_INPUT_STR]
-
+from ....layers.petl.constants import WEIGHTS_NAME,SAFETENSORS_WEIGHTS_NAME,CONFIG_NAME
 
 
 
 @dataclass
-class LoraConfigMixin(PushToHubMixin):
+class PetlConfigMixin(PushToHubMixin):
     r"""
     This is the base configuration class for PEFT adapter models. It contains all the methods that are common to all
     PEFT adapter models. This class inherits from `transformers.utils.PushToHubMixin` which contains the methods to
@@ -51,9 +44,14 @@ class LoraConfigMixin(PushToHubMixin):
             raise AssertionError(f"Provided path ({save_directory}) should be a directory, not a file")
 
         os.makedirs(save_directory, exist_ok=True)
+        auto_mapping_dict = kwargs.pop("auto_mapping_dict", None)
 
         output_dict = self.__dict__
         output_path = os.path.join(save_directory, CONFIG_NAME)
+
+        # Add auto mapping details for custom models.
+        if auto_mapping_dict is not None:
+            output_dict["auto_mapping"] = auto_mapping_dict
 
         # save it
         with open(output_path, "w") as writer:
@@ -113,7 +111,7 @@ class LoraConfigMixin(PushToHubMixin):
 
 
 @dataclass
-class LoraBaseArguments(LoraConfigMixin):
+class PetlConfig(PetlConfigMixin):
     """
       inference_mode (`bool`, defaults to `False`): Whether to use the Peft model in inference mode.
     """
@@ -121,17 +119,10 @@ class LoraBaseArguments(LoraConfigMixin):
     inference_mode: bool = field(default=False, metadata={"help": "Whether to use inference mode"})
     lora_type: str = field(default='lora', metadata={"help": "one of lora,adalora"})
     with_lora: bool = field(default=False, metadata={"help": "whether use lora"})
-    target_dtype: Optional[Union[int, str]] = field(
-        default=None,
-        metadata={
-            "help": "target_modules dtype , one of [\"64\", \"32\", \"16\", \"bf16\"]  or one of [16,32,64]"
-        },
-    )
 
 @dataclass
-class LoraConfig(LoraBaseArguments):
+class LoraConfig(PetlConfig):
     """
-    This is the configuration class to store the configuration of a [`~peft.Lora`].
 
     Args:
 
@@ -150,12 +141,6 @@ class LoraConfig(LoraBaseArguments):
         metadata={
             "help": "List of module names or regex expression of the module names to replace with Lora."
                     "For example, ['q', 'v'] or '.*decoder.*(SelfAttention|EncDecAttention).*(q|v)$' "
-        },
-    )
-    target_dtype: Optional[Union[int,str]]= field(
-        default=None,
-        metadata={
-            "help": "target_modules dtype , one of [\"64\", \"32\", \"16\", \"bf16\"]  or one of [16,32,64]"
         },
     )
     lora_alpha: int = field(default=None, metadata={"help": "Lora alpha"})
@@ -199,7 +184,7 @@ class LoraConfig(LoraBaseArguments):
 @dataclass
 class AdaLoraConfig(LoraConfig):
     """
-    This is the configuration class to store the configuration of a [`~peft.AdaLora`].
+    This is the configuration class to store the configuration of a [`~efficient.AdaLora`].
 
     Args:
         target_r (`int`): The target average rank of incremental matrix.
@@ -230,25 +215,80 @@ class AdaLoraConfig(LoraConfig):
             self.lora_type = 'adalora'
 
 
+
+@dataclass
+class IA3Config(PetlConfig):
+    """
+    This is the configuration class to store the configuration of a [`IA3Model`].
+
+    Args:
+        target_modules (`Union[List[str],str]`): The names of the modules to apply (IA)^3 to.
+        feedforward_modules (`Union[List[str],str]`): The names of the modules to be treated as feedforward modules
+        as in the original paper.
+        fan_in_fan_out (`bool`): Set this to True if the layer to replace stores weight like (fan_in, fan_out).
+        For example, gpt-2 uses `Conv1D` which stores weights like (fan_in, fan_out) and hence this should be set to `True`.:
+        modules_to_save (`List[str]`):List of modules apart from (IA)^3 layers to be set as trainable
+            and saved in the final checkpoint.
+        init_ia3_weights (`bool`): Whether to initialize the vectors in the (IA)^3 layers, defaults to `True`.
+    """
+
+    target_modules: Optional[Union[List[str], str]] = field(
+        default=None,
+        metadata={
+            "help": "List of module names or regex expression of the module names to replace with ia3."
+            "For example, ['q', 'v'] or '.*decoder.*(SelfAttention|EncDecAttention).*(q|v)$' "
+        },
+    )
+    feedforward_modules: Optional[Union[List[str], str]] = field(
+        default=None,
+        metadata={
+            "help": "List of module names or a regex expression of module names which are feedforward"
+            "For example, ['output.dense']"
+        },
+    )
+    fan_in_fan_out: bool = field(
+        default=False,
+        metadata={"help": "Set this to True if the layer to replace stores weight like (fan_in, fan_out)"},
+    )
+    modules_to_save: Optional[List[str]] = field(
+        default=None,
+        metadata={
+            "help": "List of modules apart from (IA)^3 layers to be set as trainable and saved in the final checkpoint. "
+            "For example, in Sequence Classification or Token Classification tasks, "
+            "the final layer `classifier/score` are randomly initialized and as such need to be trainable and saved."
+        },
+    )
+    init_ia3_weights: bool = field(
+        default=True,
+        metadata={"help": "Whether to initialize the vectors in the (IA)^3 layers."},
+    )
+
+    def __post_init__(self):
+        self.lora_type = "ia3"
+
 LORA_TYPE_TO_CONFIG_MAPPING = {
     "lora": LoraConfig,
     "adalora": AdaLoraConfig,
+    "ia3": IA3Config
 }
 
 @dataclass
-class LoraArguments:
-    lora: LoraConfig= field(default=None, metadata={"help": "LoraArguments."})
-    adalora: AdaLoraConfig = field(default=None, metadata={"help": "AdaLoraArguments."})
+class PetlArguments:
+    lora: LoraConfig= field(default=None, metadata={"help": "LoraConfig."})
+    adalora: AdaLoraConfig = field(default=None, metadata={"help": "AdaLoraConfig."})
+    ia3: IA3Config = field(default=None, metadata={"help": "IA3Config."})
 
     def save_pretrained(self, save_directory, **kwargs):
         if self.lora is not None:
             self.lora.save_pretrained(save_directory, **kwargs)
         elif self.adalora is not None:
             self.adalora.save_pretrained(save_directory, **kwargs)
+        elif self.ia3 is not None:
+            self.ia3.save_pretrained(save_directory, **kwargs)
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
-        config = LORA_TYPE_TO_CONFIG_MAPPING[LoraBaseArguments.from_pretrained(pretrained_model_name_or_path,**kwargs).lora_type].from_pretrained(pretrained_model_name_or_path,**kwargs)
+        config = LORA_TYPE_TO_CONFIG_MAPPING[PetlConfig.from_pretrained(pretrained_model_name_or_path, **kwargs).lora_type].from_pretrained(pretrained_model_name_or_path, **kwargs)
         assert config.with_lora , ValueError('lora config get bad with_lora ',config.with_lora)
         # config = cls()
         # config.lora = None
@@ -261,13 +301,15 @@ class LoraArguments:
         return config
 
     @property
-    def config(self) -> Optional[Union[LoraConfig,AdaLoraConfig]]:
+    def config(self) -> Optional[Union[LoraConfig,AdaLoraConfig,IA3Config]]:
         if not self.with_lora:
             return None
         if self.lora is not None and self.lora.with_lora:
             return self.lora
         elif self.adalora is not None and self.adalora.with_lora:
             return self.adalora
+        elif self.ia3 is not None and self.adalora.with_lora:
+            return self.ia3
         return None
 
 
@@ -282,5 +324,8 @@ class LoraArguments:
             self.adalora = AdaLoraConfig.from_memory(self.adalora)
             self.with_lora = self.adalora.with_lora | self.with_lora
 
+        if self.ia3 is not None and isinstance(self.ia3, dict):
+            self.ia3 = IA3Config.from_memory(self.ia3)
+            self.with_lora = self.ia3.with_lora | self.with_lora
 
-COMMON_LAYERS_PATTERN = ["layers", "h", "block", "blocks"]
+COMMON_LAYERS_PATTERN = ["layers", "h", "block", "blocks", "layer"]
