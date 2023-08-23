@@ -704,7 +704,7 @@ class PromptModelForCausalLM(PromptModel):
     def generate(self, **kwargs):
         prompt_config = self.active_prompt_config
         self.get_transformer_model().prepare_inputs_for_generation = self.prepare_inputs_for_generation
-        generate_fn = self.base_model.generate
+        generate_fn = getattr(self.base_model,"generate",self.base_model.model.generate)
         try:
             if not isinstance(prompt_config, PromptLearningConfig):
                 outputs = generate_fn(**kwargs)
@@ -926,7 +926,7 @@ class PromptModelForSeq2SeqLM(PromptModel):
         self.get_transformer_model()._prepare_encoder_decoder_kwargs_for_generation = (
             self._prepare_encoder_decoder_kwargs_for_generation
         )
-        generate_fn = self.base_model.generate
+        generate_fn = getattr(self.base_model, "generate", self.base_model.model.generate)
         try:
             if not isinstance(prompt_config, PromptLearningConfig):
                 outputs = generate_fn(**kwargs)
