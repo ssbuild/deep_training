@@ -135,6 +135,13 @@ class ModulesToSaveWrapper(torch.nn.Module):
     def forward(self, *args, **kwargs):
         if self.active_adapter not in self.modules_to_save:
             return self.original_module(*args, **kwargs)
+
+        if not torch.is_autocast_enabled():
+            dtype = self.modules_to_save[self.active_adapter].weight.dtype
+            args = (_.to(dtype) for _ in args)
+            for k in kwargs:
+                kwargs[k] = kwargs[k].to(dtype)
+
         return self.modules_to_save[self.active_adapter](*args, **kwargs)
 
 
