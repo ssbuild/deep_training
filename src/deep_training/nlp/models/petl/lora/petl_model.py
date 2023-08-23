@@ -295,16 +295,20 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
                 self.modules_to_save = self.modules_to_save.update(lora_config.modules_to_save)
             _set_trainable(self, adapter_name)
 
-    def load_adapter(self, model_id, adapter_name, is_trainable=False, strict=False,
-                     map_preprocess: Optional[Callable]=None, **kwargs):
+    def load_adapter(self, model_id, adapter_name,
+                     config=None,
+                     is_trainable=False, strict=False,
+                     map_preprocess: Optional[Callable]=None,**kwargs):
 
         torch_device = infer_device()
         if adapter_name not in self.effi_config:
-            # load the config
-            lora_config = LORA_TYPE_TO_CONFIG_MAPPING[
-                LoraConfig.from_pretrained(model_id, subfolder=kwargs.get("subfolder", None)).lora_type
-            ].from_pretrained(model_id, subfolder=kwargs.get("subfolder", None))
-
+            if config is None:
+                # load the config
+                lora_config = LORA_TYPE_TO_CONFIG_MAPPING[
+                    LoraConfig.from_pretrained(model_id, subfolder=kwargs.get("subfolder", None)).lora_type
+                ].from_pretrained(model_id, subfolder=kwargs.get("subfolder", None))
+            else:
+                lora_config = config
             lora_config.inference_mode = not is_trainable
             self.add_adapter(adapter_name, lora_config)
 

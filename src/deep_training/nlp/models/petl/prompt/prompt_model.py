@@ -358,13 +358,19 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
                 self.modules_to_save.update(prompt_config.modules_to_save)
             _set_trainable(self, adapter_name)
 
-    def load_adapter(self, model_id, adapter_name, is_trainable=False,strict=False,
+    def load_adapter(self, model_id, adapter_name,
+                     config=None,
+                     is_trainable=False,strict=False,
                      map_preprocess: typing.Optional[typing.Callable]=None,**kwargs):
         if adapter_name not in self.prompt_config:
-            # load the config
-            prompt_config = PROMPT_TYPE_TO_CONFIG_MAPPING[
-                PromptBaseArguments.from_pretrained(model_id, subfolder=kwargs.get("subfolder", None)).prompt_type
-            ].from_pretrained(model_id, subfolder=kwargs.get("subfolder", None))
+            if config is None:
+                # load the config
+                prompt_config = PROMPT_TYPE_TO_CONFIG_MAPPING[
+                    PromptBaseArguments.from_pretrained(model_id, subfolder=kwargs.get("subfolder", None)).prompt_type
+                ].from_pretrained(model_id, subfolder=kwargs.get("subfolder", None))
+            else:
+                prompt_config = config
+
             if isinstance(prompt_config, PromptLearningConfig) and is_trainable:
                 raise ValueError("Cannot set a prompt learning adapter to trainable when loading pretrained adapter.")
             else:
