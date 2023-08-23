@@ -2,9 +2,8 @@
 # @Time    : 2023/4/11 14:35
 
 import sys
-import typing
 from functools import partial
-from typing import Any, IO
+from typing import Any, IO,Union,Optional
 import lightning as pl
 import torch
 from torch import nn, Tensor
@@ -33,16 +32,16 @@ class MyLightningModule(pl.LightningModule):
     @classmethod
     def load_from_checkpoint(
             cls,
-            checkpoint_path: typing.Union[str, IO],
+            checkpoint_path: Union[str, IO],
             map_location = None,
-            hparams_file: typing.Optional[str] = None,
+            hparams_file: Optional[str] = None,
             strict: bool = True,
             **kwargs: Any,
-    ) -> typing.Union["pl.LightningModule", "pl.LightningDataModule","MyLightningModule"]:
+    ) -> Union["pl.LightningModule", "pl.LightningDataModule","MyLightningModule"]:
         return super(MyLightningModule, cls).load_from_checkpoint(checkpoint_path,map_location,hparams_file,strict,**kwargs)
 
     @property
-    def backbone(self) -> nn.Module:
+    def backbone(self) -> Union[nn.Module,Any]:
         return self.__model
 
     def set_backbone(self, model , copy_attr=True):
@@ -97,7 +96,7 @@ class TransformerBase(MyLightningModule, metaclass=TransformerFakeMeta):
         self.config = config
         self.base_model_prefix = None
         self.config_class = None
-        self._trainer:  typing.Optional["pl.Trainer"] = None
+        self._trainer:  Optional["pl.Trainer"] = None
 
     def forward(self, *args, **batch):
         return self.model(*args, **batch)
@@ -116,7 +115,7 @@ class TransformerBase(MyLightningModule, metaclass=TransformerFakeMeta):
         return self._trainer
 
     @trainer.setter
-    def trainer(self,trainer: typing.Optional["pl.Trainer"]):
+    def trainer(self,trainer: Optional["pl.Trainer"]):
          self._trainer = trainer
 
     @property
@@ -128,11 +127,11 @@ class TransformerBase(MyLightningModule, metaclass=TransformerFakeMeta):
         return self.trainer.global_step if self._trainer else 0
 
     @property
-    def max_epochs(self) -> typing.Optional[int]:
+    def max_epochs(self) -> Optional[int]:
         return self.trainer.max_epochs if self._trainer else 0
 
     @property
-    def min_epochs(self) -> typing.Optional[int]:
+    def min_epochs(self) -> Optional[int]:
         return self.trainer.min_epochs if self._trainer else 0
 
     @property
@@ -248,7 +247,7 @@ class TransformerLightningModule(MyLightningModule):
         self.config = config
         self.model_args = model_args
         self.training_args = training_args
-        self.transformer_base : typing.Optional[TransformerBase] = None
+        self.transformer_base : Optional[TransformerBase] = None
         if hasattr(self,'__BACKBONE_CLASS__') and len(self.__BACKBONE_CLASS__) > 0:
             self.set_model(self.__BACKBONE_CLASS__[0](*args, **kwargs))
 
