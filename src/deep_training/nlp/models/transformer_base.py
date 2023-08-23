@@ -97,7 +97,7 @@ class TransformerBase(MyLightningModule, metaclass=TransformerFakeMeta):
         self.config = config
         self.base_model_prefix = None
         self.config_class = None
-        self._trainer:  typing.Optional["pl.Trainer"]  = None
+        self._trainer:  typing.Optional["pl.Trainer"] = None
 
     def forward(self, *args, **batch):
         return self.model(*args, **batch)

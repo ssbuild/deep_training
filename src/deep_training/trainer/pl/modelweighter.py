@@ -10,18 +10,18 @@ from torch import nn
 from torch.nn.modules.module import _IncompatibleKeys
 from transformers import PreTrainedModel, HfArgumentParser, AutoConfig
 from ...data_helper import ModelArguments, TrainingArguments, DataArguments
-from ...nlp.models.efficient.prompt import PromptLearningConfig, PromptModel,PromptArguments,get_prompt_model
-from ...nlp.models.efficient import LoraModel, EffiArguments,LoraConfig,AdaLoraConfig
+from ...nlp.models.petl.prompt import PromptLearningConfig, PromptModel,PromptArguments,get_prompt_model
+from ...nlp.models.petl import PetlModel, PetlArguments, LoraConfig, AdaLoraConfig, IA3Config
 from ...nlp.models.transformer_base import TransformerBase
 from ...utils.save_checkpoint import save_checkpoint_to_hf_format
 
 __all__ = [
-    'ModelWeightMinMax',
     'ModelWeightMixin',
-    'LoraModel',
-    'EffiArguments',
+    'PetlModel',
     'LoraConfig',
     'AdaLoraConfig',
+    'IA3Config',
+    'PetlArguments',
     'AutoConfig',
     'PromptLearningConfig',
     'PromptModel',
@@ -35,13 +35,14 @@ __all__ = [
 ]
 
 
+
 class ModelWeightMixin:
     lora_args = None
     prompt_args = None
     def save_pretrained_merge_lora(self,sft_weight_path: str,llm_weight_only = True,max_shard_size="10GB"):
         assert os.path.exists(os.path.dirname(sft_weight_path))
         assert self.lora_args is not None and self.lora_args.with_lora
-        lora_model : LoraModel = self.backbone.model
+        lora_model : PetlModel = self.backbone
         model: nn.Module = lora_model.merge_and_unload()
 
         if llm_weight_only:
@@ -65,12 +66,12 @@ class ModelWeightMixin:
         assert os.path.exists(sft_weight_path)
         if self.lora_args is not None and self.lora_args.with_lora:
             # 恢复权重
-            lora_model: LoraModel = self.backbone.model
+            lora_model: PetlModel = self.backbone
             lora_model.load_adapter(sft_weight_path, adapter_name=adapter_name, is_trainable=is_trainable, strict=strict)
 
         elif self.prompt_args is not None and self.prompt_args.with_prompt:
             # 恢复权重
-            lora_model: PromptModel = self.backbone.model
+            lora_model: PromptModel = self.backbone
             lora_model.load_adapter(sft_weight_path, adapter_name=adapter_name, is_trainable=is_trainable, strict=strict)
         else:
             weight_dict = torch.load(sft_weight_path)
@@ -82,7 +83,7 @@ class ModelWeightMixin:
                     break
             pl_model_prefix = 'transformer_base'
             is_pl_weight = pl_model_prefix in ','.join(list(weight_dict.keys()))
-            base_model_prefix = self.backbone.model.base_model_prefix
+            base_model_prefix = self.backbone.base_model_prefix
             model_prefix = r'{}\.{}'.format(pl_model_prefix, base_model_prefix)
             for k, v in weight_dict.items():
                 if is_pl_weight:
@@ -102,7 +103,7 @@ class ModelWeightMixin:
             def assert_state_dict_fn(model,incompatible_keys: _IncompatibleKeys):
                 if not incompatible_keys.missing_keys and not incompatible_keys.unexpected_keys:
                     return None
-                _keys_to_ignore_on_load_missing = getattr(model.backbone.model,"_keys_to_ignore_on_load_missing",[])
+                _keys_to_ignore_on_load_missing = getattr(model.backbone,"_keys_to_ignore_on_load_missing",[])
                 missing_keys = [_ for _ in incompatible_keys.missing_keys]
                 model_prefix = r'{}\.{}\.'.format(pl_model_prefix, base_model_prefix)
                 missing_keys = [re.sub(r'{}'.format(model_prefix), '', _) for _ in missing_keys]
@@ -175,5 +176,3 @@ class ModelWeightMixin:
                              max_shard_size=max_shard_size)
 
 
-
-ModelWeightMinMax = ModelWeightMixin

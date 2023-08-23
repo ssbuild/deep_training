@@ -8,12 +8,12 @@ import os
 from dataclasses import dataclass, field, asdict
 from typing import Union, Optional, List, Literal, AnyStr
 from transformers.utils import PushToHubMixin
-from ....layers.efficient.constants import WEIGHTS_NAME,SAFETENSORS_WEIGHTS_NAME,CONFIG_NAME
+from ....layers.petl.constants import WEIGHTS_NAME,SAFETENSORS_WEIGHTS_NAME,CONFIG_NAME
 
 
 
 @dataclass
-class LoraConfigMixin(PushToHubMixin):
+class PetlConfigMixin(PushToHubMixin):
     r"""
     This is the base configuration class for PEFT adapter models. It contains all the methods that are common to all
     PEFT adapter models. This class inherits from `transformers.utils.PushToHubMixin` which contains the methods to
@@ -111,7 +111,7 @@ class LoraConfigMixin(PushToHubMixin):
 
 
 @dataclass
-class EffiConfig(LoraConfigMixin):
+class PetlConfig(PetlConfigMixin):
     """
       inference_mode (`bool`, defaults to `False`): Whether to use the Peft model in inference mode.
     """
@@ -121,7 +121,7 @@ class EffiConfig(LoraConfigMixin):
     with_lora: bool = field(default=False, metadata={"help": "whether use lora"})
 
 @dataclass
-class LoraConfig(EffiConfig):
+class LoraConfig(PetlConfig):
     """
 
     Args:
@@ -217,7 +217,7 @@ class AdaLoraConfig(LoraConfig):
 
 
 @dataclass
-class IA3Config(EffiConfig):
+class IA3Config(PetlConfig):
     """
     This is the configuration class to store the configuration of a [`IA3Model`].
 
@@ -273,7 +273,7 @@ LORA_TYPE_TO_CONFIG_MAPPING = {
 }
 
 @dataclass
-class EffiArguments:
+class PetlArguments:
     lora: LoraConfig= field(default=None, metadata={"help": "LoraConfig."})
     adalora: AdaLoraConfig = field(default=None, metadata={"help": "AdaLoraConfig."})
     ia3: IA3Config = field(default=None, metadata={"help": "IA3Config."})
@@ -288,7 +288,7 @@ class EffiArguments:
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
-        config = LORA_TYPE_TO_CONFIG_MAPPING[EffiConfig.from_pretrained(pretrained_model_name_or_path, **kwargs).lora_type].from_pretrained(pretrained_model_name_or_path, **kwargs)
+        config = LORA_TYPE_TO_CONFIG_MAPPING[PetlConfig.from_pretrained(pretrained_model_name_or_path, **kwargs).lora_type].from_pretrained(pretrained_model_name_or_path, **kwargs)
         assert config.with_lora , ValueError('lora config get bad with_lora ',config.with_lora)
         # config = cls()
         # config.lora = None

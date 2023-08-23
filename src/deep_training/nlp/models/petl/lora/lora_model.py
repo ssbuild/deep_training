@@ -12,11 +12,11 @@ from torch import nn
 from tqdm import tqdm
 from transformers import Conv1D
 
-from .configuration import COMMON_LAYERS_PATTERN, LoraConfig,AdaLoraConfig,EffiConfig
-from .effi_model_internel import EffiModelAbstract
-from ....layers.efficient.lora.layers import is_bnb_available, LoraLayer, Linear, \
+from .configuration import COMMON_LAYERS_PATTERN, LoraConfig,AdaLoraConfig,PetlConfig
+from .petl_model_internel import PetlModelAbstract
+from ....layers.petl.lora.layers import is_bnb_available, LoraLayer, Linear, \
     is_bnb_4bit_available, Embedding, Conv2d, QuantLinear
-from ....layers.efficient.utils import _freeze_adapter, _get_submodules, ModulesToSaveWrapper, \
+from ....layers.petl.utils import _freeze_adapter, _get_submodules, ModulesToSaveWrapper, \
     prepare_model_for_kbit_training, TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING, get_quantization_config, \
     get_auto_gptq_quant_linear
 
@@ -27,12 +27,12 @@ __all__ = [
 
 if is_bnb_available():
     import bitsandbytes as bnb
-    from ....layers.efficient.lora.layers import Linear8bitLt
+    from ....layers.petl.lora.layers import Linear8bitLt
 
 if is_bnb_4bit_available():
-    from ....layers.efficient.lora.layers import Linear4bit
+    from ....layers.petl.lora.layers import Linear4bit
 
-class LoraModule(EffiModelAbstract):
+class LoraModule(PetlModelAbstract):
     """
     Creates Low Rank Adapter (Lora) model from a pretrained transformers model.
 

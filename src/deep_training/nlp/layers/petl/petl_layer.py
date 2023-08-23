@@ -2,7 +2,7 @@
 # @Author  : ssbuild
 # @Time    : 2023/8/22 9:13
 
-class EffiLayerAbstract:
+class PetlLayerAbstract:
     active_adapter = None
 
     def merge(self):

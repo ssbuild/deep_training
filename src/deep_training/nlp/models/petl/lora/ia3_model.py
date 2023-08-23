@@ -10,9 +10,9 @@ from enum import Enum
 import torch
 from torch import nn
 from torch.nn import functional as F
-from .effi_model_internel import EffiModelAbstract
-from ....layers.efficient.ia3.ia3 import IA3Layer
-from ....layers.efficient.utils import transpose, is_bnb_available, _get_submodules, ModulesToSaveWrapper, \
+from .petl_model_internel import PetlModelAbstract
+from ....layers.petl.ia3.ia3 import IA3Layer
+from ....layers.petl.utils import transpose, is_bnb_available, _get_submodules, ModulesToSaveWrapper, \
     _is_valid_match
 from transformers.pytorch_utils import Conv1D
 
@@ -21,7 +21,7 @@ if is_bnb_available():
 
 
 
-class IA3Module(EffiModelAbstract):
+class IA3Module(PetlModelAbstract):
     """
     Creates a Infused Adapter by Inhibiting and Amplifying Inner Activations ((IA)^3) model from a pretrained
     transformers model. The method is described in detail in https://arxiv.org/abs/2205.05638

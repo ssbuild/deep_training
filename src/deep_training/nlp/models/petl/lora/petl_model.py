@@ -12,8 +12,8 @@ from torch import nn
 from transformers.utils import PushToHubMixin
 from safetensors.torch import save_file as safe_save_file
 from .....utils.function import copy_dataclass
-from ....layers.efficient.utils import _set_trainable, _set_adapter, infer_device
-from .configuration import WEIGHTS_NAME, LoraConfig, AdaLoraConfig, EffiConfig, IA3Config, EffiArguments, \
+from ....layers.petl.utils import _set_trainable, _set_adapter, infer_device
+from .configuration import WEIGHTS_NAME, LoraConfig, AdaLoraConfig, PetlConfig, IA3Config, PetlArguments, \
     SAFETENSORS_WEIGHTS_NAME
 from .lora_model import LoraModule
 from .adalora_model import AdaLoraModule
@@ -32,7 +32,7 @@ LORA_TYPE_TO_CONFIG_MAPPING = {
     "adalora": AdaLoraConfig,
 }
 
-class LoraModel(PushToHubMixin, torch.nn.Module):
+class PetlModel(PushToHubMixin, torch.nn.Module):
     """
     Base model encompassing various Lora methods.
 
@@ -56,7 +56,7 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
         in the base model if using [`PromptLearningConfig`].
     """
 
-    def __init__(self, model, effi_config: EffiConfig, adapter_name="default",
+    def __init__(self, model, effi_config: PetlConfig, adapter_name="default",
                  auto_prepare_kbit_training=True,
                  use_input_require_grads=True,
                  use_gradient_checkpointing=True):
@@ -183,7 +183,7 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
     @classmethod
     def from_pretrained(cls, model,
                         pretrained_model_name_or_path,
-                        lora_config: EffiConfig = None,
+                        lora_config: PetlConfig = None,
                         adapter_name: str= "default",
                         is_trainable: bool =False, **kwargs):
         r"""
@@ -206,10 +206,10 @@ class LoraModel(PushToHubMixin, torch.nn.Module):
             lora_config = LORA_TYPE_TO_CONFIG_MAPPING[
                 LoraConfig.from_pretrained(pretrained_model_name_or_path, subfolder=kwargs.get("subfolder", None)).lora_type
             ].from_pretrained(pretrained_model_name_or_path, subfolder=kwargs.get("subfolder", None))
-        elif isinstance(lora_config, EffiConfig):
+        elif isinstance(lora_config, PetlConfig):
             lora_config.inference_mode = not is_trainable
         else:
-            raise ValueError(f"The input config must be a EffiConfig, got {lora_config.__class__}")
+            raise ValueError(f"The input config must be a PetlConfig, got {lora_config.__class__}")
 
         if (getattr(model, "hf_device_map", None) is not None) and len(
                 set(model.hf_device_map.values()).intersection({"cpu", "disk"})

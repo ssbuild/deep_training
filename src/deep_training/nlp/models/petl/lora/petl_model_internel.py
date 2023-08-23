@@ -6,14 +6,14 @@ from abc import ABC, abstractmethod
 from typing import Union, Any
 from torch import nn
 
-from .configuration import EffiConfig
+from .configuration import PetlConfig
 from ...transformer_base import TransformerBase
-from ....layers.efficient.utils import _get_submodules, prepare_model_for_kbit_training
-from ....layers.efficient.efficient import EffiLayerAbstract
+from ....layers.petl.utils import _get_submodules, prepare_model_for_kbit_training
+from ....layers.petl.petl_layer import PetlLayerAbstract
 
 logger = logging.getLogger(__name__)
 
-class EffiModelAbstract(nn.Module, ABC):
+class PetlModelAbstract(nn.Module, ABC):
     r"""
     A base tuner model that provides the common methods and attributes for all tuners that are injectable into a
     torch.nn.Module
@@ -39,7 +39,7 @@ class EffiModelAbstract(nn.Module, ABC):
             The model to which the adapter tuner layers will be attached.
         forward (`Callable`):
             The forward method of the model.
-        effi_config (`Union[`EffiConfig`, dict[str, EffiConfig]]`):
+        effi_config (`Union[`PetlConfig`, dict[str, EffiConfig]]`):
             The adapter configuration object, it should be a dictionary of `str` to `EffiConfig` objects. One can also
             pass a EffiConfig object and a new adapter will be created with the default name `adapter` or create a new
             dictionary with a key `adapter_name` and a value of that peft config.
@@ -47,7 +47,7 @@ class EffiModelAbstract(nn.Module, ABC):
             The model configuration object, it should be a dictionary of `str` to `Any` objects.
     """
 
-    def __init__(self, model, effi_config: Union[EffiConfig, dict[str, EffiConfig]], adapter_name: str,
+    def __init__(self, model, effi_config: Union[PetlConfig, dict[str, PetlConfig]], adapter_name: str,
                  auto_prepare_kbit_training=True,
                  use_input_require_grads=True,
                  use_gradient_checkpointing=True
@@ -62,13 +62,13 @@ class EffiModelAbstract(nn.Module, ABC):
         # For advanced developpers, if you want to attach multiple adapters to your
         # model, just add a `effi_config` dict attribute to your model.
         if not hasattr(self, "effi_config"):
-            self.effi_config = {adapter_name: effi_config} if isinstance(effi_config, EffiConfig) else effi_config
+            self.effi_config = {adapter_name: effi_config} if isinstance(effi_config, PetlConfig) else effi_config
         else:
             logger.info(
                 "Already found a `effi_config` attribute in the model. This will lead to having multiple adapters"
                 " in the model. Make sure to know what you are doing!"
             )
-            if isinstance(effi_config, EffiConfig):
+            if isinstance(effi_config, PetlConfig):
                 self.effi_config[adapter_name] = effi_config
             else:
                 # user is adding a dict of EffiConfigs
@@ -91,7 +91,7 @@ class EffiModelAbstract(nn.Module, ABC):
 
 
     @abstractmethod
-    def _prepare_adapter_config(self, effi_config: EffiConfig, model_config: dict) -> EffiConfig:
+    def _prepare_adapter_config(self, effi_config: PetlConfig, model_config: dict) -> PetlConfig:
         r"""
         A private method to eventually prepare the adapter config. For transformers based models, if
         `effi_config.target_modules` is None, we can automatically infer the target modules from the
@@ -110,13 +110,13 @@ class EffiModelAbstract(nn.Module, ABC):
 
     @staticmethod
     @abstractmethod
-    def _check_target_module_exists(effi_config: EffiConfig, key: str) -> bool:
+    def _check_target_module_exists(effi_config: PetlConfig, key: str) -> bool:
         r"""
         A helper private method to check if the passed module's key name matches any of the target modules in the
         `effi_config.target_modules` list. If it does, return `True`, else return `False`.
 
         Args:
-            effi_config (`EffiConfig`):
+            effi_config (`PetlConfig`):
                 The adapter config.
             key (`str`):
                 The module's key name.
@@ -126,7 +126,7 @@ class EffiModelAbstract(nn.Module, ABC):
     @abstractmethod
     def _create_and_replace(
         self,
-        effi_config: EffiConfig,
+        effi_config: PetlConfig,
         adapter_name: str,
         target: nn.Module,
         target_name: str,
@@ -140,7 +140,7 @@ class EffiModelAbstract(nn.Module, ABC):
         Check `peft.tuners.lora.LoraModel._create_and_replace` for an example.
 
         Args:
-            effi_config (`EffiConfig`):
+            effi_config (`PetlConfig`):
                 The adapter config.
             adapter_name (`str`):
                 The adapter name.
@@ -165,7 +165,7 @@ class EffiModelAbstract(nn.Module, ABC):
         """
         ...
 
-    def _check_new_adapter_config(self, config: EffiConfig) -> None:
+    def _check_new_adapter_config(self, config: PetlConfig) -> None:
         """
         A helper method to check the config when a new adapter is being added.
 
@@ -246,7 +246,7 @@ class EffiModelAbstract(nn.Module, ABC):
         This method merges the LoRa layers into the base model.
         """
         for module in self.model.modules():
-            if isinstance(module, EffiLayerAbstract):
+            if isinstance(module, PetlLayerAbstract):
                 module.merge()
 
     def unmerge_adapter(self):
@@ -254,5 +254,5 @@ class EffiModelAbstract(nn.Module, ABC):
         This method unmerges the LoRa layers from the base model.
         """
         for module in self.model.modules():
-            if isinstance(module, EffiLayerAbstract):
+            if isinstance(module, PetlLayerAbstract):
                 module.unmerge()

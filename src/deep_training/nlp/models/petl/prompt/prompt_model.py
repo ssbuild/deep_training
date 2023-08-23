@@ -20,10 +20,10 @@ from .configuration import PromptLearningConfig, PromptType, PromptBaseArguments
 from .save_and_load import get_prompt_model_state_dict, set_prompt_model_state_dict
 from .utils import _prepare_prompt_learning_config
 from ...transformer_base import TransformerBase
-from ....layers.efficient.prompt.prefix_tuning import PrefixEncoder
-from ....layers.efficient.prompt.p_tuning import PromptEncoder
-from ....layers.efficient.prompt.prompt_tuning import PromptEmbedding
-from ....layers.efficient.utils import _set_trainable, _set_adapter, \
+from ....layers.petl.prompt.prefix_tuning import PrefixEncoder
+from ....layers.petl.prompt.p_tuning import PromptEncoder
+from ....layers.petl.prompt.prompt_tuning import PromptEmbedding
+from ....layers.petl.utils import _set_trainable, _set_adapter, \
     TRANSFORMERS_MODELS_TO_PREFIX_TUNING_POSTPROCESS_MAPPING, shift_tokens_right
 
 

@@ -8,9 +8,9 @@ import torch
 from torch import nn
 from transformers import Conv1D
 from .configuration import COMMON_LAYERS_PATTERN
-from ....layers.efficient.lora.layers import mark_only_lora_as_trainable, is_bnb_available, LoraLayer, is_bnb_4bit_available
-from ....layers.efficient.lora.adalora import RankAllocator, SVDLinear, SVDLinear4bit, SVDQuantLinear, AdaLoraLayer
-from ....layers.efficient.utils import _freeze_adapter, _get_submodules, \
+from ....layers.petl.lora.layers import mark_only_lora_as_trainable, is_bnb_available, LoraLayer, is_bnb_4bit_available
+from ....layers.petl.lora.adalora import RankAllocator, SVDLinear, SVDLinear4bit, SVDQuantLinear, AdaLoraLayer
+from ....layers.petl.utils import _freeze_adapter, _get_submodules, \
     TRANSFORMERS_MODELS_TO_ADALORA_TARGET_MODULES_MAPPING, prepare_model_for_kbit_training, get_quantization_config, \
     get_auto_gptq_quant_linear
 from .lora_model import LoraModule,LoraConfig
@@ -24,7 +24,7 @@ __all__ = [
 
 if is_bnb_available():
     import bitsandbytes as bnb
-    from ....layers.efficient.lora.adalora import SVDLinear8bitLt
+    from ....layers.petl.lora.adalora import SVDLinear8bitLt
 
 
 class AdaLoraModule(LoraModule):

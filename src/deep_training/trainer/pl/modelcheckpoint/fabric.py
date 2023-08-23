@@ -213,18 +213,18 @@ class FabricModelCheckpoint:
             bHandled = True
             model = pl_module.module
             if isinstance(trainer.fabric.strategy, DeepSpeedStrategyFabric):
-                checkpoints = model.backbone.model.get_all_state_dict()
+                checkpoints = model.backbone.get_all_state_dict()
                 gather_ds_state_dict(checkpoints, filepath,
                                      zero_stage_3=trainer.fabric.strategy.zero_stage_3,
                                      is_global_zero=trainer.fabric.strategy.is_global_zero,
-                                     config=model.backbone.model.config)
+                                     config=model.backbone.config)
             else:
                 if trainer.fabric.strategy.is_global_zero:
-                    model.backbone.model.save_pretrained(filepath)
+                    model.backbone.save_pretrained(filepath)
 
                     config_path = os.path.join(filepath, 'config.json')
                     if not os.path.exists(config_path):
-                        model.backbone.model.config.save_pretrained(filepath)
+                        model.backbone.config.save_pretrained(filepath)
 
                 # trainer.fabric.strategy.barrier()
         if not bHandled:
@@ -250,7 +250,7 @@ class FabricModelCheckpoint:
     #     if self.lora_args or self.prompt_args:
     #         bHandled = True
     #         model = pl_module.modules
-    #         checkpoints = model.backbone.model.get_all_state_dict()
+    #         checkpoints = model.backbone.get_all_state_dict()
     #         m = trainer.fabric.strategy.model.module if isinstance(trainer.fabric.strategy, DeepSpeedStrategyFabric) else model
     #         eng = trainer.fabric.strategy.model if isinstance(trainer.fabric.strategy, DeepSpeedStrategyFabric) else None
     #         for adapter_name, state in checkpoints.items():

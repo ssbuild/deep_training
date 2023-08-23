@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import Union
 import torch
 
-from ....models.efficient.prompt.configuration import PromptEncoderReparameterizationType
+from ....models.petl.prompt.configuration import PromptEncoderReparameterizationType
 
 
 # Based on https://github.com/NVIDIA/NeMo/blob/main/nemo/collections/nlp/modules/common/prompt_encoder.py

@@ -8,7 +8,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from ..efficient import EffiLayerAbstract
+from ..petl_layer import PetlLayerAbstract
 from ..utils import transpose, is_bnb_available,is_bnb_4bit_available,is_auto_gptq_available,is_optimum_available
 
 if is_bnb_available():
@@ -33,7 +33,7 @@ def mark_only_lora_as_trainable(model: nn.Module, bias: str = "none") -> None:
         raise NotImplementedError
 
 
-class LoraLayer(EffiLayerAbstract):
+class LoraLayer(PetlLayerAbstract):
     def __init__(
         self,
         in_features: int,

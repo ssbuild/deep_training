@@ -15,7 +15,7 @@
 import math
 import torch
 
-from ....models.efficient.prompt.configuration import PromptTuningInit
+from ....models.petl.prompt.configuration import PromptTuningInit
 
 
 class PromptEmbedding(torch.nn.Module):

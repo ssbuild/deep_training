@@ -5,13 +5,13 @@ import warnings
 import torch
 from torch import nn
 from torch.nn import functional as F
-from ..efficient import EffiLayerAbstract
+from ..petl_layer import PetlLayerAbstract
 from ..utils import is_bnb_available, transpose
 
 if is_bnb_available():
     import bitsandbytes as bnb
 
-class IA3Layer(EffiLayerAbstract):
+class IA3Layer(PetlLayerAbstract):
     def __init__(
         self,
         in_features: int,
