@@ -3,7 +3,7 @@
 # @Time    : 2023/8/22 9:17
 import logging
 from abc import ABC, abstractmethod
-from typing import Union, Any
+from typing import Union, Any,Dict,AnyStr
 from torch import nn
 
 from .configuration import PetlConfig
@@ -47,7 +47,7 @@ class PetlModelAbstract(nn.Module, ABC):
             The model configuration object, it should be a dictionary of `str` to `Any` objects.
     """
 
-    def __init__(self, model, effi_config: Union[PetlConfig, dict[str, PetlConfig]], adapter_name: str,
+    def __init__(self, model, effi_config: Union[PetlConfig, Dict[AnyStr, PetlConfig]], adapter_name: AnyStr,
                  auto_prepare_kbit_training=True,
                  use_input_require_grads=True,
                  use_gradient_checkpointing=True
