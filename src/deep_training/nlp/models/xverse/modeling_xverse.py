@@ -26,6 +26,7 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from transformers import GenerationConfig
 
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
@@ -794,6 +795,66 @@ class XverseForCausalLM(XversePreTrainedModel):
                 tuple(past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past),
             )
         return reordered_past
+
+    def _build_chat_input(self, tokenizer, messages: List[dict], max_new_tokens: int=2048):
+        max_new_tokens = max_new_tokens or self.generation_config.max_new_tokens
+        max_input_tokens = self.config.max_position_embeddings - max_new_tokens
+        max_input_tokens = max(self.config.max_position_embeddings // 2, max_input_tokens)
+
+        total_input, round_input = [], []
+        user_prompt, assist_prompt = "Human: ", "Assistant: "
+        for i, message in enumerate(messages[::-1]):
+            if message['role'] == 'user':
+                user_content = f"{user_prompt}{message['content']}\n\n"
+                if i == 0:
+                    user_content += assist_prompt
+                content_tokens = tokenizer.encode(user_content, return_token_type_ids=False)
+                round_input = content_tokens + round_input
+
+                if i != 0:
+                    if len(total_input) + len(round_input) > max_input_tokens:
+                        break
+                    else:
+                        total_input = round_input + total_input
+                else:
+                    total_input = round_input + total_input
+                    if len(total_input) >= max_input_tokens:
+                        break
+                round_input = []
+            elif message['role'] == 'assistant':
+                assist_content = f"{assist_prompt}{message['content']}"
+                content_tokens = tokenizer.encode(assist_content, return_token_type_ids=False)
+                round_input = content_tokens + [self.generation_config.eos_token_id] + round_input
+            else:
+                raise ValueError(f"message role not supported yet: {message['role']}")
+        total_input = total_input[-max_input_tokens:]  # truncate left
+        total_input = torch.LongTensor([total_input]).to(self.device)
+        return total_input
+
+    @torch.no_grad()
+    def chat(self, tokenizer, messages: List[dict], stream=False,
+             generation_config: Optional[GenerationConfig]=None,**kwargs):
+        generation_config = generation_config or self.generation_config
+        input_ids = self._build_chat_input(tokenizer, messages, generation_config.max_new_tokens)
+        if stream:
+            from transformers import TextIteratorStreamer
+            from threading import Thread
+            streamer = TextIteratorStreamer(tokenizer, skip_prompt=True)
+            self.__class__.generate = PreTrainedModel.generate
+
+            def stream_generator():
+                generation_kwargs = dict(inputs=input_ids, generation_config=generation_config, streamer=streamer,**kwargs)
+                thread = Thread(target=self.generate, kwargs=generation_kwargs)
+                thread.start()
+                for next_text in streamer:
+                    yield next_text.rstrip(tokenizer.eos_token)
+
+            return stream_generator()
+        else:
+            self.__class__.generate = PreTrainedModel.generate  # disable stream
+            outputs = self.generate(input_ids, generation_config=generation_config,**kwargs)
+            response = tokenizer.decode(outputs[0][len(input_ids[0]):], skip_special_tokens=True)
+            return response
 
     def quantize(self, bits: int, empty_init=False, device=None, **kwarg):
         if bits == 0:
