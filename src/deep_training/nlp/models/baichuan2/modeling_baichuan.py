@@ -526,7 +526,7 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
 
     @torch.no_grad()
     def chat(self, tokenizer, messages: List[dict], stream=False,
-             generation_config: Optional[GenerationConfig]=None):
+             generation_config: Optional[GenerationConfig]=None,**kwargs):
         generation_config = generation_config or self.generation_config
         input_ids = self._build_chat_input(tokenizer, messages, generation_config.max_new_tokens)
         if stream:
@@ -537,14 +537,14 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
 
             def stream_generator():
                 outputs = []
-                for token in self.generate(input_ids, generation_config=stream_config):
+                for token in self.generate(input_ids, generation_config=stream_config,**kwargs):
                     outputs.append(token.item())
                     yield tokenizer.decode(outputs, skip_special_tokens=True)
 
             return stream_generator()
         else:
             self.__class__.generate = PreTrainedModel.generate  # disable stream
-            outputs = self.generate(input_ids, generation_config=generation_config)
+            outputs = self.generate(input_ids, generation_config=generation_config,**kwargs)
             response = tokenizer.decode(outputs[0][len(input_ids[0]):], skip_special_tokens=True)
             return response
 

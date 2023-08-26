@@ -39,7 +39,7 @@ class PetlModelAbstract(nn.Module, ABC):
             The model to which the adapter tuner layers will be attached.
         forward (`Callable`):
             The forward method of the model.
-        effi_config (`Union[`PetlConfig`, dict[str, EffiConfig]]`):
+        petl_config (`Union[`PetlConfig`, dict[str, EffiConfig]]`):
             The adapter configuration object, it should be a dictionary of `str` to `EffiConfig` objects. One can also
             pass a EffiConfig object and a new adapter will be created with the default name `adapter` or create a new
             dictionary with a key `adapter_name` and a value of that peft config.
@@ -47,7 +47,7 @@ class PetlModelAbstract(nn.Module, ABC):
             The model configuration object, it should be a dictionary of `str` to `Any` objects.
     """
 
-    def __init__(self, model, effi_config: Union[PetlConfig, Dict[AnyStr, PetlConfig]], adapter_name: AnyStr,
+    def __init__(self, model, petl_config: Union[PetlConfig, Dict[AnyStr, PetlConfig]], adapter_name: AnyStr,
                  auto_prepare_kbit_training=True,
                  use_input_require_grads=True,
                  use_gradient_checkpointing=True
@@ -60,19 +60,19 @@ class PetlModelAbstract(nn.Module, ABC):
         self.model = model
 
         # For advanced developpers, if you want to attach multiple adapters to your
-        # model, just add a `effi_config` dict attribute to your model.
-        if not hasattr(self, "effi_config"):
-            self.effi_config = {adapter_name: effi_config} if isinstance(effi_config, PetlConfig) else effi_config
+        # model, just add a `petl_config` dict attribute to your model.
+        if not hasattr(self, "petl_config"):
+            self.petl_config = {adapter_name: petl_config} if isinstance(petl_config, PetlConfig) else petl_config
         else:
             logger.info(
-                "Already found a `effi_config` attribute in the model. This will lead to having multiple adapters"
+                "Already found a `petl_config` attribute in the model. This will lead to having multiple adapters"
                 " in the model. Make sure to know what you are doing!"
             )
-            if isinstance(effi_config, PetlConfig):
-                self.effi_config[adapter_name] = effi_config
+            if isinstance(petl_config, PetlConfig):
+                self.petl_config[adapter_name] = petl_config
             else:
                 # user is adding a dict of EffiConfigs
-                self.effi_config.update(effi_config)
+                self.petl_config.update(petl_config)
 
         # transformers models have a .config attribute, whose presence is assumed later on
         if not hasattr(self, "config"):
@@ -80,8 +80,8 @@ class PetlModelAbstract(nn.Module, ABC):
 
         self.inject_adapter(self.model, adapter_name)
 
-        # Copy the effi_config in the injected model.
-        self.model.effi_config = self.effi_config
+        # Copy the petl_config in the injected model.
+        self.model.petl_config = self.petl_config
 
     def get_transformer_model(self):
         return self.model.model if isinstance(self.model, TransformerBase) else self.model
@@ -91,17 +91,17 @@ class PetlModelAbstract(nn.Module, ABC):
 
 
     @abstractmethod
-    def _prepare_adapter_config(self, effi_config: PetlConfig, model_config: dict) -> PetlConfig:
+    def _prepare_adapter_config(self, petl_config: PetlConfig, model_config: dict) -> PetlConfig:
         r"""
         A private method to eventually prepare the adapter config. For transformers based models, if
-        `effi_config.target_modules` is None, we can automatically infer the target modules from the
+        `petl_config.target_modules` is None, we can automatically infer the target modules from the
         `TRANSFORMERS_MODELS_TO_XXX_TARGET_MODULES_MAPPING`. This method can be further refactored in the future to
         automatically infer it for all tuner models.
 
         Check out `peft.tuner.lora.LoraModel._prepare_adapter_config` for an example.
 
         Args:
-            effi_config (`str`):
+            petl_config (`str`):
                 The adapter config.
             model_config (`str`):
                 The transformers model config, that config should contain the `model_type` key.
@@ -110,13 +110,13 @@ class PetlModelAbstract(nn.Module, ABC):
 
     @staticmethod
     @abstractmethod
-    def _check_target_module_exists(effi_config: PetlConfig, key: str) -> bool:
+    def _check_target_module_exists(petl_config: PetlConfig, key: str) -> bool:
         r"""
         A helper private method to check if the passed module's key name matches any of the target modules in the
-        `effi_config.target_modules` list. If it does, return `True`, else return `False`.
+        `petl_config.target_modules` list. If it does, return `True`, else return `False`.
 
         Args:
-            effi_config (`PetlConfig`):
+            petl_config (`PetlConfig`):
                 The adapter config.
             key (`str`):
                 The module's key name.
@@ -126,7 +126,7 @@ class PetlModelAbstract(nn.Module, ABC):
     @abstractmethod
     def _create_and_replace(
         self,
-        effi_config: PetlConfig,
+        petl_config: PetlConfig,
         adapter_name: str,
         target: nn.Module,
         target_name: str,
@@ -140,7 +140,7 @@ class PetlModelAbstract(nn.Module, ABC):
         Check `peft.tuners.lora.LoraModel._create_and_replace` for an example.
 
         Args:
-            effi_config (`PetlConfig`):
+            petl_config (`PetlConfig`):
                 The adapter config.
             adapter_name (`str`):
                 The adapter name.
@@ -179,7 +179,7 @@ class PetlModelAbstract(nn.Module, ABC):
         Creates adapter layers and replaces the target modules with the adapter layers. This method is called under the
         hood by `peft.mapping.get_peft_model` if a non-prompt tuning adapter class is passed.
 
-        The corresponding PEFT config is directly retrieved from the `effi_config` attribute of the BaseTuner class.
+        The corresponding PEFT config is directly retrieved from the `petl_config` attribute of the BaseTuner class.
 
         Args:
             model (`nn.Module`):
@@ -199,11 +199,11 @@ class PetlModelAbstract(nn.Module, ABC):
                                             use_gradient_checkpointing=self.use_gradient_checkpointing)
 
 
-        effi_config = self.effi_config[adapter_name]
+        petl_config = self.petl_config[adapter_name]
         # Note: If possible, all checks should be performed *at the start of this method*.
         # This way, we can raise early if something goes wrong, without leaving the model
         # in a bad (half-initialized) state.
-        self._check_new_adapter_config(effi_config)
+        self._check_new_adapter_config(petl_config)
 
         is_target_modules_in_base_model = False
         key_list = [key for key, _ in model.named_modules()]
@@ -212,10 +212,10 @@ class PetlModelAbstract(nn.Module, ABC):
         if hasattr(model_config, "to_dict"):
             model_config = model_config.to_dict()
 
-        effi_config = self._prepare_adapter_config(effi_config, model_config)
+        petl_config = self._prepare_adapter_config(petl_config, model_config)
 
         for key in key_list:
-            if not self._check_target_module_exists(effi_config, key):
+            if not self._check_target_module_exists(petl_config, key):
                 continue
 
             is_target_modules_in_base_model = True
@@ -226,17 +226,17 @@ class PetlModelAbstract(nn.Module, ABC):
                 "loaded_in_4bit": loaded_in_4bit,
                 "current_key": key,
             }
-            self._create_and_replace(effi_config, adapter_name, target, target_name, parent, **optionnal_kwargs)
+            self._create_and_replace(petl_config, adapter_name, target, target_name, parent, **optionnal_kwargs)
 
         if not is_target_modules_in_base_model:
             raise ValueError(
-                f"Target modules {effi_config.target_modules} not found in the base model. "
+                f"Target modules {petl_config.target_modules} not found in the base model. "
                 f"Please check the target modules and try again."
             )
 
         self._mark_only_adapters_as_trainable()
 
-        if self.effi_config[adapter_name].inference_mode:
+        if self.petl_config[adapter_name].inference_mode:
             for n, p in self.model.named_parameters():
                 if adapter_name in n:
                     p.requires_grad = False

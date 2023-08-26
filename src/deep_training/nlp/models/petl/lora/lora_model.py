@@ -67,7 +67,7 @@ class LoraModule(PetlModelAbstract):
         """
         # TODO: there should be a check if any of the existing adapters actually has bias != "none", or else the check
         # does not fully correspond to the error message.
-        if (len(self.effi_config) > 1) and (config.bias != "none"):
+        if (len(self.petl_config) > 1) and (config.bias != "none"):
             raise ValueError(
                 f"{self.__class__.__name__} supports only 1 adapter with bias. When using multiple adapters, "
                 "set bias to 'none' for all adapters."
@@ -178,7 +178,7 @@ class LoraModule(PetlModelAbstract):
 
     def _mark_only_adapters_as_trainable(self) -> None:
         active_adapter = self._get_active_adapter()
-        bias = self.effi_config[active_adapter].bias
+        bias = self.petl_config[active_adapter].bias
 
         for n, p in self.model.named_parameters():
             if "lora_" not in n:
@@ -276,11 +276,13 @@ class LoraModule(PetlModelAbstract):
         try:
             return super().__getattr__(name)  # defer to nn.Module's logic
         except AttributeError:
-            return getattr(self.model, name)
+            if hasattr(self.model, name):
+                return getattr(self.model, name)
+            getattr(self.model.model, name)
 
     def get_effi_config_as_dict(self, inference: bool = False):
         config_dict = {}
-        for key, value in self.effi_config.items():
+        for key, value in self.petl_config.items():
             config = {k: v.value if isinstance(v, Enum) else v for k, v in asdict(value).items()}
             if inference:
                 config["inference_mode"] = True
@@ -311,7 +313,7 @@ class LoraModule(PetlModelAbstract):
 
     def disable_adapter_layers(self):
         active_adapter = self._get_active_adapter()
-        val = self.effi_config[active_adapter].bias
+        val = self.petl_config[active_adapter].bias
         if val != "none":
             msg = (
                 f"Careful, disabling adapter layers with bias configured to be '{val}' does not produce the same "
@@ -329,12 +331,12 @@ class LoraModule(PetlModelAbstract):
                 module.active_adapter = adapter_name
 
     @staticmethod
-    def _prepare_adapter_config(effi_config, model_config):
-        if effi_config.target_modules is None:
+    def _prepare_adapter_config(petl_config, model_config):
+        if petl_config.target_modules is None:
             if model_config["model_type"] not in TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING:
-                raise ValueError("Please specify `target_modules` in `effi_config`")
-            effi_config.target_modules = TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING[model_config["model_type"]]
-        return effi_config
+                raise ValueError("Please specify `target_modules` in `petl_config`")
+            petl_config.target_modules = TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING[model_config["model_type"]]
+        return petl_config
 
     def _unload_and_optionally_merge(self, merge=True, progressbar: bool = False):
         if merge:
@@ -421,16 +423,16 @@ class LoraModule(PetlModelAbstract):
                 documentation. Defaults to None.
         """
 
-        if adapter_name in list(self.effi_config.keys()):
+        if adapter_name in list(self.petl_config.keys()):
             return
         for adapter in adapters:
-            if adapter not in list(self.effi_config.keys()):
+            if adapter not in list(self.petl_config.keys()):
                 raise ValueError(f"Adapter {adapter} does not exist")
 
         # if there is only one adapter, we can only use linear merging
         combination_type = "linear" if len(adapters) == 1 else combination_type
 
-        adapters_ranks = [self.effi_config[adapter].r for adapter in adapters]
+        adapters_ranks = [self.petl_config[adapter].r for adapter in adapters]
         if combination_type == "linear":
             # all adapters ranks should be same, new rank is just this value
             if len(set(adapters_ranks)) != 1:
@@ -446,7 +448,7 @@ class LoraModule(PetlModelAbstract):
         else:
             raise ValueError(f"Invalid combination_type: {combination_type}")
 
-        self.effi_config[adapter_name] = replace(self.effi_config[adapters[0]], r=new_rank, lora_alpha=new_rank)
+        self.petl_config[adapter_name] = replace(self.petl_config[adapters[0]], r=new_rank, lora_alpha=new_rank)
         self.inject_adapter(self.model, adapter_name)
 
         # Do we really need that?
@@ -550,9 +552,9 @@ class LoraModule(PetlModelAbstract):
         Args:
             adapter_name (str): Name of the adapter to be deleted.
         """
-        if adapter_name not in list(self.effi_config.keys()):
+        if adapter_name not in list(self.petl_config.keys()):
             raise ValueError(f"Adapter {adapter_name} does not exist")
-        del self.effi_config[adapter_name]
+        del self.petl_config[adapter_name]
         key_list = [key for key, _ in self.model.named_modules() if "lora" not in key]
         for key in key_list:
             _, target, _ = _get_submodules(self.model, key)
@@ -570,7 +572,7 @@ class LoraModule(PetlModelAbstract):
                     if adapter_name in getattr(target, attr):
                         getattr(target, attr).pop(adapter_name)
                 if target.active_adapter == adapter_name:
-                    resetting_active_adapter = list(self.effi_config.keys())[0]
+                    resetting_active_adapter = list(self.petl_config.keys())[0]
                     warnings.warn(
                         f"Adapter {adapter_name} was active which is now deleted. Setting active adapter to {resetting_active_adapter}. "
                     )

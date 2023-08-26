@@ -18,7 +18,7 @@ from .configuration import WEIGHTS_NAME, LoraConfig, AdaLoraConfig, PetlConfig, 
 from .lora_model import LoraModule
 from .adalora_model import AdaLoraModule
 from .ia3_model import IA3Module
-from .save_and_load import get_lora_model_state_dict, set_lora_model_state_dict, load_effi_weights
+from .save_and_load import get_lora_model_state_dict, set_lora_model_state_dict, load_petl_weights
 
 LORA_TYPE_TO_MODEL_MAPPING = {
     "ia3": IA3Module,
@@ -38,7 +38,7 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
 
     Args:
         model ([`~transformers.PreTrainedModel`]): The base transformer model used for Lora.
-        effi_config ([`LoraConfig`]): The configuration of the Lora model.
+        petl_config ([`LoraConfig`]): The configuration of the Lora model.
 
 
     **Attributes**:
@@ -56,7 +56,7 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
         in the base model if using [`PromptLearningConfig`].
     """
 
-    def __init__(self, model, effi_config: PetlConfig, adapter_name="default",
+    def __init__(self, model, petl_config: PetlConfig, adapter_name="default",
                  auto_prepare_kbit_training=True,
                  use_input_require_grads=True,
                  use_gradient_checkpointing=True):
@@ -64,22 +64,22 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
             model TransformerBase , model.model
         '''
         super().__init__()
-        assert effi_config.lora_type is not None
+        assert petl_config.lora_type is not None
         self.base_model = model
         self.config = getattr(model, "config", {"model_type": "custom"})
         self.modules_to_save = None
-        self.effi_config = {}
+        self.petl_config = {}
         self.active_adapter = adapter_name
-        self.lora_type = effi_config.lora_type
+        self.lora_type = petl_config.lora_type
         self.base_model_torch_dtype = getattr(model, "dtype", None)
-        self.effi_config[adapter_name] = effi_config
-        self.base_model: LoraModule = LORA_TYPE_TO_MODEL_MAPPING[effi_config.lora_type](
-            self.base_model, self.effi_config, adapter_name,
+        self.petl_config[adapter_name] = petl_config
+        self.base_model: LoraModule = LORA_TYPE_TO_MODEL_MAPPING[petl_config.lora_type](
+            self.base_model, self.petl_config, adapter_name,
             auto_prepare_kbit_training=auto_prepare_kbit_training,
             use_input_require_grads=use_input_require_grads,
             use_gradient_checkpointing=use_gradient_checkpointing,
         )
-        self.set_additional_trainable_modules(effi_config, adapter_name)
+        self.set_additional_trainable_modules(petl_config, adapter_name)
 
         # the `pretraining_tp` is set for some models to simulate Tensor Parallelism during inference to avoid
         # numerical differences, https://github.com/pytorch/pytorch/issues/76232 - to avoid any unexpected
@@ -111,21 +111,21 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
             raise ValueError(f"Provided path ({save_directory}) should be a directory, not a file")
 
         if selected_adapters is None:
-            selected_adapters = list(self.effi_config.keys())
+            selected_adapters = list(self.petl_config.keys())
         else:
             if any(
-                selected_adapter_name not in list(self.effi_config.keys())
+                selected_adapter_name not in list(self.petl_config.keys())
                 for selected_adapter_name in selected_adapters
             ):
                 raise ValueError(
                     f"You passed an invalid `selected_adapters` arguments, current supported adapter names are"
-                    f" {list(self.effi_config.keys())} - got {selected_adapters}."
+                    f" {list(self.petl_config.keys())} - got {selected_adapters}."
                 )
 
         os.makedirs(save_directory, exist_ok=True)
 
         for adapter_name in selected_adapters:
-            effi_config = self.effi_config[adapter_name]
+            petl_config = self.petl_config[adapter_name]
             # save only the trainable weights
             output_state_dict = get_lora_model_state_dict(
                 self, state_dict=kwargs.get("state_dict", None), adapter_name=adapter_name
@@ -143,24 +143,24 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
                 torch.save(output_state_dict, os.path.join(output_dir, WEIGHTS_NAME))
 
             # save the config and change the inference mode to `True`
-            if effi_config.base_model_name_or_path is None:
-                effi_config.base_model_name_or_path = (
+            if petl_config.base_model_name_or_path is None:
+                petl_config.base_model_name_or_path = (
                     self.base_model.model.__dict__.get("name_or_path", None)
                 )
-            inference_mode = effi_config.inference_mode
-            effi_config.inference_mode = True
+            inference_mode = petl_config.inference_mode
+            petl_config.inference_mode = True
 
 
             auto_mapping_dict = None
 
-            effi_config.save_pretrained(output_dir, auto_mapping_dict=auto_mapping_dict)
-            effi_config.inference_mode = inference_mode
+            petl_config.save_pretrained(output_dir, auto_mapping_dict=auto_mapping_dict)
+            petl_config.inference_mode = inference_mode
 
    
 
     def get_all_state_dict(self, **kwargs):
         checkpoints = {}
-        for adapter_name, lora_config in self.effi_config.items():
+        for adapter_name, lora_config in self.petl_config.items():
             lora_config: LoraConfig
             # save only the trainable weights
             output_state_dict = get_lora_model_state_dict(
@@ -282,8 +282,8 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
                 f"Cannot combine adapters with different peft types. "
                 f"Found {self.lora_type} and {lora_config.lora_type}."
             )
-        self.effi_config[adapter_name] = lora_config
-        self.base_model.add_adapter(adapter_name, lora_config)
+        self.petl_config[adapter_name] = lora_config
+        self.base_model.inject_adapter(self, adapter_name)
         self.set_additional_trainable_modules(lora_config, adapter_name)
 
 
@@ -301,7 +301,7 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
                      map_preprocess: Optional[Callable]=None,**kwargs):
 
         torch_device = infer_device()
-        if adapter_name not in self.effi_config:
+        if adapter_name not in self.petl_config:
             if config is None:
                 # load the config
                 lora_config = LORA_TYPE_TO_CONFIG_MAPPING[
@@ -313,7 +313,7 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
             self.add_adapter(adapter_name, lora_config)
 
 
-        adapters_weights = load_effi_weights(model_id,device=torch_device)
+        adapters_weights = load_petl_weights(model_id,device=torch_device)
 
         if 'state_dict' in adapters_weights:
             adapters_weights = adapters_weights['state_dict']
@@ -328,7 +328,7 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
         """
         Sets the active adapter.
         """
-        if adapter_name not in self.effi_config:
+        if adapter_name not in self.petl_config:
             raise ValueError(f"Adapter {adapter_name} not found.")
         self.active_adapter = adapter_name
         self.base_model.set_adapter(adapter_name)
@@ -336,4 +336,4 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
 
     @property
     def active_effi_config(self):
-        return self.effi_config[self.active_adapter]
+        return self.petl_config[self.active_adapter]
