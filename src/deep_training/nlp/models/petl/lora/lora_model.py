@@ -278,7 +278,7 @@ class LoraModule(PetlModelAbstract):
         except AttributeError:
             if hasattr(self.model, name):
                 return getattr(self.model, name)
-            getattr(self.model.model, name)
+            return getattr(self.model.model, name)
 
     def get_effi_config_as_dict(self, inference: bool = False):
         config_dict = {}
