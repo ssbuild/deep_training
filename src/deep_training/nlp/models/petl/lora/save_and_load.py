@@ -32,7 +32,7 @@ def get_lora_model_state_dict(model, state_dict=None, adapter_name="default"):
             The state dict of the model. If not provided, the state dict of the model
         will be used.
     """
-    config = model.effi_config[adapter_name]
+    config = model.petl_config[adapter_name]
     if state_dict is None:
         state_dict = model.state_dict()
     if config.lora_type in ('lora', 'adalora'):
@@ -82,7 +82,7 @@ def set_lora_model_state_dict(model, peft_model_state_dict, adapter_name="defaul
         model ([`PeftModel`]): The Peft model.
         peft_model_state_dict (`dict`): The state dict of the Peft model.
     """
-    config = model.effi_config[adapter_name]
+    config = model.petl_config[adapter_name]
     state_dict = {}
     if getattr(model, "modules_to_save", None) is not None:
         for key, value in peft_model_state_dict.items():
@@ -124,7 +124,7 @@ def set_lora_model_state_dict(model, peft_model_state_dict, adapter_name="defaul
 
 
 
-def load_effi_weights(model_id: str, device: Optional[str] = None, **kwargs) -> dict:
+def load_petl_weights(model_id: str, device: Optional[str] = None, **kwargs) -> dict:
     r"""
     A helper method to load the effi weights from the HuggingFace Hub or locally
 
