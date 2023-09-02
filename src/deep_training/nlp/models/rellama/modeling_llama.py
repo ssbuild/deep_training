@@ -747,7 +747,13 @@ class LlamaModel(LlamaPreTrainedModel):
 
 class LlamaForCausalLM(LlamaPreTrainedModel):
     def __init__(self, config,**kwargs):
+        if not hasattr(config,'rope_theta') :
+            config.rope_theta = 10000.0
+        if not hasattr(config,'rope_scaling'):
+            config.rope_scaling = None
+
         super().__init__(config)
+
         self.model = LlamaModel(config,**kwargs)
 
         global skip_init_function
