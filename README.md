@@ -44,6 +44,9 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
  
   
 ## update
+- <strong>2023-09-02</strong>
+  fix llama model
+
 - <strong>2023-08-23</strong>
   - 0.2.0 release lora内部调整
   - 0.2.0.post0 add xverse-13b chat 
