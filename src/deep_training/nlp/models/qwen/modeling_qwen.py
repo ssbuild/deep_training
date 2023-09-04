@@ -119,7 +119,7 @@ class FlashSelfAttention(torch.nn.Module):
         self,
         causal=False,
         softmax_scale=None,
-        attention_dropout=0.0
+        attention_dropout=0.0,
     ):
         super().__init__()
         assert flash_attn_unpadded_func is not None, (
@@ -131,12 +131,12 @@ class FlashSelfAttention(torch.nn.Module):
         self.causal = causal
         self.softmax_scale = softmax_scale
         self.dropout_p = attention_dropout
-
     def forward(self, q, k, v):
         assert all((i.dtype in [torch.float16, torch.bfloat16] for i in (q, k, v)))
         assert all((i.is_cuda for i in (q, k, v)))
         batch_size, seqlen_q = q.shape[0], q.shape[1]
         seqlen_k = k.shape[1]
+
         q, k, v = [rearrange(x, "b s ... -> (b s) ...") for x in [q, k, v]]
         cu_seqlens_q = torch.arange(
             0,
@@ -161,6 +161,7 @@ class FlashSelfAttention(torch.nn.Module):
                 device=q.device,
             )
             self.dropout_p = 0
+
         output = flash_attn_unpadded_func(
             q,
             k,
@@ -174,7 +175,8 @@ class FlashSelfAttention(torch.nn.Module):
             causal=is_causal,
         )
 
-        output = rearrange(output, "(b s) ... -> b s ...", b=batch_size)
+        new_shape = (batch_size, output.shape[0] // batch_size) + output.shape[1:]
+        output = output.view(new_shape)
         return output
 
 
@@ -1191,7 +1193,7 @@ class RotaryEmbedding(torch.nn.Module):
         self._rotary_pos_emb_cache = None
         self._seq_len_cached = 0
         self._ntk_alpha_cached = 1.0
-
+        
     def update_rotary_pos_emb_cache(self, max_seq_len, offset=0, ntk_alpha=1.0):
         seqlen = max_seq_len + offset
         if seqlen > self._seq_len_cached or ntk_alpha != self._ntk_alpha_cached:
@@ -1207,15 +1209,19 @@ class RotaryEmbedding(torch.nn.Module):
             self._ntk_alpha_cached = ntk_alpha
             seq = torch.arange(self._seq_len_cached, device=self.inv_freq.device)
             freqs = torch.outer(seq.type_as(self.inv_freq), self.inv_freq)
+            
             emb = torch.cat((freqs, freqs), dim=-1)
-            # from einops import rearrange
+            from einops import rearrange
 
-            self._rotary_pos_emb_cache = rearrange(emb, "n d -> 1 n 1 d")
+            emb = rearrange(emb, "n d -> 1 n 1 d")
+
+            cos, sin = emb.cos(), emb.sin()
+            self._rotary_pos_emb_cache = [cos, sin]
 
     def forward(self, max_seq_len, offset=0, ntk_alpha=1.0):
         self.update_rotary_pos_emb_cache(max_seq_len, offset, ntk_alpha)
-        return self._rotary_pos_emb_cache[:, offset : offset + max_seq_len]
-
+        cos, sin = self._rotary_pos_emb_cache
+        return [cos[:, offset : offset + max_seq_len], sin[:, offset : offset + max_seq_len]]
 
 def _rotate_half(x):
     # from einops import rearrange
@@ -1226,19 +1232,21 @@ def _rotate_half(x):
 
 
 def apply_rotary_pos_emb(t, freqs):
+    cos, sin = freqs
     if apply_rotary_emb_func is not None and t.is_cuda:
         t_ = t.float()
-        freqs = freqs.squeeze(0).squeeze(1)
-        cos = freqs[:, : freqs.shape[-1] // 2].cos()
-        sin = freqs[:, : freqs.shape[-1] // 2].sin()
+        cos = cos.squeeze(0).squeeze(1)[:, : cos.shape[-1] // 2]
+													
+        sin = sin.squeeze(0).squeeze(1)[:, : sin.shape[-1] // 2]
         output = apply_rotary_emb_func(t_, cos, sin).type_as(t)
         return output
     else:
-        rot_dim = freqs.shape[-1]
+        rot_dim = freqs[0].shape[-1]
+        cos, sin = freqs
         t_, t_pass_ = t[..., :rot_dim], t[..., rot_dim:]
         t_ = t_.float()
         t_pass_ = t_pass_.float()
-        t_ = (t_ * freqs.cos()) + (_rotate_half(t_) * freqs.sin())
+        t_ = (t_ * cos) + (_rotate_half(t_) * sin)
         return torch.cat((t_, t_pass_), dim=-1).type_as(t)
 
 
