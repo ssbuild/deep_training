@@ -4,15 +4,15 @@ import math
 from typing import List, Optional, Tuple, Union
 import torch
 from torch.nn import CrossEntropyLoss
-from ...utils.torch_utils import skip_init
+
 from transformers import PreTrainedModel
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.utils import logging
 from transformers.generation.utils import GenerationConfig
-
 from .configuration_baichuan import BaichuanConfig
-from ..transformer_base import TransformerBase
+from .....utils.torch_utils import skip_init
+from ....transformer_base import TransformerBase
 
 logger = logging.get_logger(__name__)
 

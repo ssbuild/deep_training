@@ -1,4 +1,5 @@
 # Copyright 2023 Baichuan Inc. All Rights Reserved.
+from transformers.deepspeed import is_deepspeed_zero3_enabled
 
 # Copyright 2022 EleutherAI and the HuggingFace Inc. team. All rights reserved.
 #
@@ -19,7 +20,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ...utils.torch_utils import skip_init
+from .....utils.torch_utils import skip_init
 from .configuration_baichuan import BaichuanConfig
 from .generation_utils import build_chat_input, TextIterStreamer
 
@@ -168,12 +169,12 @@ class MLP(nn.Module):
             self,
             hidden_size: int,
             intermediate_size: int,
-            hidden_act: str,
+            hidden_act: str,**kwargs
     ):
         super().__init__()
-        self.gate_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
-        self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False)
-        self.up_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
+        self.gate_proj = nn.Linear(hidden_size, intermediate_size, bias=False,**kwargs)
+        self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False,**kwargs)
+        self.up_proj = nn.Linear(hidden_size, intermediate_size, bias=False,**kwargs)
         self.act_fn = ACT2FN[hidden_act]
 
     def forward(self, x):
@@ -339,6 +340,92 @@ class BaichuanPreTrainedModel(PreTrainedModel):
         if isinstance(module, BaichuanModel):
             module.gradient_checkpointing = value
 
+    def _get_resized_lm_head(
+        self, old_lm_head: nn.Linear, new_num_tokens: Optional[int] = None, transposed: Optional[bool] = False
+    ) :
+        """
+        Build a resized Linear Module from a provided old Linear Module. Increasing the size will add newly initialized
+        vectors at the end. Reducing the size will remove vectors from the end
+
+        Args:
+            old_lm_head (`torch.nn.Linear`):
+                Old lm head liner layer to be resized.
+            new_num_tokens (`int`, *optional*):
+                New number of tokens in the linear matrix.
+
+                Increasing the size will add newly initialized vectors at the end. Reducing the size will remove
+                vectors from the end. If not provided or `None`, just returns a pointer to the input tokens
+                `torch.nn.Linear` module of the model without doing anything. transposed (`bool`, *optional*, defaults
+                to `False`): Whether `old_lm_head` is transposed or not. If True `old_lm_head.size()` is `lm_head_dim,
+                vocab_size` else `vocab_size, lm_head_dim`.
+
+        Return:
+            `torch.nn.Linear`: Pointer to the resized Linear Module or the old Linear Module if `new_num_tokens` is
+            `None`
+        """
+        if new_num_tokens is None:
+            return old_lm_head
+
+        if is_deepspeed_zero3_enabled():
+            import deepspeed
+
+            with deepspeed.zero.GatheredParameters(old_lm_head.weight, modifier_rank=None):
+                old_num_tokens, old_lm_head_dim = (
+                    old_lm_head.weight.size() if not transposed else old_lm_head.weight.t().size()
+                )
+        else:
+            old_num_tokens, old_lm_head_dim = (
+                old_lm_head.weight.size() if not transposed else old_lm_head.weight.t().size()
+            )
+
+        if old_num_tokens == new_num_tokens:
+            return old_lm_head
+
+        if not isinstance(old_lm_head, NormHead):
+            raise TypeError(
+                f"Old language model head is of type {type(old_lm_head)}, which is not an instance of {nn.Linear}. You"
+                " should either use a different resize function or make sure that `old_lm_head` are an instance of"
+                f" {nn.Linear}."
+            )
+
+        # Build new lm head
+        new_lm_head_shape = (old_lm_head_dim, new_num_tokens) if not transposed else (new_num_tokens, old_lm_head_dim)
+
+        new_lm_head = NormHead(*new_lm_head_shape)
+        new_lm_head = new_lm_head.to(old_lm_head.weight.device, dtype=old_lm_head.weight.dtype)
+
+        # initialize new lm head (in particular added tokens)
+        self._init_weights(new_lm_head)
+
+        num_tokens_to_copy = min(old_num_tokens, new_num_tokens)
+
+        # XXX: put the long block of code in a wrapper
+        if is_deepspeed_zero3_enabled():
+            import deepspeed
+
+            params = [old_lm_head.weight, old_lm_head.bias, new_lm_head.weight, new_lm_head.bias]
+            with deepspeed.zero.GatheredParameters(params, modifier_rank=0):
+                if torch.distributed.get_rank() == 0:
+                    # Copy old lm head weights to new lm head
+                    if not transposed:
+                        new_lm_head.weight.data[:num_tokens_to_copy, :] = old_lm_head.weight.data[
+                            :num_tokens_to_copy, :
+                        ]
+                    else:
+                        new_lm_head.weight.data[:, :num_tokens_to_copy] = old_lm_head.weight.data[
+                            :, :num_tokens_to_copy
+                        ]
+
+
+        else:
+            # Copy old lm head weights to new lm head
+            if not transposed:
+                new_lm_head.weight.data[:num_tokens_to_copy, :] = old_lm_head.weight.data[:num_tokens_to_copy, :]
+            else:
+                new_lm_head.weight.data[:, :num_tokens_to_copy] = old_lm_head.weight.data[:, :num_tokens_to_copy]
+
+
+        return new_lm_head
 
 class BaichuanModel(BaichuanPreTrainedModel):
     def __init__(self, config: BaichuanConfig,**kwargs):
@@ -522,6 +609,7 @@ class NormHead(nn.Module):
         nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
         self.first_flag = True
 
+
     def forward(self, hidden_states):
         if self.training:
             norm_weight = nn.functional.normalize(self.weight)
@@ -551,6 +639,7 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
         self.model = BaichuanModel(config)
 
         self.lm_head = NormHead(config.hidden_size, config.vocab_size, bias=False)
+        self.quantized = False
         method = getattr(config, "quantization", "cpm")
         if method == "cpm":
             if getattr(config, "quantization_bit",0) in [4,8]:
