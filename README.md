@@ -45,7 +45,7 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
   
 ## update
 - <strong>2023-09-06</strong>
- - 0.2.2 support baichuan-v2
+ - 0.2.2 调整baichuan模块命名 support baichuan v2
 
 - <strong>2023-09-02</strong>
   - 0.2.1 fix llama model

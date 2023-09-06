@@ -47,7 +47,7 @@ class BaichuanConfig(PretrainedConfig):
         eos_token_id=2,
         tie_word_embeddings=False,
         z_loss_weight=0,
-        quantization = "cpm",
+        quantization_method = "cpm",
         quantization_bit=0,
         **kwargs,
     ):
@@ -62,7 +62,7 @@ class BaichuanConfig(PretrainedConfig):
         self.rms_norm_eps = rms_norm_eps
         self.use_cache = use_cache
         self.z_loss_weight = z_loss_weight
-        self.quantization = quantization
+        self.quantization_method = quantization_method
         self.quantization_bit = quantization_bit
         super().__init__(
             pad_token_id=pad_token_id,
