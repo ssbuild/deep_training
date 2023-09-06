@@ -208,28 +208,35 @@ class Attention(nn.Module):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
 
     def forward(
-            self,
-            hidden_states: torch.Tensor,
-            attention_mask: Optional[torch.Tensor] = None,
-            position_ids: Optional[torch.LongTensor] = None,
-            past_key_value: Optional[Tuple[torch.Tensor]] = None,
-            output_attentions: bool = False,
-            use_cache: bool = False,
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        output_attentions: bool = False,
+        use_cache: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
 
         proj = self.W_pack(hidden_states)
-        proj = proj.unflatten(-1, (3, self.hidden_size)).unsqueeze(0).transpose(0, -2).squeeze(-2)
-        query_states = proj[0].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-        key_states = proj[1].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-        value_states = proj[2].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        proj = (
+            proj.unflatten(-1, (3, self.hidden_size))
+            .unsqueeze(0)
+            .transpose(0, -2)
+            .squeeze(-2)
+        )
+        query_states = (
+            proj[0].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        )
+        key_states = (
+            proj[1].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        )
+        value_states = (
+            proj[2].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        )
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
             kv_seq_len += past_key_value[0].shape[-2]
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
-        # [bsz, nh, t, hd]
 
         if past_key_value is not None:
             # reuse k, v, self_attention
@@ -239,15 +246,34 @@ class Attention(nn.Module):
         past_key_value = (key_states, value_states) if use_cache else None
         if xops is not None and self.training:
             attn_weights = None
-            query_states = query_states.transpose(1, 2)
-            key_states = key_states.transpose(1, 2)
-            value_states = value_states.transpose(1, 2)
-            attn_output = xops.memory_efficient_attention(
-                query_states, key_states, value_states, attn_bias=xops.LowerTriangularMask()
-            )
-        else:
+            # query_states = query_states.transpose(1, 2)
+            # key_states = key_states.transpose(1, 2)
+            # value_states = value_states.transpose(1, 2)
+            # attn_output = xops.memory_efficient_attention(
+            #     query_states, key_states, value_states, attn_bias=attention_mask
+            # )
             with torch.backends.cuda.sdp_kernel(enable_flash=True, enable_math=True, enable_mem_efficient=True):
                 attn_output = F.scaled_dot_product_attention(query_states, key_states, value_states, attn_mask = attention_mask)
+            attn_output = attn_output.transpose(1, 2)
+        else:
+            attn_weights = torch.matmul(
+                query_states, key_states.transpose(2, 3)
+            ) / math.sqrt(self.head_dim)
+
+            if attention_mask is not None:
+                if q_len == 1:  # inference with cache
+                    if len(attention_mask.size()) == 4:
+                        attention_mask = attention_mask[:, :, -1:, :]
+                    else:
+                        attention_mask = attention_mask[:, -1:, :]
+                attn_weights = attn_weights + attention_mask
+                attn_weights = torch.max(
+                    attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min)
+                )
+
+            attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1)
+            attn_output = torch.matmul(attn_weights, value_states)
+
             attn_output = attn_output.transpose(1, 2)
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
         attn_output = self.o_proj(attn_output)
