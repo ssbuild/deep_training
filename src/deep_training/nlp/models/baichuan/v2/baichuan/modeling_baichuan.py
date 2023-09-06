@@ -669,14 +669,10 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
         method = getattr(config, "quantization", "cpm")
         if method == "cpm":
             if getattr(config, "quantization_bit",0) in [4,8]:
-                self.quantize_cpm(config.quantization_bit,empty_init=True)
+                self.quantize(config.quantization_bit,empty_init=True)
         elif method == "bnb":
             if hasattr(config, "quantization_config") and config.quantization_config['load_in_4bit']:
-                try:
-                    from .quantizer import quantize_offline, init_model_weight_int4
-                except ImportError:
-                    raise ImportError(f"Needs QLinear to run quantize.")
-                quantize_offline(self, 4)
+                self.quantize_bnb(4)
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -903,14 +899,14 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
             reordered_past += (tuple(past_state.index_select(0, beam_idx) for past_state in layer_past),)
         return reordered_past
 
-    def quantize(self, bits: int):
+    def quantize_bnb(self, bits: int):
         try:
             from .quantizer import quantize_online
         except ImportError:
             raise ImportError(f"Needs QLinear to run quantize.")
         return quantize_online(self, bits)
 
-    def quantize_cpm(self, bits: int, empty_init=False, device=None, **kwarg):
+    def quantize(self, bits: int, empty_init=False, device=None, **kwarg):
         if bits == 0:
             return
         from .quantization import quantize
