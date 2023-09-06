@@ -31,8 +31,8 @@ from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 from transformers.utils import logging
 from xformers import ops as xops
 from .configuration_baichuan import BaiChuanConfig
-from .....utils.torch_utils import skip_init
-from ....transformer_base import TransformerBase
+from ...utils.torch_utils import skip_init
+from ..transformer_base import TransformerBase
 
 logger = logging.get_logger(__name__)
 

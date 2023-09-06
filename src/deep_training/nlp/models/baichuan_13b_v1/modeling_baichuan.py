@@ -11,8 +11,8 @@ from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutpu
 from transformers.utils import logging
 from transformers.generation.utils import GenerationConfig
 from .configuration_baichuan import BaichuanConfig
-from .....utils.torch_utils import skip_init
-from ....transformer_base import TransformerBase
+from ...utils.torch_utils import skip_init
+from ..transformer_base import TransformerBase
 
 logger = logging.get_logger(__name__)
 
