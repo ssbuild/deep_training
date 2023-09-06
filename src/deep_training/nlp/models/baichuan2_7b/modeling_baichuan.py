@@ -1,3 +1,6 @@
+# Copyright 2023 Baichuan Inc. All Rights Reserved.
+from transformers.deepspeed import is_deepspeed_zero3_enabled
+
 # Copyright 2022 EleutherAI and the HuggingFace Inc. team. All rights reserved.
 #
 # This code is based on EleutherAI's GPT-NeoX library and the GPT-NeoX
@@ -17,24 +20,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ...utils.torch_utils import skip_init
+from .configuration_baichuan import BaichuanConfig
+from .generation_utils import build_chat_input, TextIterStreamer
+
 import math
 from typing import List, Optional, Tuple, Union
+from threading import Thread
 
 import torch
+import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
-import torch.utils.checkpoint
-from transformers import PreTrainedModel
+from torch.nn import functional as F
+from transformers import PreTrainedModel, PretrainedConfig
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from transformers.modeling_outputs import SequenceClassifierOutputWithPast
-from transformers.utils import logging
-from xformers import ops as xops
-from ...utils.torch_utils import skip_init
+from transformers.generation.utils import GenerationConfig
+from transformers.utils import logging, ContextManagers
 
-from .configuration_baichuan import BaiChuanConfig
-from ..transformer_base import TransformerBase
-
+import os
+from contextlib import contextmanager
 logger = logging.get_logger(__name__)
 
 def default_init(cls, *args, **kwargs):
@@ -46,6 +52,16 @@ def setup_model_profile(skip_init_flag=True):
         skip_init_function = skip_init
     else:
         skip_init_function = default_init
+
+
+try:
+    from xformers import ops as xops
+except ImportError:
+    xops = None
+    logger.warning(
+        "Xformers is not installed correctly. If you want to use memory_efficient_attention to accelerate training use the following command to install Xformers\npip install xformers."
+    )
+
 
 # Copied from transformers.models.bart.modeling_bart._make_causal_mask
 def _make_causal_mask(
@@ -64,16 +80,18 @@ def _make_causal_mask(
         mask = torch.cat([torch.zeros(tgt_len, past_key_values_length, dtype=dtype, device=device), mask], dim=-1)
     return mask[None, None, :, :].expand(bsz, 1, tgt_len, tgt_len + past_key_values_length)
 
-
-# Copied from transformers.models.bart.modeling_bart._expand_mask
 def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] = None):
     """
     Expands attention_mask from `[bsz, seq_len]` to `[bsz, 1, tgt_seq_len, src_seq_len]`.
     """
-    bsz, src_len = mask.size()
-    tgt_len = tgt_len if tgt_len is not None else src_len
-
-    expanded_mask = mask[:, None, None, :].expand(bsz, 1, tgt_len, src_len).to(dtype)
+    if len(mask.size()) == 3:
+        bsz, src_len, _ = mask.size()
+        tgt_len = tgt_len if tgt_len is not None else src_len
+        expanded_mask = mask[:,None,:,:].expand(bsz, 1, tgt_len, src_len).to(dtype)
+    else:
+        bsz, src_len = mask.size()
+        tgt_len = tgt_len if tgt_len is not None else src_len
+        expanded_mask = mask[:, None, None, :].expand(bsz, 1, tgt_len, src_len).to(dtype)
 
     inverted_mask = 1.0 - expanded_mask
 
@@ -81,12 +99,12 @@ def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] 
 
 
 class RMSNorm(nn.Module):
-    def __init__(self, hidden_size, eps=1e-6,**kwargs):
+    def __init__(self, hidden_size, eps=1e-6, **kwargs):
         """
         RMSNorm is equivalent to T5LayerNorm
         """
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(hidden_size,**kwargs))
+        self.weight = nn.Parameter(torch.ones(hidden_size))
         self.variance_epsilon = eps
 
     def forward(self, hidden_states):
@@ -101,34 +119,31 @@ class RMSNorm(nn.Module):
 
 
 class RotaryEmbedding(torch.nn.Module):
-    def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None,**kwargs):
+    def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None):
         super().__init__()
-        inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float().to(device) / dim))
-        self.register_buffer("inv_freq", inv_freq)
-
-        # Build here to make `torch.jit.trace` work.
+        self.inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float().to(device) / dim))
         self.max_seq_len_cached = max_position_embeddings
-        t = torch.arange(self.max_seq_len_cached, device=self.inv_freq.device, dtype=self.inv_freq.dtype)
-        freqs = torch.einsum("i,j->ij", t, self.inv_freq)
-        # Different from paper, but it uses a different permutation in order to obtain the same calculation
+        t = torch.arange(self.max_seq_len_cached, device=self.inv_freq.device, dtype=torch.float32)
+        freqs = torch.outer(t, self.inv_freq)
         emb = torch.cat((freqs, freqs), dim=-1)
-        self.register_buffer("cos_cached", emb.cos()[None, None, :, :], persistent=False)
-        self.register_buffer("sin_cached", emb.sin()[None, None, :, :], persistent=False)
-
+        self.cos_cached = emb.cos()[None, None, :, :].to(torch.float32)
+        self.sin_cached = emb.sin()[None, None, :, :].to(torch.float32)
     def forward(self, x, seq_len=None):
         # x: [bs, num_attention_heads, seq_len, head_size]
         # This `if` block is unlikely to be run after we build sin/cos in `__init__`. Keep the logic here just in case.
         if seq_len > self.max_seq_len_cached:
             self.max_seq_len_cached = seq_len
-            t = torch.arange(self.max_seq_len_cached, device=x.device, dtype=self.inv_freq.dtype)
-            freqs = torch.einsum("i,j->ij", t, self.inv_freq)
-            # Different from paper, but it uses a different permutation in order to obtain the same calculation
-            emb = torch.cat((freqs, freqs), dim=-1).to(x.device)
-            self.register_buffer("cos_cached", emb.cos()[None, None, :, :], persistent=False)
-            self.register_buffer("sin_cached", emb.sin()[None, None, :, :], persistent=False)
+            t = torch.arange(self.max_seq_len_cached, device=self.inv_freq.device, dtype=torch.float32)
+            freqs = torch.outer(t, self.inv_freq)
+            emb = torch.cat((freqs, freqs), dim=-1)
+            self.cos_cached = emb.cos()[None, None, :, :].to(torch.float32).to(x.device)
+            self.sin_cached = emb.sin()[None, None, :, :].to(torch.float32).to(x.device)
+        elif self.cos_cached.device != x.device:
+            self.cos_cached = self.cos_cached.to(x.device)
+            self.sin_cached = self.sin_cached.to(x.device)  
         return (
-            self.cos_cached[:, :, :seq_len, ...].to(dtype=x.dtype),
-            self.sin_cached[:, :, :seq_len, ...].to(dtype=x.dtype),
+            self.cos_cached[:, :, :seq_len, ...],
+            self.sin_cached[:, :, :seq_len, ...],
         )
 
 
@@ -139,15 +154,14 @@ def rotate_half(x):
     return torch.cat((-x2, x1), dim=-1)
 
 
-def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
-    # The first two dimensions of cos and sin are always 1, so we can `squeeze` them.
-    cos = cos.squeeze(1).squeeze(0)  # [seq_len, dim]
-    sin = sin.squeeze(1).squeeze(0)  # [seq_len, dim]
+def apply_rotary_pos_emb(q, k, cos_, sin_, position_ids):
+    cos = cos_.squeeze(1).squeeze(0)  # [seq_len, dim]
+    sin = sin_.squeeze(1).squeeze(0)  # [seq_len, dim]
     cos = cos[position_ids].unsqueeze(1)  # [bs, 1, seq_len, dim]
     sin = sin[position_ids].unsqueeze(1)  # [bs, 1, seq_len, dim]
-    q_embed = (q * cos) + (rotate_half(q) * sin)
-    k_embed = (k * cos) + (rotate_half(k) * sin)
-    return q_embed, k_embed
+    q_embed = (q.float() * cos) + (rotate_half(q.float()) * sin)
+    k_embed = (k.float() * cos) + (rotate_half(k.float()) * sin)
+    return q_embed.to(q.dtype), k_embed.to(k.dtype)
 
 
 class MLP(nn.Module):
@@ -155,8 +169,7 @@ class MLP(nn.Module):
             self,
             hidden_size: int,
             intermediate_size: int,
-            hidden_act: str,
-            **kwargs
+            hidden_act: str,**kwargs
     ):
         super().__init__()
         self.gate_proj = nn.Linear(hidden_size, intermediate_size, bias=False,**kwargs)
@@ -170,8 +183,7 @@ class MLP(nn.Module):
 
 class Attention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
-
-    def __init__(self, config: BaiChuanConfig,**kwargs):
+    def __init__(self, config: BaichuanConfig,**kwargs):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
@@ -190,8 +202,7 @@ class Attention(nn.Module):
 
         self.W_pack = init_method(nn.Linear,self.hidden_size, 3 * self.hidden_size, bias=False,**kwargs)
         self.o_proj = init_method(nn.Linear,self.num_heads * self.head_dim, self.hidden_size, bias=False,**kwargs)
-        self.rotary_emb = RotaryEmbedding(self.head_dim, max_position_embeddings=self.max_position_embeddings,**kwargs)
-        self.cos, self.sin = None, None
+        self.rotary_emb = RotaryEmbedding(self.head_dim, max_position_embeddings=self.max_position_embeddings)
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
@@ -209,95 +220,54 @@ class Attention(nn.Module):
 
         proj = self.W_pack(hidden_states)
         proj = proj.unflatten(-1, (3, self.hidden_size)).unsqueeze(0).transpose(0, -2).squeeze(-2)
+        query_states = proj[0].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        key_states = proj[1].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        value_states = proj[2].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
 
-        if self.training:  # for training
-            query_states = proj[0].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-            key_states = proj[1].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-            value_states = proj[2].view(bsz, q_len, self.num_heads, self.head_dim)
+        kv_seq_len = key_states.shape[-2]
+        if past_key_value is not None:
+            kv_seq_len += past_key_value[0].shape[-2]
+        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        # [bsz, nh, t, hd]
 
-            kv_seq_len = key_states.shape[-2]
-            # if self.cos is None or (not self.training):
-            #     cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-            #     self.cos, self.sin = cos, sin
-            # else:
-            #     cos, sin = self.cos, self.sin
+        if past_key_value is not None:
+            # reuse k, v, self_attention
+            key_states = torch.cat([past_key_value[0], key_states], dim=2)
+            value_states = torch.cat([past_key_value[1], value_states], dim=2)
 
-            cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-            self.cos, self.sin = cos, sin
-            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
-
+        past_key_value = (key_states, value_states) if use_cache else None
+        if xops is not None and self.training:
+            attn_weights = None
             query_states = query_states.transpose(1, 2)
             key_states = key_states.transpose(1, 2)
-
+            value_states = value_states.transpose(1, 2)
             attn_output = xops.memory_efficient_attention(
-                query_states, key_states, value_states,
-                attn_bias=xops.LowerTriangularMask()
+                query_states, key_states, value_states, attn_bias=xops.LowerTriangularMask()
             )
-            attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
-            attn_output = self.o_proj(attn_output)
-            return attn_output, None, None
-
-        else:  # for inference
-            query_states = proj[0].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-            key_states = proj[1].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-            value_states = proj[2].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-
-            kv_seq_len = key_states.shape[-2]
-            if past_key_value is not None:
-                kv_seq_len += past_key_value[0].shape[-2]
-            cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
-
-            if past_key_value is not None:
-                key_states = torch.cat([past_key_value[0], key_states], dim=2)
-                value_states = torch.cat([past_key_value[1], value_states], dim=2)
-
-            past_key_value = (key_states, value_states) if use_cache else None
-            attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
-
-            if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
-                raise ValueError(
-                    f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
-                    f" {attn_weights.size()}"
-                )
-
-            if attention_mask is not None:
-                if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
-                    raise ValueError(
-                        f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
-                    )
-                attn_weights = attn_weights + attention_mask
-                attn_weights = torch.max(attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))
-
-            # upcast attention to fp32
-            attn_weights = nn.functional.softmax(attn_weights, dim=-1)
-            attn_output = torch.matmul(attn_weights, value_states)
-
-            if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
-                raise ValueError(
-                    f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
-                    f" {attn_output.size()}"
-                )
-
+        else:
+            with torch.backends.cuda.sdp_kernel(enable_flash=True, enable_math=True, enable_mem_efficient=True):
+                attn_output = F.scaled_dot_product_attention(query_states, key_states, value_states,
+                                                             attn_mask=attention_mask)
             attn_output = attn_output.transpose(1, 2)
-            attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
-            attn_output = self.o_proj(attn_output)
+        attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+        attn_output = self.o_proj(attn_output)
 
-            if not output_attentions:
-                attn_weights = None
+        if not output_attentions:
+            attn_weights = None
 
-            return attn_output, attn_weights, past_key_value
+        return attn_output, attn_weights, past_key_value
 
 
 class DecoderLayer(nn.Module):
-    def __init__(self, config: BaiChuanConfig,**kwargs):
+    def __init__(self, config: BaichuanConfig,**kwargs):
         super().__init__()
         self.hidden_size = config.hidden_size
-        self.self_attn = Attention(config=config,**kwargs)
 
         global skip_init_function
         init_method = skip_init_function
 
+        self.self_attn = Attention(config=config,**kwargs)
         self.mlp = init_method(MLP,
             hidden_size=self.hidden_size,
             intermediate_size=config.intermediate_size,
@@ -316,19 +286,6 @@ class DecoderLayer(nn.Module):
             output_attentions: Optional[bool] = False,
             use_cache: Optional[bool] = False,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
-        """
-        Args:
-            hidden_states (`torch.FloatTensor`): input to the layer of shape `(batch, seq_len, embed_dim)`
-            attention_mask (`torch.FloatTensor`, *optional*): attention mask of size
-                `(batch, 1, tgt_len, src_len)` where padding elements are indicated by very large negative values.
-            output_attentions (`bool`, *optional*):
-                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
-                returned tensors for more detail.
-            use_cache (`bool`, *optional*):
-                If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding
-                (see `past_key_values`).
-            past_key_value (`Tuple(torch.FloatTensor)`, *optional*): cached past key and value projection states
-        """
 
         residual = hidden_states
 
@@ -362,8 +319,8 @@ class DecoderLayer(nn.Module):
         return outputs
 
 
-class PreTrainedModel(PreTrainedModel):
-    config_class = BaiChuanConfig
+class BaichuanPreTrainedModel(PreTrainedModel):
+    config_class = BaichuanConfig
     base_model_prefix = "model"
     supports_gradient_checkpointing = True
     _no_split_modules = ["DecoderLayer"]
@@ -384,19 +341,98 @@ class PreTrainedModel(PreTrainedModel):
                 module.weight.data[module.padding_idx].zero_()
 
     def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, Model):
+        if isinstance(module, BaichuanModel):
             module.gradient_checkpointing = value
 
+    def _get_resized_lm_head(
+        self, old_lm_head: nn.Linear, new_num_tokens: Optional[int] = None, transposed: Optional[bool] = False
+    ) :
+        """
+        Build a resized Linear Module from a provided old Linear Module. Increasing the size will add newly initialized
+        vectors at the end. Reducing the size will remove vectors from the end
 
-class Model(PreTrainedModel):
-    """
-    Transformer decoder consisting of *config.num_hidden_layers* layers. Each layer is a [`DecoderLayer`]
+        Args:
+            old_lm_head (`torch.nn.Linear`):
+                Old lm head liner layer to be resized.
+            new_num_tokens (`int`, *optional*):
+                New number of tokens in the linear matrix.
 
-    Args:
-        config: BaiChuanConfig
-    """
+                Increasing the size will add newly initialized vectors at the end. Reducing the size will remove
+                vectors from the end. If not provided or `None`, just returns a pointer to the input tokens
+                `torch.nn.Linear` module of the model without doing anything. transposed (`bool`, *optional*, defaults
+                to `False`): Whether `old_lm_head` is transposed or not. If True `old_lm_head.size()` is `lm_head_dim,
+                vocab_size` else `vocab_size, lm_head_dim`.
 
-    def __init__(self, config: BaiChuanConfig,**kwargs):
+        Return:
+            `torch.nn.Linear`: Pointer to the resized Linear Module or the old Linear Module if `new_num_tokens` is
+            `None`
+        """
+        if new_num_tokens is None:
+            return old_lm_head
+
+        if is_deepspeed_zero3_enabled():
+            import deepspeed
+
+            with deepspeed.zero.GatheredParameters(old_lm_head.weight, modifier_rank=None):
+                old_num_tokens, old_lm_head_dim = (
+                    old_lm_head.weight.size() if not transposed else old_lm_head.weight.t().size()
+                )
+        else:
+            old_num_tokens, old_lm_head_dim = (
+                old_lm_head.weight.size() if not transposed else old_lm_head.weight.t().size()
+            )
+
+        if old_num_tokens == new_num_tokens:
+            return old_lm_head
+
+        if not isinstance(old_lm_head, NormHead):
+            raise TypeError(
+                f"Old language model head is of type {type(old_lm_head)}, which is not an instance of {nn.Linear}. You"
+                " should either use a different resize function or make sure that `old_lm_head` are an instance of"
+                f" {nn.Linear}."
+            )
+
+        # Build new lm head
+        new_lm_head_shape = (old_lm_head_dim, new_num_tokens) if not transposed else (new_num_tokens, old_lm_head_dim)
+
+        new_lm_head = NormHead(*new_lm_head_shape)
+        new_lm_head = new_lm_head.to(old_lm_head.weight.device, dtype=old_lm_head.weight.dtype)
+
+        # initialize new lm head (in particular added tokens)
+        self._init_weights(new_lm_head)
+
+        num_tokens_to_copy = min(old_num_tokens, new_num_tokens)
+
+        # XXX: put the long block of code in a wrapper
+        if is_deepspeed_zero3_enabled():
+            import deepspeed
+
+            params = [old_lm_head.weight, old_lm_head.bias, new_lm_head.weight, new_lm_head.bias]
+            with deepspeed.zero.GatheredParameters(params, modifier_rank=0):
+                if torch.distributed.get_rank() == 0:
+                    # Copy old lm head weights to new lm head
+                    if not transposed:
+                        new_lm_head.weight.data[:num_tokens_to_copy, :] = old_lm_head.weight.data[
+                            :num_tokens_to_copy, :
+                        ]
+                    else:
+                        new_lm_head.weight.data[:, :num_tokens_to_copy] = old_lm_head.weight.data[
+                            :, :num_tokens_to_copy
+                        ]
+
+
+        else:
+            # Copy old lm head weights to new lm head
+            if not transposed:
+                new_lm_head.weight.data[:num_tokens_to_copy, :] = old_lm_head.weight.data[:num_tokens_to_copy, :]
+            else:
+                new_lm_head.weight.data[:, :num_tokens_to_copy] = old_lm_head.weight.data[:, :num_tokens_to_copy]
+
+
+        return new_lm_head
+
+class BaichuanModel(BaichuanPreTrainedModel):
+    def __init__(self, config: BaichuanConfig,**kwargs):
         super().__init__(config)
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
@@ -570,22 +606,53 @@ class Model(PreTrainedModel):
         )
 
 
-class BaiChuanForCausalLM(PreTrainedModel):
-    def __init__(self, config: BaiChuanConfig,**kwargs):
-        super().__init__(config)
+class NormHead(nn.Module):
+    def __init__(self, hidden_size, vocab_size, bias=False):
+        super().__init__()
+        self.weight = nn.Parameter(torch.empty((vocab_size, hidden_size)))
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        self.first_flag = True
 
-        global skip_init_function
-        init_method = skip_init_function
 
-        self.model = Model(config,**kwargs)
-        self.lm_head = init_method(nn.Linear,config.hidden_size, config.vocab_size, bias=False,**kwargs)
+    def forward(self, hidden_states):
+        if self.training:
+            norm_weight = nn.functional.normalize(self.weight)
+        elif self.first_flag:
+            self.first_flag = False
+            self.weight = nn.Parameter(nn.functional.normalize(self.weight))
+            norm_weight = self.weight
+        else:
+            norm_weight = self.weight
+        return nn.functional.linear(hidden_states, norm_weight)
 
+_init_weights = True
+@contextmanager
+def no_init_weights(_enable=True):
+    global _init_weights
+    old_init_weights = _init_weights
+    if _enable:
+        _init_weights = False
+    try:
+        yield
+    finally:
+        _init_weights = old_init_weights
+
+class BaichuanForCausalLM(BaichuanPreTrainedModel):
+    def __init__(self, config: BaichuanConfig, *model_args, **model_kwargs):
+        super().__init__(config, *model_args, **model_kwargs)
+        self.model = BaichuanModel(config)
+
+        self.lm_head = NormHead(config.hidden_size, config.vocab_size, bias=False)
+        self.quantized = False
+        method = getattr(config, "quantization_method", "cpm")
+        if method == "cpm":
+            if getattr(config, "quantization_bit",0) in [4,8]:
+                self.quantize(config.quantization_bit,empty_init=True)
+        elif method == "bnb":
+            if hasattr(config, "quantization_config") and config.quantization_config['load_in_4bit']:
+                self.quantize_bnb(4)
         # Initialize weights and apply final processing
         self.post_init()
-
-        self.quantized = False
-        if self.config.quantization_bit in [4,8]:
-            self.quantize(self.config.quantization_bit, empty_init=True)
 
     def get_input_embeddings(self):
         return self.model.embed_tokens
@@ -604,6 +671,112 @@ class BaiChuanForCausalLM(PreTrainedModel):
 
     def get_decoder(self):
         return self.model
+    
+    @classmethod
+    def from_pretrained(
+        cls,
+        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]],
+        *model_args,
+        config: Optional[Union[PretrainedConfig, str, os.PathLike]] = None,
+        cache_dir: Optional[Union[str, os.PathLike]] = None,
+        ignore_mismatched_sizes: bool = False,
+        force_download: bool = False,
+        local_files_only: bool = False,
+        token: Optional[Union[str, bool]] = None,
+        revision: str = "main",
+        use_safetensors: bool = None,
+        **kwargs,
+    ):
+        # Load config if we don't provide a configuration
+        if not isinstance(config, PretrainedConfig):
+            config_path = config if config is not None else pretrained_model_name_or_path
+            config, model_kwargs = cls.config_class.from_pretrained(
+                config_path,
+                cache_dir=cache_dir,
+                return_unused_kwargs=True,
+                force_download=force_download,
+                resume_download=False,
+                proxies=None,
+                local_files_only=local_files_only,
+                token=token,
+                revision=revision,
+                subfolder="",
+                _from_auto=False,
+                _from_pipeline=None,
+                **kwargs,
+            )
+        else:
+            model_kwargs = kwargs
+        method = getattr(config, "quantization_method", "cpm")
+        if method == "bnb" and hasattr(config, "quantization_config") and isinstance(config.quantization_config, dict) and config.quantization_config.get('load_in_4bit', False):
+            try:
+                from .quantizer import init_model_weight_int4
+                from accelerate import init_empty_weights, dispatch_model, infer_auto_device_map
+                from accelerate.utils import CustomDtype
+                from accelerate.utils import get_balanced_memory
+            except ImportError:
+                raise ImportError(f"Needs import model weight init func to run quantize.") 
+            # Instantiate model.
+            init_contexts = [no_init_weights(_enable=True)]
+            init_contexts.append(init_empty_weights())
+            with ContextManagers(init_contexts):
+                model = cls(config)
+            
+            model_file = os.path.join(pretrained_model_name_or_path, 'pytorch_model.bin')
+            state_dict = torch.load(model_file, map_location="cpu") 
+            model.is_quantized = True
+            
+            device_map = kwargs.pop("device_map", None)
+            torch_dtype = kwargs.pop("torch_dtype", None)
+            
+            if device_map is not None:
+                kwargs = {"no_split_module_classes": model._no_split_modules}
+                target_dtype = CustomDtype.INT4
+                max_memory = get_balanced_memory(
+                    model,
+                    dtype=target_dtype,
+                    low_zero=(device_map == "balanced_low_0"),
+                    max_memory=None,
+                    **kwargs,
+                )
+                kwargs["max_memory"] = max_memory
+                device_map = infer_auto_device_map(model, dtype=target_dtype, **kwargs)
+                
+            model = init_model_weight_int4(config, model, state_dict)
+            
+            # Set model in evaluation mode to deactivate DropOut modules by default
+            model.eval()
+            # If it is a model with generation capabilities, attempt to load the generation config
+            if model.can_generate():
+                try:
+                    model.generation_config = GenerationConfig.from_pretrained(
+                        pretrained_model_name_or_path,
+                        cache_dir=cache_dir,
+                        force_download=force_download,
+                        resume_download=False,
+                        proxies=None,
+                        local_files_only=local_files_only,
+                        token=token,
+                        revision=revision,
+                        subfolder="",
+                        _from_auto=False,
+                        _from_pipeline=None,
+                        **kwargs,
+                    )
+                except (OSError, TypeError):
+                    logger.info(
+                        "Generation config file not found, using a generation config created from the model config."
+                    )
+                    pass
+            
+            if device_map is not None:
+                dispatch_model(model, device_map=device_map)
+            
+            return model
+        return super(BaichuanForCausalLM, cls).from_pretrained(pretrained_model_name_or_path, *model_args, 
+                config=config, cache_dir=cache_dir, ignore_mismatched_sizes=ignore_mismatched_sizes, 
+                force_download=force_download, local_files_only=local_files_only, token=token, revision=revision, 
+                use_safetensors=use_safetensors, **kwargs)   
 
     def forward(
             self,
@@ -618,31 +791,6 @@ class BaiChuanForCausalLM(PreTrainedModel):
             output_hidden_states: Optional[bool] = None,
             return_dict: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
-        r"""
-        Args:
-            labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
-                Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
-                config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
-                (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
-
-        Returns:
-
-        Example:
-
-        ```python
-        >>> from transformers import AutoTokenizer, ModelForCausalLM
-
-        >>> model = ModelForCausalLM.from_pretrained(PATH_TO_CONVERTED_WEIGHTS)
-        >>> tokenizer = AutoTokenizer.from_pretrained(PATH_TO_CONVERTED_TOKENIZER)
-
-        >>> prompt = "Hey, are you consciours? Can you talk to me?"
-        >>> inputs = tokenizer(prompt, return_tensors="pt")
-
-        >>> # Generate
-        >>> generate_ids = model.generate(inputs.input_ids, max_length=30)
-        >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
-        "Hey, are you consciours? Can you talk to me?\nI'm not consciours, but I can talk to you."
-        ```"""
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -665,7 +813,6 @@ class BaiChuanForCausalLM(PreTrainedModel):
 
         hidden_states = outputs[0]
         logits = self.lm_head(hidden_states)
-
         loss = None
         if labels is not None:
             # Shift so that tokens < n predict n
@@ -675,9 +822,11 @@ class BaiChuanForCausalLM(PreTrainedModel):
             loss_fct = CrossEntropyLoss()
             shift_logits = shift_logits.view(-1, self.config.vocab_size)
             shift_labels = shift_labels.view(-1)
+            softmax_normalizer = shift_logits.max(-1).values ** 2
+            z_loss = self.config.z_loss_weight * softmax_normalizer.mean()
             # Enable model parallelism
             shift_labels = shift_labels.to(shift_logits.device)
-            loss = loss_fct(shift_logits, shift_labels)
+            loss = loss_fct(shift_logits, shift_labels) + z_loss
 
         if not return_dict:
             output = (logits,) + outputs[1:]
@@ -728,6 +877,13 @@ class BaiChuanForCausalLM(PreTrainedModel):
             reordered_past += (tuple(past_state.index_select(0, beam_idx) for past_state in layer_past),)
         return reordered_past
 
+    def quantize_bnb(self, bits: int):
+        try:
+            from .quantizer import quantize_online
+        except ImportError:
+            raise ImportError(f"Needs QLinear to run quantize.")
+        return quantize_online(self, bits)
+
     def quantize(self, bits: int, empty_init=False, device=None, **kwarg):
         if bits == 0:
             return
@@ -740,8 +896,19 @@ class BaiChuanForCausalLM(PreTrainedModel):
         self.quantized = True
         return self
 
-
-class TransformerBaiChuanLMHeadModel(TransformerBase):
-    def __init__(self, *args,**kwargs):
-        super(TransformerBaiChuanLMHeadModel, self).__init__(*args,**kwargs)
-        self.set_model(self.from_pretrained(BaiChuanForCausalLM, *args, **kwargs))
+    @torch.no_grad()
+    def chat(self, tokenizer, messages: List[dict], stream=False,
+             generation_config: Optional[GenerationConfig]=None,**kwargs):
+        generation_config = generation_config or self.generation_config
+        input_ids = build_chat_input(self, tokenizer, messages, generation_config.max_new_tokens)
+        if stream:
+            streamer = TextIterStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+            Thread(target=self.generate, kwargs=dict(
+                inputs=input_ids, streamer=streamer,
+                generation_config=generation_config,**kwargs
+            )).start()
+            return streamer
+        else:
+            outputs = self.generate(input_ids, generation_config=generation_config,**kwargs)
+            response = tokenizer.decode(outputs[0][len(input_ids[0]):], skip_special_tokens=True)
+            return response
