@@ -569,7 +569,7 @@ class BaichuanModel(BaichuanPreTrainedModel):
                     hidden_states,
                     attention_mask,
                     position_ids,
-                    None,
+                    past_key_value,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -619,7 +619,7 @@ class NormHead(nn.Module):
             norm_weight = nn.functional.normalize(self.weight)
         elif self.first_flag:
             self.first_flag = False
-            self.weight = nn.Parameter(nn.functional.normalize(self.weight))
+            self.weight.data = nn.functional.normalize(self.weight)
             norm_weight = self.weight
         else:
             norm_weight = self.weight
