@@ -135,10 +135,10 @@ class BaichuanAttention(torch.nn.Module):
         global skip_init_function
         init_method = skip_init_function
         self.W_pack = init_method(torch.nn.Linear,
-            self.hidden_size, 3 * self.hidden_size, bias=False
+            self.hidden_size, 3 * self.hidden_size, bias=False,**kwargs
         )
         self.o_proj = init_method(torch.nn.Linear,
-            self.num_heads * self.head_dim, self.hidden_size, bias=False
+            self.num_heads * self.head_dim, self.hidden_size, bias=False,**kwargs
         )
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
