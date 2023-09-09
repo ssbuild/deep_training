@@ -21,7 +21,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .utils import _get_submodules, _freeze_adapter
+from ..utils import _get_submodules, _freeze_adapter
 from ....models.petl.prompt.configuration import AdaptionPromptConfig
 
 

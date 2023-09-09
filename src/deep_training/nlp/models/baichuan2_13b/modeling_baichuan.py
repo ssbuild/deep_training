@@ -135,10 +135,10 @@ class BaichuanAttention(torch.nn.Module):
         global skip_init_function
         init_method = skip_init_function
         self.W_pack = init_method(torch.nn.Linear,
-            self.hidden_size, 3 * self.hidden_size, bias=False
+            self.hidden_size, 3 * self.hidden_size, bias=False,**kwargs
         )
         self.o_proj = init_method(torch.nn.Linear,
-            self.num_heads * self.head_dim, self.hidden_size, bias=False
+            self.num_heads * self.head_dim, self.hidden_size, bias=False,**kwargs
         )
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
@@ -514,6 +514,7 @@ class BaichuanModel(BaichuanPreTrainedModel):
         else:
             alibi_mask = self.get_alibi_mask(inputs_embeds, seq_length_with_past)
 
+
         if attention_mask is not None:
             if len(attention_mask.shape) == 2:
                 expanded_mask = attention_mask.to(alibi_mask.dtype)
@@ -536,6 +537,9 @@ class BaichuanModel(BaichuanPreTrainedModel):
             attention_mask = inverted_mask + alibi_mask.unsqueeze(0)
         else:
             attention_mask = alibi_mask
+
+        if attention_mask.size(-2) != seq_length:
+            attention_mask = attention_mask[:,:,-seq_length:]
 
         hidden_states = inputs_embeds
 
@@ -572,7 +576,7 @@ class BaichuanModel(BaichuanPreTrainedModel):
                     create_custom_forward(decoder_layer),
                     hidden_states,
                     attention_mask,
-                    None,
+                    past_key_value,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -624,7 +628,7 @@ class NormHead(nn.Module):
             norm_weight = nn.functional.normalize(self.weight)
         elif self.first_flag:
             self.first_flag = False
-            self.weight = nn.Parameter(nn.functional.normalize(self.weight))
+            self.weight.data = nn.functional.normalize(self.weight)
             norm_weight = self.weight
         else:
             norm_weight = self.weight
