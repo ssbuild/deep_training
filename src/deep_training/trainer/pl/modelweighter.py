@@ -133,44 +133,7 @@ class ModelWeightMixin:
             self.load_state_dict(weights_dict_new, strict=strict)
             del weight_dict
             del weights_dict_new
-            #from torch.nn.modules.module import _IncompatibleKeys
-            # # 加载sft 或者 p-tuning-v2权重
-            # def assert_state_dict_fn(model,incompatible_keys: _IncompatibleKeys):
-            #     if not incompatible_keys.missing_keys and not incompatible_keys.unexpected_keys:
-            #         return None
-            #     _keys_to_ignore_on_load_missing = getattr(model.backbone,"_keys_to_ignore_on_load_missing",[])
-            #     missing_keys = [_ for _ in incompatible_keys.missing_keys]
-            #     model_prefix = r'{}\.{}\.'.format(pl_model_prefix, base_model_prefix)
-            #     missing_keys = [re.sub(r'{}'.format(model_prefix), '', _) for _ in missing_keys]
-            #     missing_keys = [re.sub(r'{}'.format(pl_model_prefix), '', _) for _ in missing_keys]
-            #     if missing_keys and _keys_to_ignore_on_load_missing:
-            #         __ = []
-            #         for _ in _keys_to_ignore_on_load_missing:
-            #             for missing_key in missing_keys:
-            #                 if re.match(re.compile(_),missing_key):
-            #                     __.append(missing_key)
-            #         for _ in __:
-            #             missing_keys.remove(_)
-            #
-            #     if missing_keys:
-            #         if strict:
-            #             raise ValueError('Error in load_sft_weight missing_keys',missing_keys)
-            #         else:
-            #             print('Error in load_sft_weight missing_keys',missing_keys)
-            #     if incompatible_keys.unexpected_keys:
-            #         if strict:
-            #             raise ValueError('Error in load_sft_weight unexpected_keys', incompatible_keys.unexpected_keys)
-            #         else:
-            #             print(('Error in load_sft_weight unexpected_keys', incompatible_keys.unexpected_keys))
-            #
-            #     if not missing_keys and not incompatible_keys.unexpected_keys:
-            #         return None
-            #     return missing_keys or incompatible_keys.unexpected_keys
-            # self: nn.Module
-            # h = self.register_load_state_dict_post_hook(assert_state_dict_fn)
-            # # TransformerBase类 可能有自定义额外模块
-            # self.load_state_dict(weights_dict_new, strict=strict)
-            # h.remove()
+
 
 
 
