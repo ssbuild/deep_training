@@ -113,13 +113,13 @@ class ModelWeightMixin:
                 pl_model_prefix = 'transformer_base'
                 is_pl_weight = pl_model_prefix in ','.join(list(weight_dict.keys()))
                 base_model_prefix = self.backbone.base_model_prefix
-                model_prefix = r'{}\.{}'.format(pl_model_prefix, base_model_prefix)
+                model_prefix = r'{}.{}'.format(pl_model_prefix, base_model_prefix)
                 for k, v in weight_dict.items():
                     if is_pl_weight:
-                        k = re.sub(r'_forward_module\.', '', k)
+                        k = re.sub(r'_forward_module.', '', k)
                         #llm module
                         if k.startswith(model_prefix):
-                            k = re.sub(r'{}\.'.format(model_prefix), '', k)
+                            k = re.sub(r'{}.'.format(model_prefix), '', k)
                             k = model_prefix + '.' + k
                         #TransformerBase module
                         if not k.startswith(pl_model_prefix):
