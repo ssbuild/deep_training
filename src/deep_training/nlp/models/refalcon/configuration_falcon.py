@@ -1,0 +1,1 @@
+from transformers.models.falcon.configuration_falcon import * # noqa
