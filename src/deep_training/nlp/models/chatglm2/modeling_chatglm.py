@@ -11,7 +11,6 @@ import torch.utils.checkpoint
 import torch.nn.functional as F
 from torch import nn
 from torch.nn import CrossEntropyLoss, LayerNorm
-from torch.nn.utils import skip_init
 from typing import Optional, Tuple, Union, List, Callable, Dict, Any
 
 from transformers.modeling_outputs import (
@@ -24,7 +23,7 @@ from transformers.generation.logits_process import LogitsProcessor
 from transformers.generation.utils import LogitsProcessorList, StoppingCriteriaList, GenerationConfig, ModelOutput
 
 from .configuration_chatglm import ChatGLMConfig
-
+from ...utils.torch_utils import skip_init
 # flags required to enable jit fusion kernels
 
 def default_init(cls, *args, **kwargs):
@@ -877,6 +876,7 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
         self.transformer = ChatGLMModel(config,  device=device)
         self.config = config
 
+        self.post_init()
         self.quantized = False
         if self.config.quantization_bit in [4,8]:
             self.quantize(self.config.quantization_bit, empty_init=True)

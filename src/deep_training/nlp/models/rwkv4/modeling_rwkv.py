@@ -275,12 +275,15 @@ class RwkvFeedForward(nn.Module):
         #     self.time_mix_k = nn.Parameter(torch.pow(ddd, ratio_1_to_almost0))
         #     self.time_mix_r = nn.Parameter(torch.pow(ddd, ratio_1_to_almost0))
 
-        self.time_mix_k = nn.Parameter(torch.empty(1, 1, config.n_embd,**kwargs))
-        self.time_mix_r = nn.Parameter(torch.empty(1, 1, config.n_embd,**kwargs))
+        self.time_mix_k = nn.Parameter(torch.empty(1, 1, config.n_embd))
+        self.time_mix_r = nn.Parameter(torch.empty(1, 1, config.n_embd))
 
-        self.key = nn.Linear(config.n_embd, config.dim_ffn, bias=False,**kwargs)
-        self.receptance = nn.Linear(config.n_embd, config.n_embd, bias=False,**kwargs)
-        self.value = nn.Linear(config.dim_ffn, config.n_embd, bias=False,**kwargs)
+        global skip_init_function
+        init_method = skip_init_function
+
+        self.key = init_method(nn.Linear,config.n_embd, config.dim_ffn, bias=False,**kwargs)
+        self.receptance = init_method(nn.Linear,config.n_embd, config.n_embd, bias=False,**kwargs)
+        self.value = init_method(nn.Linear,config.dim_ffn, config.n_embd, bias=False,**kwargs)
 
 
     def forward(self, x, state=None):
@@ -352,13 +355,12 @@ class RwkvBlock(nn.Module):
                 self.pos_emb_x = nn.Parameter(torch.zeros((1, config.pos_emb_size, config.n_embd),**kwargs))
                 self.pos_emb_y = nn.Parameter(torch.zeros((config.pos_emb_size, 1, config.n_embd),**kwargs))
 
-        global skip_init_function
-        init_method = skip_init_function
+
 
         self.att = RwkvSelfAttention(config, layer_id,**kwargs)
         # if 'g' in os.environ["RWKV_MY_TESTING"]:
         #     self.ffn = MishGLU(config, layer_id)
-        self.ffn = init_method(RwkvFeedForward(config, layer_id,**kwargs))
+        self.ffn = RwkvFeedForward(config, layer_id,**kwargs)
 
 
     def forward(self, x, x_emb=None,state=None, use_cache=False, output_attentions=False):

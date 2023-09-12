@@ -16,7 +16,6 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn import CrossEntropyLoss, LayerNorm
-from torch.nn.utils import skip_init
 from transformers import LogitsProcessor
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
@@ -34,6 +33,7 @@ from transformers.generation.utils import LogitsProcessorList, StoppingCriteriaL
 
 from .configuration import ChatGLMConfig
 from ..transformer import TransformerBase
+from ...utils.torch_utils import skip_init
 
 logger = logging.get_logger(__name__)
 
@@ -1068,8 +1068,9 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
             dtype=self.transformer.params_dtype or torch.half
         )
         self.config = config
-        self.quantized = False
 
+        self.post_init()
+        self.quantized = False
         if self.config.quantization_bit in [4,8]:
             self.quantize(self.config.quantization_bit, empty_init=True,dtype=self.transformer.params_dtype or torch.half)
 
