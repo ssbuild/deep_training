@@ -171,7 +171,7 @@ def rwkv_linear_attention_cpu(time_decay, time_first, key, value, state=None,ret
         den_state = e1 * den_state + e2
         max_state = max_for_state
 
-    if return_state and state is not None:
+    if return_state or state is not None:
         state = [num_state, den_state, max_state]
 
     return output, state
@@ -183,7 +183,7 @@ def rwkv_linear_attention_cpu(time_decay, time_first, key, value, state=None,ret
 
 
 class RwkvSelfAttention(nn.Module):
-    def __init__(self, config: RwkvConfig, layer_id,**kwargs):
+    def __init__(self, config: RwkvConfig, layer_id=0,**kwargs):
         super().__init__()
         self.config = config
         self.layer_id = layer_id
@@ -543,6 +543,8 @@ class RwkvModel(RwkvPreTrainedModel):
         self.ln_out = init_method(nn.LayerNorm,config.n_embd,**kwargs)
 
         self._is_weight_rescaled = False
+
+        self.gradient_checkpointing = False
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -622,7 +624,21 @@ class RwkvModel(RwkvPreTrainedModel):
 
 
         for i,block in enumerate(self.blocks):
-            hidden_states, state, attentions = block(hidden_states,state=state, use_cache=use_cache, output_attentions=output_attentions)
+            if self.gradient_checkpointing and self.training:
+                def create_custom_forward(module):
+                    def custom_forward(*inputs):
+                        # None for past_key_value
+                        return module(*inputs, use_cache=use_cache, output_attentions=output_attentions)
+
+                    return custom_forward
+
+                hidden_states, state, attentions = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(block),
+                    hidden_states,
+                    state
+                )
+            else:
+                hidden_states, state, attentions = block(hidden_states,state=state, use_cache=use_cache, output_attentions=output_attentions)
 
             if not self.training and self.config.rescale_every >0:
                 if (i + 1) % self.config.rescale_every == 0:
