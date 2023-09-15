@@ -296,7 +296,7 @@ class BaichuanModel(BaichuanPreTrainedModel):
         # embed positions
         attention_mask = self.get_alibi_mask(inputs_embeds, seq_length_with_past)
         if attention_mask.size(-2) != seq_length:
-            attention_mask = attention_mask[:,:,-seq_length:]
+            attention_mask = attention_mask[..., -seq_length:, :]
 
         hidden_states = inputs_embeds
 
