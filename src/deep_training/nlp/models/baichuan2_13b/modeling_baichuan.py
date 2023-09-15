@@ -539,7 +539,7 @@ class BaichuanModel(BaichuanPreTrainedModel):
             attention_mask = alibi_mask
 
         if attention_mask.size(-2) != seq_length:
-            attention_mask = attention_mask[:,:,-seq_length:]
+            attention_mask = attention_mask[...,-seq_length:,:]
 
         hidden_states = inputs_embeds
 
