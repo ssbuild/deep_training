@@ -5,6 +5,7 @@ from typing import Tuple
 import torch
 from torch.nn import functional as F
 
+# https://github.com/eric-mitchell/direct-preference-optimization.git
 
 def dpo_loss(policy_chosen_logps: torch.FloatTensor,
              policy_rejected_logps: torch.FloatTensor,
