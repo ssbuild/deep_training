@@ -35,16 +35,16 @@ from ..losses.lm_loss import LM_loss
 
 
 class TransformerModel(TransformerBase):
-    def __init__(self, *args,**kwargs):
+    def __init__(self, *args,model_class=None,**kwargs):
         super(TransformerModel, self).__init__(*args,**kwargs)
-        self.set_model(self.from_pretrained(AutoModel,*args,**kwargs))
+        self.set_model(self.from_pretrained(model_class or AutoModel,*args,**kwargs))
         
 
 
 class TransformerModelForUnilm(TransformerModel):
-    def __init__(self,*args: Any, **kwargs: Any):
+    def __init__(self,*args: Any,model_class=None, **kwargs: Any):
         ignore_index = kwargs.pop('ignore_index',-100)
-        super().__init__(*args, **kwargs)
+        super().__init__(*args,model_class=model_class, **kwargs)
         self.loss_fct = LM_loss(ignore_index=ignore_index)
         self.lm_head = nn.Linear(self.config.hidden_size, self.config.vocab_size, bias=False)
 
@@ -74,25 +74,25 @@ class TransformerModelForUnilm(TransformerModel):
         
 
 class TransformerForCausalLM(TransformerBase):
-    def __init__(self,*args: Any, **kwargs: Any):
+    def __init__(self,*args: Any,model_class=None, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        self.set_model(self.from_pretrained(AutoModelForCausalLM, *args, **kwargs))
+        self.set_model(self.from_pretrained(model_class or AutoModelForCausalLM, *args, **kwargs))
 
 
 
 
 class TransformerForMaskLM(TransformerBase):
-    def __init__(self,  *args: Any, **kwargs: Any):
+    def __init__(self,  *args: Any,model_class=None, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        self.set_model(self.from_pretrained(AutoModelForMaskedLM, *args, **kwargs))
+        self.set_model(self.from_pretrained(model_class or AutoModelForMaskedLM, *args, **kwargs))
 
 
 
 
 class TransformerForSeq2SeqLM(TransformerBase):
-    def __init__(self,*args: Any, **kwargs: Any):
+    def __init__(self,*args: Any,model_class=None, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        self.set_model(self.from_pretrained(AutoModelForSeq2SeqLM, *args, **kwargs))
+        self.set_model(self.from_pretrained(model_class or AutoModelForSeq2SeqLM, *args, **kwargs))
 
 
     def compute_loss(self, *args,**batch) -> tuple:
@@ -107,91 +107,91 @@ class TransformerForSeq2SeqLM(TransformerBase):
 
 
 class TransformerForSequenceClassification(TransformerBase):
-    def __init__(self,  *args: Any, **kwargs: Any):
+    def __init__(self,  *args: Any,model_class=None, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        self.set_model(self.from_pretrained(AutoModelForSequenceClassification, *args, **kwargs))
+        self.set_model(self.from_pretrained(model_class or AutoModelForSequenceClassification, *args, **kwargs))
 
         
 
 
 class TransformerForQuestionAnswering(TransformerBase):
-    def __init__(self,*args: Any, **kwargs: Any):
+    def __init__(self,*args: Any,model_class=None, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        self.set_model(self.from_pretrained(AutoModelForQuestionAnswering, *args, **kwargs))
+        self.set_model(self.from_pretrained(model_class or AutoModelForQuestionAnswering, *args, **kwargs))
 
         
 
 
 class TransformerForVisualQuestionAnswering(TransformerBase):
-    def __init__(self,*args: Any, **kwargs: Any):
+    def __init__(self,*args: Any,model_class=None, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        self.set_model(self.from_pretrained(AutoModelForVisualQuestionAnswering, *args, **kwargs))
+        self.set_model(self.from_pretrained(model_class or AutoModelForVisualQuestionAnswering, *args, **kwargs))
 
         
 
 class TransformerForTokenClassification(TransformerBase):
-    def __init__(self,*args: Any, **kwargs: Any):
+    def __init__(self,*args: Any,model_class=None, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        self.set_model(self.from_pretrained(AutoModelForTokenClassification, *args, **kwargs))
+        self.set_model(self.from_pretrained(model_class or AutoModelForTokenClassification, *args, **kwargs))
         
 
 class TransformerForMultipleChoice(TransformerBase):
-    def __init__(self,*args: Any, **kwargs: Any):
+    def __init__(self,*args: Any,model_class=None,**kwargs: Any):
         super().__init__( *args, **kwargs)
-        self.set_model(self.from_pretrained(AutoModelForMultipleChoice, *args, **kwargs))
+        self.set_model(self.from_pretrained(model_class or AutoModelForMultipleChoice, *args, **kwargs))
         
 
 class TransformerForNextSentencePrediction(TransformerBase):
-    def __init__(self,*args: Any, **kwargs: Any):
+    def __init__(self,*args: Any,model_class=None, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        self.set_model(self.from_pretrained(AutoModelForNextSentencePrediction, *args, **kwargs))
+        self.set_model(self.from_pretrained(model_class or AutoModelForNextSentencePrediction, *args, **kwargs))
 
 
         
 
 
 class TransformerForImageClassification(TransformerBase):
-    def __init__(self,*args: Any, **kwargs: Any):
+    def __init__(self,*args: Any,model_class=None, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        self.set_model(self.from_pretrained(AutoModelForImageClassification, *args, **kwargs))
+        self.set_model(self.from_pretrained(model_class or AutoModelForImageClassification, *args, **kwargs))
 
 
 
 
 class TransformerForImageSegmentation(TransformerBase):
-    def __init__(self,*args: Any, **kwargs: Any):
+    def __init__(self,*args: Any,model_class=None, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        self.set_model(self.from_pretrained(AutoModelForImageSegmentation, *args, **kwargs))
+        self.set_model(self.from_pretrained(model_class or AutoModelForImageSegmentation, *args, **kwargs))
         
 
 
 class TransformerForSemanticSegmentation(TransformerBase):
-    def __init__(self,*args: Any, **kwargs: Any):
+    def __init__(self,*args: Any,model_class=None, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        self.set_model(self.from_pretrained(AutoModelForSemanticSegmentation, *args, **kwargs))
+        self.set_model(self.from_pretrained(model_class or AutoModelForSemanticSegmentation, *args, **kwargs))
         
 
 class TransformerForObjectDetection(TransformerBase):
-    def __init__(self,*args: Any, **kwargs: Any):
+    def __init__(self,*args: Any,model_class=None, **kwargs: Any):
         super().__init__( *args, **kwargs)
-        self.set_model(self.from_pretrained(AutoModelForObjectDetection, *args, **kwargs))
+        self.set_model(self.from_pretrained(model_class or AutoModelForObjectDetection, *args, **kwargs))
         
 
 
 
 class TransformerForAudioClassification(TransformerBase):
-    def __init__(self, *args: Any, **kwargs: Any):
+    def __init__(self, *args: Any,model_class=None, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        self.set_model(self.from_pretrained(AutoModelForAudioClassification, *args, **kwargs))
+        self.set_model(self.from_pretrained(model_class or AutoModelForAudioClassification, *args, **kwargs))
         
 
         
 
 
 class TransformerForMaskedImageModeling(TransformerBase):
-    def __init__(self,*args: Any, **kwargs: Any):
+    def __init__(self,*args: Any,model_class=None, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        self.set_model(self.from_pretrained(AutoModelForMaskedImageModeling, *args, **kwargs))
+        self.set_model(self.from_pretrained(model_class or AutoModelForMaskedImageModeling, *args, **kwargs))
 
 
 
