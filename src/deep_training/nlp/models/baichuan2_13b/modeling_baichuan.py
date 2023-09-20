@@ -722,7 +722,8 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
             model_kwargs = kwargs
 
         method = getattr(config, "quantization_method", "cpm")
-        if method == "bnb" and hasattr(config, "quantization_config") and config.quantization_config['load_in_4bit']:
+        if method == "bnb" and hasattr(config, "quantization_config") and (config.quantization_config['load_in_4bit'] or
+                                                                           config.quantization_config['load_in_8bit']):
             try:
                 from .quantizer import init_model_weight_int4
                 from accelerate import init_empty_weights, dispatch_model, infer_auto_device_map
