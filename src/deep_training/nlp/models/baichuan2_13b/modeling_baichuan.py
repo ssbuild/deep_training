@@ -1,4 +1,6 @@
 # Copyright (c) 2023, Baichuan Intelligent Technology. All rights reserved.
+import glob
+
 from transformers.deepspeed import is_deepspeed_zero3_enabled
 
 from ...utils.torch_utils import skip_init
@@ -736,9 +738,17 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
             init_contexts.append(init_empty_weights())
             with ContextManagers(init_contexts):
                 model = cls(config)
-            
-            model_file = os.path.join(pretrained_model_name_or_path, 'pytorch_model.bin')
-            state_dict = torch.load(model_file, map_location="cpu") 
+
+            def load_model_from_multiple_files(input_dir):
+                state_dict = {}
+                for file_name in glob.iglob(f"{input_dir}/pytorch_model*.bin"):
+                    chunk_state_dict = torch.load(file_name, map_location='cpu')
+                    state_dict.update(chunk_state_dict)
+                return state_dict
+
+            # model_file = os.path.join(pretrained_model_name_or_path, 'pytorch_model.bin')
+            # state_dict = torch.load(model_file, map_location="cpu")
+            state_dict = load_model_from_multiple_files(pretrained_model_name_or_path)
             model.is_quantized = True
                         
             device_map = kwargs.pop("device_map", None)
