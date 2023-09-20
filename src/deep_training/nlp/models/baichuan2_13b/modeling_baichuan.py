@@ -658,8 +658,11 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
             if getattr(config, "quantization_bit", 0) in [4, 8]:
                 self.quantize(config.quantization_bit, empty_init=True)
         elif method == "bnb":
-            if hasattr(config, "quantization_config") and config.quantization_config['load_in_4bit']:
-                self.quantize_bnb(4)
+            if hasattr(config, "quantization_config"):
+                if config.quantization_config['load_in_4bit']:
+                    self.quantize_bnb(4)
+                elif config.quantization_config['load_in_8bit']:
+                    self.quantize_bnb(8)
         # Initialize weights and apply final processing
         self.post_init()
 
