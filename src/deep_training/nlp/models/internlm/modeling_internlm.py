@@ -105,7 +105,7 @@ class InternLMRotaryEmbedding(torch.nn.Module):
     def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None,**kwargs):
         super().__init__()
         inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float().to(device) / dim))
-        self.register_buffer("inv_freq", inv_freq)
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
 
         # Build here to make `torch.jit.trace` work.
         self.max_seq_len_cached = max_position_embeddings
@@ -810,7 +810,6 @@ class InternLMForCausalLM(InternLMPreTrainedModel):
              do_sample: bool = True,
              temperature: float = 0.8,
              top_p: float = 0.8,
-             eos_token_id = (2, 103028),
              **kwargs):
         inputs = self.build_inputs(tokenizer, query, history)
         inputs = {k: v.to(self.device) for k, v in inputs.items() if torch.is_tensor(v)}
@@ -819,8 +818,7 @@ class InternLMForCausalLM(InternLMPreTrainedModel):
                                 max_new_tokens=max_new_tokens, 
                                 do_sample=do_sample, 
                                 temperature=temperature, 
-                                top_p=top_p, 
-                                eos_token_id=list(eos_token_id),
+                                top_p=top_p,
                                 **kwargs)
         outputs = outputs[0].cpu().tolist()[len(inputs["input_ids"][0]):]
         response = tokenizer.decode(outputs, skip_special_tokens=True)
@@ -837,7 +835,6 @@ class InternLMForCausalLM(InternLMPreTrainedModel):
                     do_sample: bool = True,
                     temperature: float = 0.8,
                     top_p: float = 0.8,
-                    eos_token_id = (2, 103028),
                     **kwargs):
         class ChatStreamer(BaseStreamer):
             def __init__(self, tokenizer) -> None:
@@ -865,7 +862,6 @@ class InternLMForCausalLM(InternLMPreTrainedModel):
             do_sample=do_sample,
             temperature=temperature,
             top_p=top_p,
-            eos_token_id=eos_token_id,
             **kwargs
         )
 
