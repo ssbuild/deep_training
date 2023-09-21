@@ -61,7 +61,7 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
   - 0.2.0 release lora内部调整
   - 0.2.0.post0 add xverse-13b chat 
   - 0.2.0.post1 fix muti lora
-  - 
+  
 - <strong>2023-08-16</strong>
   - 0.1.21 release 增加 5种 rope scale 方法 ， fix chatglm2-6b-32k 推理 rope_ratio
   - 0.1.21.post1 fix moss rope
