@@ -3,9 +3,11 @@
 
 import sys
 from functools import partial
-from typing import Any, IO,Union,Optional
+from typing import Any, IO, Union, Optional, Dict
 import lightning as pl
 import torch
+from lightning.pytorch.utilities.types import STEP_OUTPUT
+from lightning_utilities.core.apply_func import apply_to_collection
 from torch import nn, Tensor
 from transformers import (
     PretrainedConfig,
@@ -340,7 +342,9 @@ class TransformerLightningModule(MyLightningModule):
             'log_dict'
         ]
         for k in copy_attr:
-            setattr(self.transformer_base, k, getattr(self, k))
+            a = getattr(self, k,None)
+            if a:
+                setattr(self.transformer_base, k,a)
 
         event_ = [
             'configure_optimizers',
@@ -407,7 +411,7 @@ class TransformerLightningModule(MyLightningModule):
                                     self.get_model_lr())
 
 
-    def manual_backward(self,loss: Tensor, *args: Any, **kwargs: Any):
+    def manual_backward(self,loss: Union[Tensor,Dict], *args: Any, **kwargs: Any):
         if isinstance(loss,dict):
             loss = loss['loss']
         return super(TransformerLightningModule, self).manual_backward(loss)
@@ -543,92 +547,39 @@ class TransformerLightningModule(MyLightningModule):
             self.model.zero_grad()
         return loss
 
+    def on_train_batch_end(self, outputs: STEP_OUTPUT, batch: Any, batch_idx: int) -> None:
+        if isinstance(outputs, dict):
+            self.log_dict(outputs, prog_bar=True)
+        else:
+            self.log('loss', outputs, prog_bar=True)
+
     def training_step(self, batch):
-        if isinstance(batch, dict):
-            outputs = self.compute_loss(**batch)
-        else:
-            outputs = self.compute_loss(**dict(batch))
-        loss = outputs[0]
-        if isinstance(loss,dict):
-            self.log_dict(loss,prog_bar=True)
-        else:
-            self.log('loss',loss,prog_bar=True)
-        return loss
+        if not isinstance(batch, dict):
+            batch = dict(batch)
+        outputs = self.compute_loss(**batch)
+        if isinstance(outputs,tuple):
+            return outputs[0]
+        return outputs
 
     def validation_step(self, batch, batch_idx, **kwargs):
-        if isinstance(batch, dict):
-            outputs = self.compute_loss(**batch)
-        else:
-            outputs = self.compute_loss(**dict(batch))
-
-        loss = outputs[0]
-        o = {}
-        if loss is not None:
-            if isinstance(loss, dict):
-                o = loss
-                if 'loss' in o:
-                    o['val_loss'] = o.pop('loss')
-            else:
-                o['val_loss'] = loss.cpu().detach().numpy()
-
-        out = outputs[1:]
-        if isinstance(out,(tuple,list)):
-            o['outputs'] = []
-            obj = o['outputs']
-            for t in out:
-                if t is None:
-                    obj.append(t)
-                elif isinstance(t,torch.Tensor):
-                    obj.append(t.cpu().detach().numpy())
-                elif isinstance(t, list) or isinstance(t, tuple):
-                    tmp_list =[_ for _ in t]
-                    for idx in range(len(tmp_list)):
-                        node = tmp_list[idx]
-                        if isinstance(node, torch.Tensor):
-                            tmp_list[idx] = node.cpu().detach().numpy()
-                        elif isinstance(node, list) or isinstance(node, tuple):
-                            tmp_list[idx] = [_.cpu().detach().numpy() for _ in node]
-                        else:
-                            raise ValueError('validation_step: outputs not support', type(t))
-                    obj.append(tmp_list)
-                elif isinstance(t, dict):
-                    obj.append({k:v.cpu().detach().numpy() for k,v in t.items()})
-                else:
-                    raise ValueError('validation_step: outputs not support', type(t))
-        else:
-            o['outputs'] = out.cpu().detach().numpy()
-        return o
+        if not isinstance(batch, dict):
+            batch = dict(batch)
+        outputs = self.compute_loss(**batch)
+        outputs = apply_to_collection(outputs,dtype=torch.Tensor, function=lambda x: x.detach().numpy())
+        if isinstance(outputs, tuple):
+            outputs = {
+                "loss": outputs[0],
+                "outputs": outputs[1:]
+            }
+        return outputs
 
     def test_step(self, batch, batch_idx):
-        if isinstance(batch, dict):
-            outputs = self.compute_loss(**batch)
-        else:
-            outputs = self.compute_loss(**dict(batch))
-        o = {}
-        out = outputs
-        if isinstance(out, (tuple, list)):
-            o['outputs'] = []
-            obj = o['outputs']
-            for t in out:
-                if t is None:
-                    obj.append(t)
-                elif isinstance(t, torch.Tensor):
-                    obj.append(t.cpu().detach().numpy())
-                elif isinstance(t, list) or isinstance(t, tuple):
-                    tmp_list =[_ for _ in t]
-                    for idx in range(len(tmp_list)):
-                        node = tmp_list[idx]
-                        if isinstance(node,torch.Tensor):
-                            tmp_list[idx] = node.cpu().detach().numpy()
-                        elif isinstance(node, list) or isinstance(node, tuple):
-                            tmp_list[idx] = [_.cpu().detach().numpy() for _ in node]
-                        else:
-                            raise ValueError('test_step: outputs not support', type(t))
-                    obj.append(tmp_list)
-                elif isinstance(t, dict):
-                    obj.append({k: v.cpu().detach().numpy() for k, v in t.items()})
-                else:
-                    raise ValueError('test_step: outputs not support',type(t))
-        else:
-            o['outputs'] = out.cpu().detach().numpy()
-        return o
+        if not isinstance(batch, dict):
+            batch = dict(batch)
+        outputs = self.compute_loss(**batch)
+        outputs = apply_to_collection(outputs,dtype=torch.Tensor, function=lambda x: x.detach().numpy())
+        if isinstance(outputs,tuple):
+            outputs = {
+                "outputs": outputs
+            }
+        return outputs

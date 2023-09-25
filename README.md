@@ -45,6 +45,9 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
   
 ## update
 - <strong>2023-09-21</strong>
+  - 0.2.3 支持qwen-7b 新版 和 qwen-14b ， 旧版不再支持，旧版可以安装 deep_training < 0.2.3
+
+- <strong>2023-09-21</strong>
   - 0.2.3 support dpo 完整训练 [dpo_finetuning](https://github.com/ssbuild/dpo_finetuning)
 
 - <strong>2023-09-06</strong>
