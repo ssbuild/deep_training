@@ -6,6 +6,7 @@ import typing
 import warnings
 from dataclasses import dataclass, field
 from typing import Optional
+from transformers import TrainingArguments as TrainingArgumentsHF_
 
 
 
@@ -13,9 +14,34 @@ __all__ = [
     'ModelArguments',
     'PrefixModelArguments',
     'TrainingArguments',
+    'TrainingArgumentsHF',
     'DataArguments',
     'MlmDataArguments',
 ]
+
+
+class TrainingArgumentsHF(TrainingArgumentsHF_):
+    data_backend: typing.Optional[str] = field(
+        default="record",
+        metadata={
+            "help": (
+                "default data_backend."
+            )
+        },
+    )
+    learning_rate_for_task: typing.Optional[float] = field(
+        default=None,
+        metadata={
+            "help": (
+                "learning_rate_for_task."
+            )
+        },
+    )
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.learning_rate_for_task is None:
+            self.learning_rate_for_task = self.learning_rate
 
 @dataclass
 class ModelArguments:

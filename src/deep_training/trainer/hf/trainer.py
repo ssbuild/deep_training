@@ -21,16 +21,13 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from datasets import Dataset
-from transformers import Trainer as Trainer_hf, TrainingArguments, PreTrainedModel, DataCollator, PreTrainedTokenizerBase, \
+from transformers import Trainer as TrainerHF, TrainingArguments, PreTrainedModel, DataCollator, PreTrainedTokenizerBase, \
     EvalPrediction, TrainerCallback
 from transformers.trainer_utils import ShardedDDPOption, FSDPOption, IntervalStrategy
+from ...data_helper.training_args import TrainingArguments, DataArguments, \
+    ModelArguments, TrainingArgumentsHF
 
-from ...data_helper.training_args import TrainingArguments as TrainingArgumentsDT,DataArguments as DataArgumentsDT,\
-    ModelArguments as ModelArgumentsDT
 
-
-#
-#
 # def convert2hf_args(train_args: TrainingArgumentsDT,
 #                     model_args: ModelArgumentsDT,
 #                     data_args: DataArgumentsDT,
@@ -71,10 +68,10 @@ from ...data_helper.training_args import TrainingArguments as TrainingArgumentsD
 #     )
 
 
-class Trainer(Trainer_hf):
-    def __init__(   self,
+class Trainer(TrainerHF):
+    def __init__(self,
         model: Union[PreTrainedModel, nn.Module] = None,
-        args: TrainingArguments = None,
+        args: TrainingArgumentsHF = None,
         data_collator: Optional[DataCollator] = None,
         train_dataset: Optional[Dataset] = None,
         eval_dataset: Optional[Union[Dataset, Dict[str, Dataset]]] = None,
@@ -87,8 +84,8 @@ class Trainer(Trainer_hf):
         **kwargs):
         super().__init__(model=model,
                          args = args,
-                         data_collator = data_collator,
-                         train_dataset = train_dataset,
+                         data_collator=data_collator,
+                         train_dataset=train_dataset,
                          eval_dataset=eval_dataset,
                          tokenizer=tokenizer,
                          model_init=model_init,

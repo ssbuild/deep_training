@@ -5,14 +5,10 @@
 # from fastdatasets.common.random_dataset import RandomDatasetBase
 # from fastdatasets.torch_dataset import IterableDataset as torch_IterableDataset, Dataset as torch_Dataset
 # from torch.utils.data import DataLoader, IterableDataset
-
-import json
-import logging
 import os
-import typing
-import torch
+from typing import Optional, Union
 from transformers import PreTrainedTokenizer, PretrainedConfig
-from .training_args import ModelArguments, DataArguments, TrainingArguments
+from .training_args import ModelArguments, DataArguments, TrainingArguments,TrainingArgumentsHF
 from ..utils.func import is_chinese_char
 from numpy_io.pytorch_loader.data_helper import DataHelperBase,load_tokenizer, load_configure
 from numpy_io.core.writer import DataWriteHelper
@@ -39,16 +35,16 @@ def get_filename_replace_dir(filename,new_path_dir,ext=None):
 
 
 class DataHelper(DataHelperBase):
-    tokenizer: typing.Optional[PreTrainedTokenizer] = None
-    config: typing.Optional[PretrainedConfig] = None
-    model_args: typing.Optional[ModelArguments] = None
-    training_args: typing.Optional[TrainingArguments] = None
-    data_args: typing.Optional[DataArguments] = None
+    tokenizer: Optional[PreTrainedTokenizer] = None
+    config: Optional[PretrainedConfig] = None
+    model_args: Optional[ModelArguments] = None
+    training_args: Optional[Union[TrainingArgumentsHF,TrainingArguments]] = None
+    data_args: Optional[DataArguments] = None
 
     def __init__(self,
                  model_args: ModelArguments,
-                 training_args: typing.Optional[TrainingArguments] = None,
-                 data_args: typing.Optional[DataArguments] = None,
+                 training_args: Optional[Union[TrainingArgumentsHF,TrainingArguments]] = None,
+                 data_args: Optional[DataArguments] = None,
                  **kwargs):
 
         if data_args:
@@ -114,8 +110,8 @@ class DataHelper(DataHelperBase):
 
             if training_args is not None:
                 task_specific_params['learning_rate'] = training_args.learning_rate
-                task_specific_params['learning_rate_for_task'] = training_args.learning_rate_for_task \
-                    if training_args.learning_rate_for_task is not None else training_args.learning_rate
+                task_specific_params['learning_rate_for_task'] = getattr(training_args, "learning_rate_for_task",None) or training_args.learning_rate
+
 
 
         if hasattr(self.tokenizer,'tokenizer'):
@@ -211,8 +207,8 @@ class DataHelper(DataHelperBase):
 
             if training_args is not None:
                 task_specific_params['learning_rate'] = training_args.learning_rate
-                task_specific_params['learning_rate_for_task'] = training_args.learning_rate_for_task \
-                    if training_args.learning_rate_for_task is not None else training_args.learning_rate
+                task_specific_params[ 'learning_rate_for_task' ] = getattr(training_args, "learning_rate_for_task",
+                                                                           None) or training_args.learning_rate
 
         kwargs_args = {
             "bos_token_id": tokenizer.bos_token_id,
