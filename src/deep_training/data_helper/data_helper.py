@@ -6,6 +6,7 @@
 # from fastdatasets.torch_dataset import IterableDataset as torch_IterableDataset, Dataset as torch_Dataset
 # from torch.utils.data import DataLoader, IterableDataset
 import os
+import typing
 from typing import Optional, Union
 from transformers import PreTrainedTokenizer, PretrainedConfig
 from .training_args import ModelArguments, DataArguments, TrainingArguments,TrainingArgumentsHF
@@ -95,8 +96,7 @@ class DataHelper(DataHelperBase):
                     with_labels=True,
                     with_task_params=True,
                     return_dict=False,
-                    with_print_labels=True,
-                    with_print_config=True,
+                    with_print_labels=None,
                     **kwargs):
 
         model_args = self.model_args
@@ -143,8 +143,6 @@ class DataHelper(DataHelperBase):
                                 **kwargs_args
                                 )
         self.config = config
-        if with_print_config:
-            print(config)
 
         if with_labels and self.label2id is not None and hasattr(config, 'num_labels'):
             if with_print_labels:
@@ -164,7 +162,6 @@ class DataHelper(DataHelperBase):
                                   with_task_params=True,
                                   return_dict=False,
                                   with_print_labels=True,
-                                  with_print_config=True,
                                   tokenizer_kwargs=None,
                                   config_kwargs=None):
 
@@ -175,7 +172,7 @@ class DataHelper(DataHelperBase):
             config_kwargs = {}
 
         model_args: ModelArguments = self.model_args
-        training_args: TrainingArguments = self.training_args
+        training_args: typing.Optional[TrainingArguments,TrainingArgumentsHF] = self.training_args
         data_args: DataArguments = self.data_args
 
 
@@ -234,9 +231,6 @@ class DataHelper(DataHelperBase):
                                 **kwargs_args
                                 )
         self.config = config
-        if with_print_config:
-            print(config)
-
         if with_labels and self.label2id is not None and hasattr(config, 'num_labels'):
             if with_print_labels:
                 print('==' * 30, 'num_labels = ', config.num_labels)

@@ -23,10 +23,6 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
   - [poetry_training](https://github.com/ssbuild/poetry_training)
 
 
-## dev plan
- - 支持 datasets on the way
- - 支持 transformer Trainer on the way
- - 解耦 lightning on the way
 
 ## optimizer
 ```text
@@ -45,7 +41,8 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
   
 ## update
 - <strong>2023-09-21</strong>
-  - 0.2.3 支持qwen-7b 新版 和 qwen-14b ， 旧版不再支持，旧版可以安装 deep_training < 0.2.3
+  - 0.2.4 支持qwen-7b 新版 和 qwen-14b ， 旧版不再支持，旧版可以安装 deep_training <= 0.2.3
+  - support transformers trainer
 
 - <strong>2023-09-21</strong>
   - 0.2.3 support dpo 完整训练 [dpo_finetuning](https://github.com/ssbuild/dpo_finetuning)
