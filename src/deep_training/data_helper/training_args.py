@@ -19,7 +19,7 @@ __all__ = [
     'MlmDataArguments',
 ]
 
-
+@dataclass
 class TrainingArgumentsHF(TrainingArgumentsHF_):
     data_backend: typing.Optional[str] = field(
         default="record",

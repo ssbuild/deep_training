@@ -21,7 +21,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from datasets import Dataset
-from transformers import Trainer as TrainerHF, TrainingArguments, PreTrainedModel, DataCollator, PreTrainedTokenizerBase, \
+from transformers import Trainer, TrainingArguments, PreTrainedModel, DataCollator, PreTrainedTokenizerBase, \
     EvalPrediction, TrainerCallback
 from transformers.trainer_utils import ShardedDDPOption, FSDPOption, IntervalStrategy
 from ...data_helper.training_args import TrainingArguments, DataArguments, \
@@ -68,7 +68,7 @@ from ...data_helper.training_args import TrainingArguments, DataArguments, \
 #     )
 
 
-class Trainer(TrainerHF):
+class TrainerHF(Trainer):
     def __init__(self,
         model: Union[PreTrainedModel, nn.Module] = None,
         args: TrainingArgumentsHF = None,

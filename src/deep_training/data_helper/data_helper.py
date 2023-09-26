@@ -110,7 +110,7 @@ class DataHelper(DataHelperBase):
 
             if training_args is not None:
                 task_specific_params['learning_rate'] = training_args.learning_rate
-                task_specific_params['learning_rate_for_task'] = getattr(training_args, "learning_rate_for_task",None) or training_args.learning_rate
+                task_specific_params['learning_rate_for_task'] = training_args.learning_rate_for_task or training_args.learning_rate
 
 
 
@@ -207,8 +207,7 @@ class DataHelper(DataHelperBase):
 
             if training_args is not None:
                 task_specific_params['learning_rate'] = training_args.learning_rate
-                task_specific_params[ 'learning_rate_for_task' ] = getattr(training_args, "learning_rate_for_task",
-                                                                           None) or training_args.learning_rate
+                task_specific_params['learning_rate_for_task'] = training_args.learning_rate_for_task or training_args.learning_rate
 
         kwargs_args = {
             "bos_token_id": tokenizer.bos_token_id,
