@@ -3,9 +3,11 @@
 
 import sys
 from functools import partial
-from typing import Any, IO,Union,Optional
+from typing import Any, IO, Union, Optional, Dict
 import lightning as pl
 import torch
+from lightning.pytorch.utilities.types import STEP_OUTPUT
+from lightning_utilities.core.apply_func import apply_to_collection
 from torch import nn, Tensor
 from transformers import (
     PretrainedConfig,
@@ -13,9 +15,7 @@ from transformers import (
 
 from ..utils import configure_optimizers, get_value_from_args_assert, get_value_from_args
 from ..utils.adversarial import AdversarialMethods
-from ...data_helper import TrainingArguments, ModelArguments, PrefixModelArguments, DataArguments
-
-
+from ...data_helper import TrainingArguments, ModelArguments, PrefixModelArguments, DataArguments, TrainingArgumentsHF
 
 
 def verify_manual_optimization_support(trainer: "pl.Trainer", model: "pl.LightningModule") -> None:
@@ -151,6 +151,7 @@ class TransformerBase(MyLightningModule, metaclass=TransformerFakeMeta):
             args_new = tuple(v for v in args
                              if not isinstance(v, ModelArguments) and \
                              not isinstance(v, TrainingArguments) and \
+                             not isinstance(v, TrainingArgumentsHF) and \
                              not isinstance(v,PretrainedConfig) and \
                              not isinstance(v,PrefixModelArguments) and \
                              not isinstance(v,DataArguments)
@@ -158,6 +159,7 @@ class TransformerBase(MyLightningModule, metaclass=TransformerFakeMeta):
             kwargs_new = {k: v for k, v in kwargs.items()
                           if not isinstance(v, ModelArguments) and \
                           not isinstance(v, TrainingArguments) and \
+                          not isinstance(v, TrainingArgumentsHF) and \
                           not isinstance(v, PretrainedConfig) and \
                           not isinstance(v, PrefixModelArguments) and \
                           not isinstance(v, DataArguments)
@@ -218,86 +220,104 @@ class TransformerBase(MyLightningModule, metaclass=TransformerFakeMeta):
         # return [(self.model if self.base_model_prefix is not None else self , lr), ]
         return [(self, lr), ]
 
-
+    def gradient_checkpointing_enable(self):
+        self.model.gradient_checkpointing_enable()
 
 class TransformerLightningModule(MyLightningModule):
     def __init__(self, *args,**kwargs):
         config = get_value_from_args_assert('config',PretrainedConfig,*args,**kwargs)
         model_args = get_value_from_args_assert('model_args', ModelArguments, *args, **kwargs)
         training_args = get_value_from_args('training_args', TrainingArguments, *args, **kwargs)
+        if training_args is None:
+            training_args = get_value_from_args('training_args', TrainingArgumentsHF, *args, **kwargs)
+
         super(TransformerLightningModule, self).__init__()
         if not hasattr(config, 'task_specific_params') or config.task_specific_params is None:
             config.task_specific_params = {}
         task_specific_params = config.task_specific_params
         if training_args is not None:
+            self.gradient_clip_val = training_args.max_grad_norm
             task_specific_params['learning_rate'] = training_args.learning_rate
             task_specific_params['learning_rate_for_task'] = training_args.learning_rate_for_task \
                 if training_args.learning_rate_for_task is not None else training_args.learning_rate
 
-            if training_args.adv is not None and training_args.adv['mode'] != None:
-                assert training_args.adv['mode']  in AdversarialMethods.keys(), ValueError('no support adv mode {} , must be in {}'.format(training_args.adv['mode'],','.join(AdversarialMethods.keys())))
-                self.automatic_optimization = False
-        print(training_args)
-        print(model_args)
+            if isinstance(training_args,TrainingArguments):
+                if training_args.adv is not None and training_args.adv['mode'] != None:
+                    assert training_args.adv['mode']  in AdversarialMethods.keys(), ValueError('no support adv mode {} , must be in {}'.format(training_args.adv['mode'],','.join(AdversarialMethods.keys())))
+                    self.automatic_optimization = False
 
-        try:
-            self.save_hyperparameters(ignore=['config','torch_dtype','quantization_config'])
-        except:
-            pass
         self.config = config
         self.model_args = model_args
         self.training_args = training_args
+        try:
+            if training_args is None or isinstance(training_args, TrainingArguments):
+                print(config)
+                print(training_args)
+            print(model_args)
+
+            self.save_hyperparameters(ignore=['config','torch_dtype','quantization_config'])
+        except:
+            pass
+
         self.transformer_base : Optional[TransformerBase] = None
         if hasattr(self,'__BACKBONE_CLASS__') and len(self.__BACKBONE_CLASS__) > 0:
             self.set_model(self.__BACKBONE_CLASS__[0](*args, **kwargs))
 
-
         self.training_step_fn = self.training_step
         self.embeddings_forward_fn = None
 
+        self.hook_adv()
+        self.hook_hierarchical_position()
 
-        if training_args is not None:
-            self.gradient_clip_val = training_args.max_grad_norm
-            #对抗训练
-            if training_args.adv is not None and training_args.adv['mode'] is not None:
-                self.embeddings_forward_fn = self.get_embeddings_module().embeddings.forward
 
-                self.training_step = self.adv_training_step
-                if training_args.adv['mode'].find('local') != -1:
-                    self.adversarial = AdversarialMethods[training_args.adv['mode']](model=self.model)
-                else:
-                    self.adversarial = AdversarialMethods[training_args.adv['mode']](model=self.model,
-                                                                                     emb_name=training_args.adv.get('emb_name', 'embedding'))
+    def hook_adv(self):
+        training_args = self.training_args
+        if training_args is None or not isinstance(training_args, TrainingArguments):
+            return
+            # 对抗训练
+        if training_args.adv is not None and training_args.adv['mode'] is not None:
+            self.embeddings_forward_fn = self.get_embeddings_module().embeddings.forward
 
-                k = 'lightning.pytorch.trainer.configuration_validator'
-                if k in sys.modules:
-                    setattr( sys.modules[k],'__verify_manual_optimization_support' , verify_manual_optimization_support)
+            self.training_step = self.adv_training_step
+            if training_args.adv['mode'].find('local') != -1:
+                self.adversarial = AdversarialMethods[training_args.adv['mode']](model=self.model)
             else:
-                self.adversarial = None
+                self.adversarial = AdversarialMethods[training_args.adv['mode']](model=self.model,
+                                                                                 emb_name=training_args.adv.get(
+                                                                                     'emb_name', 'embedding'))
 
+            k = 'lightning.pytorch.trainer.configuration_validator'
+            if k in sys.modules:
+                setattr(sys.modules[k], '__verify_manual_optimization_support', verify_manual_optimization_support)
+        else:
+            self.adversarial = None
 
+    def hook_hierarchical_position(self):
+        training_args = self.training_args
+        if training_args is None or not isinstance(training_args,TrainingArguments):
+            return
 
-            if training_args.hierarchical_position is not None and (training_args.hierarchical_position > 0 and training_args.hierarchical_position < 1):
-                #绝对位置编码 分层位置编码
-                def forward(cls,input: Tensor) -> Tensor:
-                    # return F.embedding(
-                    #     input, self.weight, self.padding_idx, self.max_norm,
-                    #     self.norm_type, self.scale_grad_by_freq, self.sparse)
-                    position_ids = input
-                    alpha = training_args.hierarchical_position
-                    embeddings = cls.weight - alpha * cls.weight[:1]
-                    embeddings = embeddings / (1 - alpha)
-                    x_idx = position_ids // cls.num_embeddings
-                    y_idx = position_ids % cls.num_embeddings
+        if training_args.hierarchical_position is not None and (
+                training_args.hierarchical_position > 0 and training_args.hierarchical_position < 1):
+            # 绝对位置编码 分层位置编码
+            def forward(cls, input: Tensor) -> Tensor:
+                # return F.embedding(
+                #     input, self.weight, self.padding_idx, self.max_norm,
+                #     self.norm_type, self.scale_grad_by_freq, self.sparse)
+                position_ids = input
+                alpha = training_args.hierarchical_position
+                embeddings = cls.weight - alpha * cls.weight[:1]
+                embeddings = embeddings / (1 - alpha)
+                x_idx = position_ids // cls.num_embeddings
+                y_idx = position_ids % cls.num_embeddings
 
-                    embeddings_x = torch.index_select(embeddings,dim=0,index=x_idx.view(-1))
-                    embeddings_y = torch.index_select(embeddings,dim=0,index=y_idx.view(-1))
-                    embeddings = alpha * embeddings_x + (1 - alpha) * embeddings_y
-                    return embeddings
+                embeddings_x = torch.index_select(embeddings, dim=0, index=x_idx.view(-1))
+                embeddings_y = torch.index_select(embeddings, dim=0, index=y_idx.view(-1))
+                embeddings = alpha * embeddings_x + (1 - alpha) * embeddings_y
+                return embeddings
 
-                position_embeddings = self.get_embeddings_module().embeddings.position_embeddings
-                position_embeddings.forward = partial(forward,position_embeddings)
-
+            position_embeddings = self.get_embeddings_module().embeddings.position_embeddings
+            position_embeddings.forward = partial(forward, position_embeddings)
 
     def get_embeddings_module(self):
         base_model_prefix = self.backbone.base_model_prefix
@@ -340,7 +360,9 @@ class TransformerLightningModule(MyLightningModule):
             'log_dict'
         ]
         for k in copy_attr:
-            setattr(self.transformer_base, k, getattr(self, k))
+            a = getattr(self, k,None)
+            if a:
+                setattr(self.transformer_base, k,a)
 
         event_ = [
             'configure_optimizers',
@@ -407,7 +429,7 @@ class TransformerLightningModule(MyLightningModule):
                                     self.get_model_lr())
 
 
-    def manual_backward(self,loss: Tensor, *args: Any, **kwargs: Any):
+    def manual_backward(self,loss: Union[Tensor,Dict], *args: Any, **kwargs: Any):
         if isinstance(loss,dict):
             loss = loss['loss']
         return super(TransformerLightningModule, self).manual_backward(loss)
@@ -543,92 +565,42 @@ class TransformerLightningModule(MyLightningModule):
             self.model.zero_grad()
         return loss
 
+    def on_train_batch_end(self, outputs: STEP_OUTPUT, batch: Any, batch_idx: int) -> None:
+        if isinstance(outputs, dict):
+            self.log_dict(outputs, prog_bar=True)
+        else:
+            self.log('loss', outputs, prog_bar=True)
+
     def training_step(self, batch):
-        if isinstance(batch, dict):
-            outputs = self.compute_loss(**batch)
-        else:
-            outputs = self.compute_loss(**dict(batch))
-        loss = outputs[0]
-        if isinstance(loss,dict):
-            self.log_dict(loss,prog_bar=True)
-        else:
-            self.log('loss',loss,prog_bar=True)
-        return loss
+        if not isinstance(batch, dict):
+            batch = dict(batch)
+        outputs = self.compute_loss(**batch)
+        if isinstance(outputs,tuple):
+            return outputs[0]
+        return outputs
 
     def validation_step(self, batch, batch_idx, **kwargs):
-        if isinstance(batch, dict):
-            outputs = self.compute_loss(**batch)
-        else:
-            outputs = self.compute_loss(**dict(batch))
-
-        loss = outputs[0]
-        o = {}
-        if loss is not None:
-            if isinstance(loss, dict):
-                o = loss
-                if 'loss' in o:
-                    o['val_loss'] = o.pop('loss')
-            else:
-                o['val_loss'] = loss.cpu().detach().numpy()
-
-        out = outputs[1:]
-        if isinstance(out,(tuple,list)):
-            o['outputs'] = []
-            obj = o['outputs']
-            for t in out:
-                if t is None:
-                    obj.append(t)
-                elif isinstance(t,torch.Tensor):
-                    obj.append(t.cpu().detach().numpy())
-                elif isinstance(t, list) or isinstance(t, tuple):
-                    tmp_list =[_ for _ in t]
-                    for idx in range(len(tmp_list)):
-                        node = tmp_list[idx]
-                        if isinstance(node, torch.Tensor):
-                            tmp_list[idx] = node.cpu().detach().numpy()
-                        elif isinstance(node, list) or isinstance(node, tuple):
-                            tmp_list[idx] = [_.cpu().detach().numpy() for _ in node]
-                        else:
-                            raise ValueError('validation_step: outputs not support', type(t))
-                    obj.append(tmp_list)
-                elif isinstance(t, dict):
-                    obj.append({k:v.cpu().detach().numpy() for k,v in t.items()})
-                else:
-                    raise ValueError('validation_step: outputs not support', type(t))
-        else:
-            o['outputs'] = out.cpu().detach().numpy()
-        return o
+        if not isinstance(batch, dict):
+            batch = dict(batch)
+        outputs = self.compute_loss(**batch)
+        outputs = apply_to_collection(outputs,dtype=torch.Tensor, function=lambda x: x.detach().numpy())
+        if isinstance(outputs, tuple):
+            outputs = {
+                "loss": outputs[0],
+                "outputs": outputs[1:]
+            }
+        return outputs
 
     def test_step(self, batch, batch_idx):
-        if isinstance(batch, dict):
-            outputs = self.compute_loss(**batch)
-        else:
-            outputs = self.compute_loss(**dict(batch))
-        o = {}
-        out = outputs
-        if isinstance(out, (tuple, list)):
-            o['outputs'] = []
-            obj = o['outputs']
-            for t in out:
-                if t is None:
-                    obj.append(t)
-                elif isinstance(t, torch.Tensor):
-                    obj.append(t.cpu().detach().numpy())
-                elif isinstance(t, list) or isinstance(t, tuple):
-                    tmp_list =[_ for _ in t]
-                    for idx in range(len(tmp_list)):
-                        node = tmp_list[idx]
-                        if isinstance(node,torch.Tensor):
-                            tmp_list[idx] = node.cpu().detach().numpy()
-                        elif isinstance(node, list) or isinstance(node, tuple):
-                            tmp_list[idx] = [_.cpu().detach().numpy() for _ in node]
-                        else:
-                            raise ValueError('test_step: outputs not support', type(t))
-                    obj.append(tmp_list)
-                elif isinstance(t, dict):
-                    obj.append({k: v.cpu().detach().numpy() for k, v in t.items()})
-                else:
-                    raise ValueError('test_step: outputs not support',type(t))
-        else:
-            o['outputs'] = out.cpu().detach().numpy()
-        return o
+        if not isinstance(batch, dict):
+            batch = dict(batch)
+        outputs = self.compute_loss(**batch)
+        outputs = apply_to_collection(outputs,dtype=torch.Tensor, function=lambda x: x.detach().numpy())
+        if isinstance(outputs,tuple):
+            outputs = {
+                "outputs": outputs
+            }
+        return outputs
+
+    def gradient_checkpointing_enable(self):
+        self.model.gradient_checkpointing_enable()

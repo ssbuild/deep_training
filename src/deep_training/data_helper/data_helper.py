@@ -5,14 +5,11 @@
 # from fastdatasets.common.random_dataset import RandomDatasetBase
 # from fastdatasets.torch_dataset import IterableDataset as torch_IterableDataset, Dataset as torch_Dataset
 # from torch.utils.data import DataLoader, IterableDataset
-
-import json
-import logging
 import os
 import typing
-import torch
+from typing import Optional, Union
 from transformers import PreTrainedTokenizer, PretrainedConfig
-from .training_args import ModelArguments, DataArguments, TrainingArguments
+from .training_args import ModelArguments, DataArguments, TrainingArguments,TrainingArgumentsHF
 from ..utils.func import is_chinese_char
 from numpy_io.pytorch_loader.data_helper import DataHelperBase,load_tokenizer, load_configure
 from numpy_io.core.writer import DataWriteHelper
@@ -39,16 +36,16 @@ def get_filename_replace_dir(filename,new_path_dir,ext=None):
 
 
 class DataHelper(DataHelperBase):
-    tokenizer: typing.Optional[PreTrainedTokenizer] = None
-    config: typing.Optional[PretrainedConfig] = None
-    model_args: typing.Optional[ModelArguments] = None
-    training_args: typing.Optional[TrainingArguments] = None
-    data_args: typing.Optional[DataArguments] = None
+    tokenizer: Optional[PreTrainedTokenizer] = None
+    config: Optional[PretrainedConfig] = None
+    model_args: Optional[ModelArguments] = None
+    training_args: Optional[Union[TrainingArgumentsHF,TrainingArguments]] = None
+    data_args: Optional[DataArguments] = None
 
     def __init__(self,
                  model_args: ModelArguments,
-                 training_args: typing.Optional[TrainingArguments] = None,
-                 data_args: typing.Optional[DataArguments] = None,
+                 training_args: Optional[Union[TrainingArgumentsHF,TrainingArguments]] = None,
+                 data_args: Optional[DataArguments] = None,
                  **kwargs):
 
         if data_args:
@@ -99,8 +96,7 @@ class DataHelper(DataHelperBase):
                     with_labels=True,
                     with_task_params=True,
                     return_dict=False,
-                    with_print_labels=True,
-                    with_print_config=True,
+                    with_print_labels=None,
                     **kwargs):
 
         model_args = self.model_args
@@ -114,8 +110,8 @@ class DataHelper(DataHelperBase):
 
             if training_args is not None:
                 task_specific_params['learning_rate'] = training_args.learning_rate
-                task_specific_params['learning_rate_for_task'] = training_args.learning_rate_for_task \
-                    if training_args.learning_rate_for_task is not None else training_args.learning_rate
+                task_specific_params['learning_rate_for_task'] = training_args.learning_rate_for_task or training_args.learning_rate
+
 
 
         if hasattr(self.tokenizer,'tokenizer'):
@@ -147,8 +143,6 @@ class DataHelper(DataHelperBase):
                                 **kwargs_args
                                 )
         self.config = config
-        if with_print_config:
-            print(config)
 
         if with_labels and self.label2id is not None and hasattr(config, 'num_labels'):
             if with_print_labels:
@@ -168,7 +162,6 @@ class DataHelper(DataHelperBase):
                                   with_task_params=True,
                                   return_dict=False,
                                   with_print_labels=True,
-                                  with_print_config=True,
                                   tokenizer_kwargs=None,
                                   config_kwargs=None):
 
@@ -179,7 +172,7 @@ class DataHelper(DataHelperBase):
             config_kwargs = {}
 
         model_args: ModelArguments = self.model_args
-        training_args: TrainingArguments = self.training_args
+        training_args: typing.Optional[TrainingArguments,TrainingArgumentsHF] = self.training_args
         data_args: DataArguments = self.data_args
 
 
@@ -211,8 +204,7 @@ class DataHelper(DataHelperBase):
 
             if training_args is not None:
                 task_specific_params['learning_rate'] = training_args.learning_rate
-                task_specific_params['learning_rate_for_task'] = training_args.learning_rate_for_task \
-                    if training_args.learning_rate_for_task is not None else training_args.learning_rate
+                task_specific_params['learning_rate_for_task'] = training_args.learning_rate_for_task or training_args.learning_rate
 
         kwargs_args = {
             "bos_token_id": tokenizer.bos_token_id,
@@ -239,9 +231,6 @@ class DataHelper(DataHelperBase):
                                 **kwargs_args
                                 )
         self.config = config
-        if with_print_config:
-            print(config)
-
         if with_labels and self.label2id is not None and hasattr(config, 'num_labels'):
             if with_print_labels:
                 print('==' * 30, 'num_labels = ', config.num_labels)
