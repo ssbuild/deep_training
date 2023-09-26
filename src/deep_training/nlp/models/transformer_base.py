@@ -245,9 +245,11 @@ class TransformerLightningModule(MyLightningModule):
                 if training_args.adv is not None and training_args.adv['mode'] != None:
                     assert training_args.adv['mode']  in AdversarialMethods.keys(), ValueError('no support adv mode {} , must be in {}'.format(training_args.adv['mode'],','.join(AdversarialMethods.keys())))
                     self.automatic_optimization = False
-        print(training_args)
-        print(model_args)
 
+        if training_args is None or isinstance(training_args, TrainingArguments):
+            print(self.config)
+            print(training_args)
+        print(model_args)
         try:
             self.save_hyperparameters(ignore=['config','torch_dtype','quantization_config'])
         except:
