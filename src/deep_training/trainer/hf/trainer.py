@@ -114,13 +114,18 @@ class TrainerHF(Trainer):
             else:
                 loss = self.label_smoother(outputs, labels)
         else:
-            if isinstance(outputs, dict) and "loss" not in outputs:
+            if isinstance(outputs,tuple):
+                loss = outputs[0]
+                if isinstance(loss,dict):
+                    loss = loss["loss"]
+            elif isinstance(outputs, dict) and "loss" not in outputs:
                 raise ValueError(
                     "The model did not return a loss from the inputs, only the following keys: "
                     f"{','.join(outputs.keys())}. For reference, the inputs it received are {','.join(inputs.keys())}."
                 )
-            # We don't use .loss here since the model may return tuples instead of ModelOutput.
-            loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+            else:
+                # We don't use .loss here since the model may return tuples instead of ModelOutput.
+                loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
 
         return (loss, outputs) if return_outputs else loss
 
