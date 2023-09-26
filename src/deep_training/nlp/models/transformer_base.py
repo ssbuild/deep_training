@@ -220,7 +220,8 @@ class TransformerBase(MyLightningModule, metaclass=TransformerFakeMeta):
         # return [(self.model if self.base_model_prefix is not None else self , lr), ]
         return [(self, lr), ]
 
-
+    def gradient_checkpointing_enable(self):
+        self.model.gradient_checkpointing_enable()
 
 class TransformerLightningModule(MyLightningModule):
     def __init__(self, *args,**kwargs):
@@ -258,13 +259,8 @@ class TransformerLightningModule(MyLightningModule):
         if hasattr(self,'__BACKBONE_CLASS__') and len(self.__BACKBONE_CLASS__) > 0:
             self.set_model(self.__BACKBONE_CLASS__[0](*args, **kwargs))
 
-
         self.training_step_fn = self.training_step
         self.embeddings_forward_fn = None
-
-
-
-
 
         self.hook_adv()
         self.hook_hierarchical_position()
@@ -601,3 +597,6 @@ class TransformerLightningModule(MyLightningModule):
                 "outputs": outputs
             }
         return outputs
+
+    def gradient_checkpointing_enable(self):
+        self.model.gradient_checkpointing_enable()

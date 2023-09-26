@@ -21,6 +21,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from datasets import Dataset
+from torch.utils.data import DataLoader
 from transformers import Trainer, TrainingArguments, PreTrainedModel, DataCollator, PreTrainedTokenizerBase, \
     EvalPrediction, TrainerCallback
 from transformers.trainer_utils import ShardedDDPOption, FSDPOption, IntervalStrategy
@@ -94,3 +95,19 @@ class TrainerHF(Trainer):
                          optimizers=optimizers,
                          preprocess_logits_for_metrics=preprocess_logits_for_metrics,
                          )
+
+    def get_train_dataloader(self) -> DataLoader:
+        if isinstance(self.train_dataset,DataLoader):
+            return self.train_dataset
+        return super().get_train_dataloader()
+
+    def get_eval_dataloader(self, eval_dataset: Optional[Dataset] = None) -> DataLoader:
+        eval_dataset = eval_dataset or self.eval_dataset
+        if isinstance(eval_dataset, DataLoader):
+            return eval_dataset
+        return super().get_eval_dataloader(eval_dataset)
+
+    def get_test_dataloader(self, test_dataset: Dataset) -> DataLoader:
+        if isinstance(test_dataset, DataLoader):
+            return test_dataset
+        return super().get_test_dataloader(test_dataset)
