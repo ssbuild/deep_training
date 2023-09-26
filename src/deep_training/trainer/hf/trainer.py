@@ -70,7 +70,7 @@ class TrainerHF(Trainer):
                          optimizers=optimizers,
                          preprocess_logits_for_metrics=preprocess_logits_for_metrics,
                          )
-        _is_peft_model = is_peft_available() and isinstance(model, (PeftModel,PetlModel,PromptModel))
+        # _is_peft_model = is_peft_available() and isinstance(model, (PeftModel,PetlModel,PromptModel))
 
     def get_train_dataloader(self) -> DataLoader:
         if isinstance(self.train_dataset,DataLoader):
