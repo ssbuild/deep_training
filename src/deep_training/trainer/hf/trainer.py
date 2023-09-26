@@ -1,20 +1,5 @@
 # coding=utf-8
 # Copyright 2020-present the HuggingFace Inc. team.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-"""
-The Trainer class, to easily train a 🤗 Transformers from scratch or finetune it on a new task.
-"""
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -43,7 +28,6 @@ from transformers.utils import is_peft_available, WEIGHTS_NAME, SAFE_WEIGHTS_NAM
 from packaging import version
 from ...data_helper.training_args import TrainingArguments, DataArguments, \
     ModelArguments, TrainingArgumentsHF
-
 from ...nlp.models.petl import PetlModel
 from ...nlp.models.petl.prompt import PromptModel
 
@@ -251,6 +235,39 @@ class TrainerHF(Trainer):
             parameters.extend(decay_parameters)
         return parameters
 
+    def get_parameter_names(self, model) -> List[str]:
+        """
+        Get all parameter names that weight decay will be applied to
+
+        Note that some models implement their own layernorm instead of calling nn.LayerNorm, weight decay could still
+        apply to those modules since this function only filter out instance of nn.LayerNorm
+        """
+        parameters = []
+        for m, lr in model.get_model_lr():
+            parameter = []
+            for n,p in m.named_parameters():
+                parameter.append((n,p))
+            parameters += parameter
+        return parameters
+
+    def get_optimizer_grouped_parameters(self,opt_model):
+        decay_parameters = self.get_decay_parameter_names(opt_model)
+        parameters = self.get_parameter_names(opt_model)
+        optimizer_grouped_parameters = [
+            {
+                "params": [
+                    p for n, p in parameters if (n in decay_parameters and p.requires_grad)
+                ],
+                "weight_decay": self.args.weight_decay,
+            },
+            {
+                "params": [
+                    p for n, p in parameters if (n not in decay_parameters and p.requires_grad)
+                ],
+                "weight_decay": 0.0,
+            },
+        ]
+        return optimizer_grouped_parameters
     def create_optimizer(self):
         """
         Setup the optimizer.
@@ -259,24 +276,8 @@ class TrainerHF(Trainer):
         Trainer's init through `optimizers`, or subclass and override this method in a subclass.
         """
         opt_model = self.model_wrapped if is_sagemaker_mp_enabled() else self.model
-
         if self.optimizer is None:
-            decay_parameters = self.get_decay_parameter_names(opt_model)
-            optimizer_grouped_parameters = [
-                {
-                    "params": [
-                        p for n, p in opt_model.named_parameters() if (n in decay_parameters and p.requires_grad)
-                    ],
-                    "weight_decay": self.args.weight_decay,
-                },
-                {
-                    "params": [
-                        p for n, p in opt_model.named_parameters() if (n not in decay_parameters and p.requires_grad)
-                    ],
-                    "weight_decay": 0.0,
-                },
-            ]
-
+            optimizer_grouped_parameters = self.get_optimizer_grouped_parameters(opt_model)
             optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
 
             if self.sharded_ddp == ShardedDDPOption.SIMPLE:

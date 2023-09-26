@@ -246,17 +246,19 @@ class TransformerLightningModule(MyLightningModule):
                     assert training_args.adv['mode']  in AdversarialMethods.keys(), ValueError('no support adv mode {} , must be in {}'.format(training_args.adv['mode'],','.join(AdversarialMethods.keys())))
                     self.automatic_optimization = False
 
-        if training_args is None or isinstance(training_args, TrainingArguments):
-            print(self.config)
-            print(training_args)
-        print(model_args)
-        try:
-            self.save_hyperparameters(ignore=['config','torch_dtype','quantization_config'])
-        except:
-            pass
         self.config = config
         self.model_args = model_args
         self.training_args = training_args
+        try:
+            if training_args is None or isinstance(training_args, TrainingArguments):
+                print(config)
+                print(training_args)
+            print(model_args)
+
+            self.save_hyperparameters(ignore=['config','torch_dtype','quantization_config'])
+        except:
+            pass
+
         self.transformer_base : Optional[TransformerBase] = None
         if hasattr(self,'__BACKBONE_CLASS__') and len(self.__BACKBONE_CLASS__) > 0:
             self.set_model(self.__BACKBONE_CLASS__[0](*args, **kwargs))
