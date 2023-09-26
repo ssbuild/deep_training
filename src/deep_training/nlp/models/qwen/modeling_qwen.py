@@ -721,6 +721,9 @@ class QWenModel(QWenPreTrainedModel):
 
     def __init__(self, config: QWenConfig,**kwargs):
         super().__init__(config)
+        self.use_cache_quantization = config.use_cache_quantization if hasattr(config,
+                                                                               'use_cache_quantization') else False
+
         self.vocab_size = config.vocab_size
         self.num_hidden_layers = config.num_hidden_layers
         self.embed_dim = config.hidden_size
@@ -1057,6 +1060,7 @@ class QWenLMHeadModel(QWenPreTrainedModel):
                     from kernels.cpp_kernels import cache_autogptq_cuda_256
                 except ImportError:
                     cache_autogptq_cuda_256 = None
+
         self.transformer = QWenModel(config,**kwargs)
         self.lm_head = init_method(nn.Linear,config.hidden_size, config.vocab_size, bias=False,**kwargs)                                                                                   
         if config.bf16:
