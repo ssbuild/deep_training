@@ -42,19 +42,20 @@ class AdaLoraModule(LoraModule):
 
     **Attributes**:
         - **model** ([`transformers.PreTrainedModel`]) -- The model to be adapted.
-        - **peft_config** ([`AdaLoraConfig`]): The configuration of the AdaLora model.
+        - **petl_config** ([`AdaLoraConfig`]): The configuration of the AdaLora model.
     """
 
     def __init__(self, model, config, adapter_name,
                  auto_prepare_kbit_training=True,
                  use_input_require_grads=True,
-                 use_gradient_checkpointing=True):
-        super().__init__(self,model, config, adapter_name,
+                 use_gradient_checkpointing=True
+                 ):
+        super().__init__(model, config, adapter_name,
                          auto_prepare_kbit_training=auto_prepare_kbit_training,
                          use_input_require_grads=use_input_require_grads,
                          use_gradient_checkpointing=use_gradient_checkpointing)
         traininable_mode_counter = 0
-        for config in self.peft_config.values():
+        for config in self.petl_config.values():
             if not config.inference_mode:
                 traininable_mode_counter += 1
 
@@ -64,11 +65,11 @@ class AdaLoraModule(LoraModule):
                 "When using multiple adapters, set inference_mode to True for all adapters except the one you want to train."
             )
 
-        if self.peft_config[adapter_name].inference_mode:
+        if self.petl_config[adapter_name].inference_mode:
             _freeze_adapter(self.model, adapter_name)
         else:
             self.trainable_adapter_name = adapter_name
-            self.rankallocator = RankAllocator(self.model, self.peft_config[adapter_name], self.trainable_adapter_name)
+            self.rankallocator = RankAllocator(self.model, self.petl_config[adapter_name], self.trainable_adapter_name)
 
     def _check_new_adapter_config(self, config: LoraConfig) -> None:
         """
@@ -80,7 +81,7 @@ class AdaLoraModule(LoraModule):
         super()._check_new_adapter_config(config)
 
         traininable_mode_counter = 0
-        for config_ in self.peft_config.values():
+        for config_ in self.petl_config.values():
             if not config_.inference_mode:
                 traininable_mode_counter += 1
 
@@ -98,10 +99,10 @@ class AdaLoraModule(LoraModule):
             target,
             target_name,
             parent,
-            **optionnal_kwargs,
+            **optional_kwargs,
     ):
-        loaded_in_8bit = optionnal_kwargs.get("loaded_in_8bit", False)
-        loaded_in_4bit = optionnal_kwargs.get("loaded_in_4bit", False)
+        loaded_in_8bit = optional_kwargs.get("loaded_in_8bit", False)
+        loaded_in_4bit = optional_kwargs.get("loaded_in_4bit", False)
         if (loaded_in_8bit or loaded_in_4bit) and not is_bnb_available():
             raise ImportError(
                 "To use Lora with 8-bit quantization, please install the `bitsandbytes` package. "
@@ -124,6 +125,9 @@ class AdaLoraModule(LoraModule):
         # If it is not a LoraLayer, create a new module, else update it with new adapters
         if not isinstance(target, AdaLoraLayer):
             new_module = self._create_new_module(lora_config, adapter_name, target, **kwargs)
+            if adapter_name != self.active_adapter:
+                # adding an additional adapter: it is not automatically trainable
+                new_module.requires_grad_(False)
             self._replace_module(parent, target_name, new_module, target)
         else:
             target.update_layer(
@@ -197,14 +201,14 @@ class AdaLoraModule(LoraModule):
         return new_module
 
     @staticmethod
-    def _prepare_adapter_config(peft_config, model_config):
-        if peft_config.target_modules is None:
+    def _prepare_adapter_config(petl_config, model_config):
+        if petl_config.target_modules is None:
             if model_config["model_type"] not in TRANSFORMERS_MODELS_TO_ADALORA_TARGET_MODULES_MAPPING:
-                raise ValueError("Please specify `target_modules` in `peft_config`")
-            peft_config.target_modules = TRANSFORMERS_MODELS_TO_ADALORA_TARGET_MODULES_MAPPING[
+                raise ValueError("Please specify `target_modules` in `petl_config`")
+            petl_config.target_modules = TRANSFORMERS_MODELS_TO_ADALORA_TARGET_MODULES_MAPPING[
                 model_config["model_type"]
             ]
-        return peft_config
+        return petl_config
 
     def __getattr__(self, name: str):
         """Forward missing attributes to the wrapped module."""
@@ -218,7 +222,7 @@ class AdaLoraModule(LoraModule):
 
         if getattr(outputs, "loss", None) is not None:
             # Calculate the orthogonal regularization
-            orth_reg_weight = self.peft_config[self.trainable_adapter_name].orth_reg_weight
+            orth_reg_weight = self.petl_config[self.trainable_adapter_name].orth_reg_weight
 
             if orth_reg_weight <= 0:
                 raise ValueError("orth_reg_weight should be greater than 0. ")
@@ -240,7 +244,7 @@ class AdaLoraModule(LoraModule):
         return outputs
 
     def resize_modules_by_rank_pattern(self, rank_pattern, adapter_name):
-        lora_config = self.peft_config[adapter_name]
+        lora_config = self.petl_config[adapter_name]
         for name, rank_idx in rank_pattern.items():
             if isinstance(rank_idx, list):
                 rank = sum(rank_idx)
@@ -287,7 +291,7 @@ class AdaLoraModule(LoraModule):
         return state_dict
 
     def update_and_allocate(self, global_step):
-        lora_config = self.peft_config[self.trainable_adapter_name]
+        lora_config = self.petl_config[self.trainable_adapter_name]
         # Update the importance score and allocate the budget
         if global_step < lora_config.total_step - lora_config.tfinal:
             _, rank_pattern = self.rankallocator.update_and_allocate(self.model, global_step)
