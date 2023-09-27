@@ -70,7 +70,7 @@ class TrainerHF(Trainer):
                          optimizers=optimizers,
                          preprocess_logits_for_metrics=preprocess_logits_for_metrics,
                          )
-        _is_peft_model = is_peft_available() and isinstance(model, (PeftModel,PetlModel,PromptModel))
+        # _is_peft_model = is_peft_available() and isinstance(model, (PeftModel,PetlModel,PromptModel))
 
     def get_train_dataloader(self) -> DataLoader:
         if isinstance(self.train_dataset,DataLoader):
@@ -139,14 +139,15 @@ class TrainerHF(Trainer):
         if not is_peft_available():
             supported_classes += (PeftModel,)
 
+        model = self.model
         # Save a trained model and configuration using `save_pretrained()`.
         # They can then be reloaded using `from_pretrained()`
-        if not isinstance(self.model, supported_classes):
+        if not isinstance(model.backbone, supported_classes):
             if state_dict is None:
-                state_dict = self.model.state_dict()
+                state_dict = model.state_dict()
 
-            if isinstance(unwrap_model(self.model), supported_classes):
-                unwrap_model(self.model).save_pretrained(
+            if isinstance(unwrap_model(model), supported_classes):
+                unwrap_model(model).save_pretrained(
                     output_dir, state_dict=state_dict, safe_serialization=self.args.save_safetensors
                 )
             else:
@@ -156,7 +157,7 @@ class TrainerHF(Trainer):
                 else:
                     torch.save(state_dict, os.path.join(output_dir, WEIGHTS_NAME))
         else:
-            self.model.save_pretrained(
+            model.backbone.save_pretrained(
                 output_dir, state_dict=state_dict, safe_serialization=self.args.save_safetensors
             )
 
