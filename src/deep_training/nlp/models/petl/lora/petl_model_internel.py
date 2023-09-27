@@ -74,6 +74,8 @@ class PetlModelAbstract(nn.Module, ABC):
                 # user is adding a dict of EffiConfigs
                 self.petl_config.update(petl_config)
 
+        self.active_adapter = adapter_name
+
         # transformers models have a .config attribute, whose presence is assumed later on
         if not hasattr(self, "config"):
             self.config = {"model_type": "custom"}
@@ -85,6 +87,13 @@ class PetlModelAbstract(nn.Module, ABC):
 
     def get_transformer_model(self):
         return self.model.model if isinstance(self.model, TransformerBase) else self.model
+
+    @property
+    def active_adapters(self) -> list[str]:
+        if isinstance(self.active_adapter, str):
+            return [self.active_adapter]
+        # is already a list of str
+        return self.active_adapter
 
     def forward(self, *args: Any, **kwargs: Any):
         return self.model.forward(*args, **kwargs)
@@ -194,10 +203,9 @@ class PetlModelAbstract(nn.Module, ABC):
         loaded_in_8bit = getattr(transformer_model, "is_loaded_in_8bit", False)
 
         if self.auto_prepare_kbit_training and (loaded_in_4bit or loaded_in_8bit):
-            prepare_model_for_kbit_training(transformer_model,
+            prepare_model_for_kbit_training(self.model,
                                             use_input_require_grads=self.use_input_require_grads,
                                             use_gradient_checkpointing=self.use_gradient_checkpointing)
-
 
         petl_config = self.petl_config[adapter_name]
         # Note: If possible, all checks should be performed *at the start of this method*.
@@ -221,12 +229,12 @@ class PetlModelAbstract(nn.Module, ABC):
             is_target_modules_in_base_model = True
             parent, target, target_name = _get_submodules(model, key)
 
-            optionnal_kwargs = {
+            optional_kwargs = {
                 "loaded_in_8bit": loaded_in_8bit,
                 "loaded_in_4bit": loaded_in_4bit,
                 "current_key": key,
             }
-            self._create_and_replace(petl_config, adapter_name, target, target_name, parent, **optionnal_kwargs)
+            self._create_and_replace(petl_config, adapter_name, target, target_name, parent, **optional_kwargs)
 
         if not is_target_modules_in_base_model:
             raise ValueError(

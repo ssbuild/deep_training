@@ -6,6 +6,7 @@ import re
 import warnings
 from dataclasses import asdict, replace
 from enum import Enum
+from itertools import chain
 from typing import Any
 import torch
 from torch import nn
@@ -16,6 +17,7 @@ from .configuration import COMMON_LAYERS_PATTERN, LoraConfig,AdaLoraConfig,PetlC
 from .petl_model_internel import PetlModelAbstract
 from ....layers.petl.lora.layers import is_bnb_available, LoraLayer, Linear, \
     is_bnb_4bit_available, Embedding, Conv2d, QuantLinear
+from ....layers.petl.petl_layer import PetlLayerAbstract
 from ....layers.petl.utils import _freeze_adapter, _get_submodules, ModulesToSaveWrapper, \
     prepare_model_for_kbit_training, TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING, get_quantization_config, \
     get_auto_gptq_quant_linear
@@ -52,26 +54,12 @@ class LoraModule(PetlModelAbstract):
     def __init__(self, model, config, adapter_name,
                  auto_prepare_kbit_training=True,
                  use_input_require_grads=True,
-                 use_gradient_checkpointing=True):
+                 use_gradient_checkpointing=True
+                 ):
         super().__init__(model, config, adapter_name,
                          auto_prepare_kbit_training=auto_prepare_kbit_training,
                          use_input_require_grads=use_input_require_grads,
                          use_gradient_checkpointing=use_gradient_checkpointing)
-
-    def _check_new_adapter_config(self, config: LoraConfig) -> None:
-        """
-        A helper method to check the config when a new adapter is being added.
-
-        Raise a ValueError if there is something wrong with the config or if it conflicts with existing adapters.
-
-        """
-        # TODO: there should be a check if any of the existing adapters actually has bias != "none", or else the check
-        # does not fully correspond to the error message.
-        if (len(self.petl_config) > 1) and (config.bias != "none"):
-            raise ValueError(
-                f"{self.__class__.__name__} supports only 1 adapter with bias. When using multiple adapters, "
-                "set bias to 'none' for all adapters."
-            )
 
     @staticmethod
     def _check_target_module_exists(lora_config, key):
@@ -109,18 +97,27 @@ class LoraModule(PetlModelAbstract):
             target,
             target_name,
             parent,
-            **optionnal_kwargs,
+            current_key,
+            **optional_kwargs,
     ):
+        if current_key is None:
+            raise ValueError("Current Key shouldn't be `None`")
+        # Regexp matching - Find key which matches current target_name in patterns provided
+        pattern_keys = list(chain(lora_config.rank_pattern.keys(), lora_config.alpha_pattern.keys()))
+        target_name_key = next(filter(lambda key: re.match(f".*\.{key}$", current_key), pattern_keys), target_name)
+
+        r = lora_config.rank_pattern.get(target_name_key, lora_config.r)
+        alpha = lora_config.alpha_pattern.get(target_name_key, lora_config.lora_alpha)
         bias = hasattr(target, "bias") and target.bias is not None
         kwargs = {
-            "r": lora_config.r,
-            "lora_alpha": lora_config.lora_alpha,
+            "r": r,
+            "lora_alpha": alpha,
             "lora_dropout": lora_config.lora_dropout,
             "fan_in_fan_out": lora_config.fan_in_fan_out,
             "init_lora_weights": lora_config.init_lora_weights,
         }
-        kwargs["loaded_in_8bit"] = optionnal_kwargs.pop("loaded_in_8bit", False)
-        kwargs["loaded_in_4bit"] = optionnal_kwargs.pop("loaded_in_4bit", False)
+        kwargs["loaded_in_8bit"] = optional_kwargs.pop("loaded_in_8bit", False)
+        kwargs["loaded_in_4bit"] = optional_kwargs.pop("loaded_in_4bit", False)
         kwargs["bias"] = bias
 
         quantization_config = get_quantization_config(self.model, method="gptq")
@@ -131,16 +128,16 @@ class LoraModule(PetlModelAbstract):
         if isinstance(target, LoraLayer) and isinstance(target, torch.nn.Conv2d):
             target.update_layer_conv2d(
                 adapter_name,
-                lora_config.r,
-                lora_config.lora_alpha,
+                r,
+                alpha,
                 lora_config.lora_dropout,
                 lora_config.init_lora_weights,
             )
         elif isinstance(target, LoraLayer) and isinstance(target, torch.nn.Embedding):
             target.update_layer_embedding(
                 adapter_name,
-                lora_config.r,
-                lora_config.lora_alpha,
+                r,
+                alpha,
                 lora_config.lora_dropout,
                 lora_config.init_lora_weights,
             )
@@ -148,22 +145,26 @@ class LoraModule(PetlModelAbstract):
         elif isinstance(target, LoraLayer):
             target.update_layer(
                 adapter_name,
-                lora_config.r,
-                lora_config.lora_alpha,
+                r,
+                alpha,
                 lora_config.lora_dropout,
                 lora_config.init_lora_weights,
             )
         else:
             new_module = self._create_new_module(lora_config, adapter_name, target, **kwargs)
+            if adapter_name != self.active_adapter:
+                # adding an additional adapter: it is not automatically trainable
+                new_module.requires_grad_(False)
             self._replace_module(parent, target_name, new_module, target)
 
     @staticmethod
     def _replace_module(parent, child_name, new_module, child):
         setattr(parent, child_name, new_module)
+        # It's not necessary to set requires_grad here, as that is handled by
+        # _mark_only_adapters_as_trainable
         new_module.weight = child.weight
         if hasattr(child, "bias"):
-            if child.bias is not None:
-                new_module.bias = child.bias
+            new_module.bias = child.bias
 
         if getattr(child, "state", None) is not None:
             new_module.state = child.state
@@ -177,24 +178,25 @@ class LoraModule(PetlModelAbstract):
                 module.to(child.weight.device)
 
     def _mark_only_adapters_as_trainable(self) -> None:
-        active_adapter = self._get_active_adapter()
-        bias = self.petl_config[active_adapter].bias
-
         for n, p in self.model.named_parameters():
             if "lora_" not in n:
                 p.requires_grad = False
-        if bias == "none":
-            return
-        elif bias == "all":
-            for n, p in self.model.named_parameters():
-                if "bias" in n:
-                    p.requires_grad = True
-        elif bias == "lora_only":
-            for m in self.model.modules():
-                if isinstance(m, LoraLayer) and hasattr(m, "bias") and m.bias is not None:
-                    m.bias.requires_grad = True
-        else:
-            raise NotImplementedError
+
+        for active_adapter in self.active_adapters:
+            bias = self.petl_config[active_adapter].bias
+            if bias == "none":
+                continue
+
+            if bias == "all":
+                for n, p in self.model.named_parameters():
+                    if "bias" in n:
+                        p.requires_grad = True
+            elif bias == "lora_only":
+                for m in self.model.modules():
+                    if isinstance(m, LoraLayer) and hasattr(m, "bias") and m.bias is not None:
+                        m.bias.requires_grad = True
+            else:
+                raise NotImplementedError(f"Requested bias: {bias}, is not implemented.")
 
     @staticmethod
     def _create_new_module(lora_config, adapter_name, target, **kwargs):
@@ -264,8 +266,8 @@ class LoraModule(PetlModelAbstract):
                     kwargs["fan_in_fan_out"] = lora_config.fan_in_fan_out = True
             else:
                 raise ValueError(
-                    f"Target module {target} is not supported. "
-                    f"Currently, only `torch.nn.Linear` and `Conv1D` are supported."
+                    f"Target module {target} is not supported. Currently, only the following modules are supported: "
+                    "`torch.nn.Linear`, `torch.nn.Embedding`, `torch.nn.Conv2d`, `transformers.pytorch_utils.Conv1D`."
                 )
             new_module = Linear(adapter_name, in_features, out_features, bias=bias, **kwargs)
 
@@ -280,7 +282,7 @@ class LoraModule(PetlModelAbstract):
                 return getattr(self.model, name)
             return getattr(self.model.model, name)
 
-    def get_effi_config_as_dict(self, inference: bool = False):
+    def get_petl_config_as_dict(self, inference: bool = False):
         config_dict = {}
         for key, value in self.petl_config.items():
             config = {k: v.value if isinstance(v, Enum) else v for k, v in asdict(value).items()}
@@ -291,35 +293,21 @@ class LoraModule(PetlModelAbstract):
 
     def _set_adapter_layers(self, enabled=True):
         for module in self.model.modules():
-            if isinstance(module, LoraLayer):
-                module.disable_adapters = False if enabled else True
-            elif isinstance(module, ModulesToSaveWrapper):
-                module.disable_adapters = False if enabled else True
+            if isinstance(module, (PetlLayerAbstract, ModulesToSaveWrapper)):
+                module.enable_adapters(enabled)
 
     def enable_adapter_layers(self):
         self._set_adapter_layers(enabled=True)
 
-    def _get_active_adapter(self) -> str:
-        active_adapter = None
-        for module in self.model.modules():
-            if isinstance(module, LoraLayer):
-                active_adapter = module.active_adapter
-
-        if active_adapter is None:
-            raise ValueError(
-                "Something went wrong, no active adapter could be found, please report the issue on GitHub"
-            )
-        return active_adapter
-
     def disable_adapter_layers(self):
-        active_adapter = self._get_active_adapter()
-        val = self.petl_config[active_adapter].bias
-        if val != "none":
-            msg = (
-                f"Careful, disabling adapter layers with bias configured to be '{val}' does not produce the same "
-                "output as the the base model would without adaption."
-            )
-            warnings.warn(msg)
+        for active_adapter in self.active_adapters:
+            val = self.petl_config[active_adapter].bias
+            if val != "none":
+                msg = (
+                    f"Careful, disabling adapter layers with bias configured to be '{val}' does not produce the same "
+                    "output as the the base model would without adaption."
+                )
+                warnings.warn(msg)
         self._set_adapter_layers(enabled=False)
 
     def set_adapter(self, adapter_name):
@@ -328,7 +316,7 @@ class LoraModule(PetlModelAbstract):
                 if module.merged:
                     warnings.warn("Adapter cannot be set when the model is merged. Unmerging the model first.")
                     module.unmerge()
-                module.active_adapter = adapter_name
+                module.set_adapter(adapter_name)
 
     @staticmethod
     def _prepare_adapter_config(petl_config, model_config):
@@ -340,8 +328,6 @@ class LoraModule(PetlModelAbstract):
 
     def _unload_and_optionally_merge(self, merge=True, progressbar: bool = False):
         if merge:
-            if getattr(self.model, "is_loaded_in_8bit", False) or getattr(self.model, "is_loaded_in_4bit", False):
-                raise ValueError("Cannot merge LORA layers when the model is loaded in 8-bit mode")
             if getattr(self.model, "quantization_method", None) == "gptq":
                 raise ValueError("Cannot merge LORA layers when the model is gptq quantized")
 
@@ -363,6 +349,29 @@ class LoraModule(PetlModelAbstract):
                         stride=target.stride,
                         padding=target.padding,
                         dilation=target.dilation,
+                    )
+                elif is_bnb_available() and isinstance(target, bnb.nn.Linear8bitLt):
+                    bias = target.bias is not None
+                    new_module = bnb.nn.Linear8bitLt(
+                        target.in_features,
+                        target.out_features,
+                        bias=bias,
+                        has_fp16_weights=target.state.has_fp16_weights,
+                        memory_efficient_backward=target.state.memory_efficient_backward,
+                        threshold=target.state.threshold,
+                        index=target.index,
+                        device=target.weight.device,
+                    )
+                elif is_bnb_4bit_available() and isinstance(target, bnb.nn.Linear4bit):
+                    bias = target.bias is not None
+                    new_module = bnb.nn.Linear4bit(
+                        target.in_features,
+                        target.out_features,
+                        bias=bias,
+                        compute_dtype=target.compute_dtype,
+                        compress_statistics=target.weight.compress_statistics,
+                        quant_type=target.weight.quant_type,
+                        device=target.weight.device,
                     )
                 else:
                     bias = target.bias is not None
@@ -545,7 +554,7 @@ class LoraModule(PetlModelAbstract):
             Vh = Vh.reshape(target_lora_A.data.shape)
         return Vh, U
 
-    def delete_adapter(self, adapter_name):
+    def delete_adapter(self, adapter_name: str):
         """
         Deletes an existing adapter.
 
@@ -555,6 +564,7 @@ class LoraModule(PetlModelAbstract):
         if adapter_name not in list(self.petl_config.keys()):
             raise ValueError(f"Adapter {adapter_name} does not exist")
         del self.petl_config[adapter_name]
+
         key_list = [key for key, _ in self.model.named_modules() if "lora" not in key]
         for key in key_list:
             _, target, _ = _get_submodules(self.model, key)
@@ -571,12 +581,14 @@ class LoraModule(PetlModelAbstract):
                 ]:
                     if adapter_name in getattr(target, attr):
                         getattr(target, attr).pop(adapter_name)
-                if target.active_adapter == adapter_name:
-                    resetting_active_adapter = list(self.petl_config.keys())[0]
+                if adapter_name in target.active_adapters:
+                    resetting_active_adapter = (
+                        list(self.petl_config.keys())[0] if len(self.petl_config) > 0 else "default"
+                    )
                     warnings.warn(
                         f"Adapter {adapter_name} was active which is now deleted. Setting active adapter to {resetting_active_adapter}. "
                     )
-                    target.active_adapter = resetting_active_adapter
+                    target.set_adapter(resetting_active_adapter)
 
     def merge_and_unload(self, progressbar: bool = False):
         r"""
@@ -586,6 +598,16 @@ class LoraModule(PetlModelAbstract):
         Args:
             progressbar (bool): whether to show a progressbar indicating the unload and merge process
 
+        Example:
+
+        ```py
+        >>> from transformers import AutoModelForCausalLM
+        >>> from peft import PeftModel
+
+        >>> base_model = AutoModelForCausalLM.from_pretrained("tiiuae/falcon-40b")
+        >>> peft_model_id = "smangrul/falcon-40B-int4-peft-lora-sfttrainer-sample"
+        >>> model = PetlModel.from_pretrained(base_model, peft_model_id)
+        >>> merged_model = model.merge_and_unload()
         ```
         """
         return self._unload_and_optionally_merge(progressbar=progressbar)
