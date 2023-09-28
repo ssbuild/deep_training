@@ -117,7 +117,7 @@ class PetlConfig(PetlConfigMixin):
     """
     base_model_name_or_path: str = field(default=None, metadata={"help": "The name of the base model to use."})
     inference_mode: bool = field(default=False, metadata={"help": "Whether to use inference mode"})
-    lora_type: str = field(default='lora', metadata={"help": "one of lora,adalora"})
+    lora_type: str = field(default='lora', metadata={"help": "one of lora,adalora,ia3"})
     with_lora: bool = field(default=False, metadata={"help": "whether use lora"})
 
 @dataclass
@@ -326,7 +326,7 @@ class PetlArguments:
             return self.lora
         elif self.adalora is not None and self.adalora.with_lora:
             return self.adalora
-        elif self.ia3 is not None and self.adalora.with_lora:
+        elif self.ia3 is not None and self.ia3.with_lora:
             return self.ia3
         return None
 
