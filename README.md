@@ -1,7 +1,5 @@
-
 ## transformer is all you need.
-- Upstream and downstream training framework based on lightning and transformers
-- pure code
+- deep training framework based on lightning and transformers
 
 ## install and download
 
@@ -16,33 +14,12 @@ pip install -U git+https://github.com/ssbuild/deep_training.git
 ```text
 pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --force-reinstall
 ```
- 
 
-## examples
-  - [pytorch-task-example](https://github.com/ssbuild/pytorch-task-example)
-  - [poetry_training](https://github.com/ssbuild/poetry_training)
-
-
-
-## optimizer
-```text
-   lamb,adma,adamw_hf,adam,adamw,adamw_torch,adamw_torch_fused,adamw_torch_xla,adamw_apex_fused,
-   adafactor,adamw_anyprecision,sgd,adagrad,adamw_bnb_8bit,adamw_8bit,lion,lion_8bit,lion_32bit,
-   paged_adamw_32bit,paged_adamw_8bit,paged_lion_32bit,paged_lion_8bit,
-   lamb_fused_dp adagrad_cpu_dp adam_cpu_dp adam_fused_dp
-```
-
-## scheduler
-```text
-  linear,WarmupCosine,CAWR,CAL,Step,ReduceLROnPlateau, cosine,cosine_with_restarts,polynomial,
-  constant,constant_with_warmup,inverse_sqrt,reduce_lr_on_plateau
-```
- 
   
 ## update
 - <strong>2023-09-26</strong>
   - 0.2.4 support transformers trainer and qwen-7b 新版 和 qwen-14b ， 旧版不再支持，旧版可以安装 deep_training <= 0.2.3 
-  - 0.2.4.post2 support ia3 finetuning
+  - 0.2.4.post3 support ia3 finetuning
 
 - <strong>2023-09-21</strong>
   - 0.2.3 support dpo 完整训练 [dpo_finetuning](https://github.com/ssbuild/dpo_finetuning)
@@ -270,14 +247,55 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
   - <strong>circle loss </strong> 例子 tnews circle loss
   - <strong>siamese net </strong> 例子 afqmc siamese net similar
 
+
+
+## optimizer
+```text
+   lamb,adma,adamw_hf,adam,adamw,adamw_torch,adamw_torch_fused,adamw_torch_xla,adamw_apex_fused,
+   adafactor,adamw_anyprecision,sgd,adagrad,adamw_bnb_8bit,adamw_8bit,lion,lion_8bit,lion_32bit,
+   paged_adamw_32bit,paged_adamw_8bit,paged_lion_32bit,paged_lion_8bit,
+   lamb_fused_dp adagrad_cpu_dp adam_cpu_dp adam_fused_dp
+```
+
+## scheduler
+```text
+  linear,WarmupCosine,CAWR,CAL,Step,ReduceLROnPlateau, cosine,cosine_with_restarts,polynomial,
+  constant,constant_with_warmup,inverse_sqrt,reduce_lr_on_plateau
+```
+
   
 ## works
 Create a model factory, lightweight and efficient training program and make it easier, training model easier to get started.
+
+
+
+## 友情链接
+
+- [pytorch-task-example](https://github.com/ssbuild/pytorch-task-example)
+- [chatmoss_finetuning](https://github.com/ssbuild/chatmoss_finetuning)
+- [chatglm_finetuning](https://github.com/ssbuild/chatglm_finetuning)
+- [chatglm2_finetuning](https://github.com/ssbuild/chatglm2_finetuning)
+- [t5_finetuning](https://github.com/ssbuild/t5_finetuning)
+- [llm_finetuning](https://github.com/ssbuild/llm_finetuning)
+- [llm_rlhf](https://github.com/ssbuild/llm_rlhf)
+- [chatglm_rlhf](https://github.com/ssbuild/chatglm_rlhf)
+- [t5_rlhf](https://github.com/ssbuild/t5_rlhf)
+- [rwkv_finetuning](https://github.com/ssbuild/rwkv_finetuning)
+- [baichuan_finetuning](https://github.com/ssbuild/baichuan_finetuning)
+- [internlm_finetuning](https://github.com/ssbuild/internlm_finetuning)
+- [qwen_finetuning](https://github.com/ssbuild/qwen_finetuning)
+- [xverse_finetuning](https://github.com/ssbuild/xverse_finetuning)
+- [auto_finetuning](https://github.com/ssbuild/auto_finetuning)
+- [aigc_serving](https://github.com/ssbuild/aigc_serving)
+## 
+    纯粹而干净的代码
+
+## discuss
+QQ group：185144988
 
 
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=ssbuild/deep_training&type=Date)](https://star-history.com/#ssbuild/deep_training&Date)
 
-## discuss
-QQ group：185144988
+
