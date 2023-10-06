@@ -27,6 +27,7 @@ class OptimizerNames(ExplicitEnum):
     ADAMW_TORCH_FUSED = "adamw_torch_fused"
     ADAMW_TORCH_XLA = "adamw_torch_xla"
     ADAMW_APEX_FUSED = "adamw_apex_fused"
+    ADAMW_TORCH_NPU_FUSED = "adamw_torch_npu_fused"
     ADAFACTOR = "adafactor"
     ADAMW_ANYPRECISION = "adamw_anyprecision"
     SGD = "sgd"

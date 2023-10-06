@@ -9,7 +9,7 @@ import os
 import typing
 from typing import Optional, Union
 from transformers import PreTrainedTokenizer, PretrainedConfig
-from .training_args import ModelArguments, DataArguments, TrainingArguments,TrainingArgumentsHF
+from .training_args import ModelArguments, DataArguments, TrainingArguments,TrainingArgumentsHF,TrainingArgumentsCL
 from ..utils.func import is_chinese_char
 from numpy_io.pytorch_loader.data_helper import DataHelperBase,load_tokenizer, load_configure
 from numpy_io.core.writer import DataWriteHelper
@@ -20,7 +20,7 @@ __all__ = [
     'get_filename_no_ext',
     'get_filename_replace_dir',
     "load_tokenizer",
-    "load_configure"
+    "load_configure",
 ]
 
 def get_filename_no_ext(filename):

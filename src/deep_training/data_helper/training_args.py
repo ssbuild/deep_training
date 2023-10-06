@@ -1,14 +1,12 @@
 # @Time    : 2022/11/17 22:18
 # @Author  : tk
 # @FileName: training_args.py
+import math
 import os
-import typing
 import warnings
 from dataclasses import dataclass, field
-from typing import Optional
-from transformers import TrainingArguments as TrainingArgumentsHF_
-
-
+from typing import Optional,Union,List,Dict,Any
+from transformers import TrainingArguments as TrainingArgumentsHF_, IntervalStrategy
 
 __all__ = [
     'ModelArguments',
@@ -17,11 +15,16 @@ __all__ = [
     'TrainingArgumentsHF',
     'DataArguments',
     'MlmDataArguments',
+    "TrainingArgumentsCL",
 ]
+
+from deep_training.nlp.optimizer.optimizer import OptimizerNames
+from deep_training.nlp.scheduler.scheduler import SchedulerType
+
 
 @dataclass
 class TrainingArgumentsHF(TrainingArgumentsHF_):
-    data_backend: typing.Optional[str] = field(
+    data_backend: Optional[str] = field(
         default="record",
         metadata={
             "help": (
@@ -29,7 +32,7 @@ class TrainingArgumentsHF(TrainingArgumentsHF_):
             )
         },
     )
-    learning_rate_for_task: typing.Optional[float] = field(
+    learning_rate_for_task: Optional[float] = field(
         default=None,
         metadata={
             "help": (
@@ -38,10 +41,363 @@ class TrainingArgumentsHF(TrainingArgumentsHF_):
         },
     )
 
+
     def __post_init__(self):
         super().__post_init__()
         if self.learning_rate_for_task is None:
             self.learning_rate_for_task = self.learning_rate
+
+@dataclass
+class TrainingArgumentsCL:
+    framework = "pt"
+    output_dir: str = field(
+        metadata={"help": "The output directory where the model predictions and checkpoints will be written."},
+    )
+    data_backend: Optional[ str ] = field(
+        default="record",
+        metadata={
+            "help": (
+                "default data_backend."
+            )
+        },
+    )
+    plugin: Optional[ str ] = field(
+        default="gemini",
+        metadata={
+            "help": (
+                "one of ." "gemini", "gemini_auto", "zero2", "zero2_cpu", "3d"
+            )
+        },
+    )
+    tp: Optional[ int ] = field(
+        default=1,
+        metadata={
+            "help": (
+                "tp."
+            )
+        },
+    )
+    zero: Optional[ int ] = field(
+        default=1,
+        metadata={
+            "help": (
+                "zero."
+            )
+        },
+    )
+
+
+    learning_rate_for_task: Optional[ float ] = field(
+        default=None,
+        metadata={
+            "help": (
+                "learning_rate_for_task."
+            )
+        },
+    )
+    overwrite_output_dir: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Overwrite the content of the output directory. "
+                "Use this to continue training if output_dir points to a checkpoint directory."
+            )
+        },
+    )
+
+    do_train: bool = field(default=False, metadata={"help": "Whether to run training."})
+    do_eval: bool = field(default=False, metadata={"help": "Whether to run eval on the dev set."})
+    do_predict: bool = field(default=False, metadata={"help": "Whether to run predictions on the test set."})
+    evaluation_strategy: Union[ IntervalStrategy, str ] = field(
+        default="no",
+        metadata={"help": "The evaluation strategy to use."},
+    )
+    prediction_loss_only: bool = field(
+        default=False,
+        metadata={"help": "When performing evaluation and predictions, only returns the loss."},
+    )
+
+    per_device_train_batch_size: int = field(
+        default=8, metadata={"help": "Batch size per GPU/TPU/MPS/NPU core/CPU for training."}
+    )
+    per_device_eval_batch_size: int = field(
+        default=8, metadata={"help": "Batch size per GPU/TPU/MPS/NPU core/CPU for evaluation."}
+    )
+
+    gradient_accumulation_steps: int = field(
+        default=1,
+        metadata={"help": "Number of updates steps to accumulate before performing a backward/update pass."},
+    )
+    eval_accumulation_steps: Optional[ int ] = field(
+        default=None,
+        metadata={"help": "Number of predictions steps to accumulate before moving the tensors to the CPU."},
+    )
+
+    eval_delay: Optional[ float ] = field(
+        default=0,
+        metadata={
+            "help": (
+                "Number of epochs or steps to wait for before the first evaluation can be performed, depending on the"
+                " evaluation_strategy."
+            )
+        },
+    )
+
+    learning_rate: float = field(default=5e-5, metadata={"help": "The initial learning rate for AdamW."})
+    weight_decay: float = field(default=0.0, metadata={"help": "Weight decay for AdamW if we apply some."})
+    adam_beta1: float = field(default=0.9, metadata={"help": "Beta1 for AdamW optimizer"})
+    adam_beta2: float = field(default=0.999, metadata={"help": "Beta2 for AdamW optimizer"})
+    adam_epsilon: float = field(default=1e-8, metadata={"help": "Epsilon for AdamW optimizer."})
+    max_grad_norm: float = field(default=1.0, metadata={"help": "Max gradient norm."})
+
+    num_train_epochs: float = field(default=3.0, metadata={"help": "Total number of training epochs to perform."})
+    max_steps: int = field(
+        default=-1,
+        metadata={"help": "If > 0: set total number of training steps to perform. Override num_train_epochs."},
+    )
+    lr_scheduler_type: Union[ SchedulerType, str ] = field(
+        default="linear",
+        metadata={"help": "The scheduler type to use."},
+    )
+    warmup_ratio: float = field(
+        default=0.0, metadata={"help": "Linear warmup over warmup_ratio fraction of total steps."}
+    )
+    warmup_steps: int = field(default=0, metadata={"help": "Linear warmup over warmup_steps."})
+
+
+    logging_dir: Optional[ str ] = field(default=None, metadata={"help": "Tensorboard log dir."})
+
+    logging_first_step: bool = field(default=False, metadata={"help": "Log the first global_step"})
+    logging_steps: float = field(
+        default=500,
+        metadata={
+            "help": (
+                "Log every X updates steps. Should be an integer or a float in range `[0,1)`."
+                "If smaller than 1, will be interpreted as ratio of total training steps."
+            )
+        },
+    )
+    logging_nan_inf_filter: bool = field(default=True, metadata={"help": "Filter nan and inf losses for logging."})
+    save_strategy: Union[ IntervalStrategy, str ] = field(
+        default="steps",
+        metadata={"help": "The checkpoint save strategy to use."},
+    )
+    save_steps: float = field(
+        default=500,
+        metadata={
+            "help": (
+                "Save checkpoint every X updates steps. Should be an integer or a float in range `[0,1)`."
+                "If smaller than 1, will be interpreted as ratio of total training steps."
+            )
+        },
+    )
+    save_total_limit: Optional[ int ] = field(
+        default=None,
+        metadata={
+            "help": (
+                "If a value is passed, will limit the total amount of checkpoints. Deletes the older checkpoints in"
+                " `output_dir`. When `load_best_model_at_end` is enabled, the 'best' checkpoint according to"
+                " `metric_for_best_model` will always be retained in addition to the most recent ones. For example,"
+                " for `save_total_limit=5` and `load_best_model_at_end=True`, the four last checkpoints will always be"
+                " retained alongside the best model. When `save_total_limit=1` and `load_best_model_at_end=True`,"
+                " it is possible that two checkpoints are saved: the last one and the best one (if they are different)."
+                " Default is unlimited checkpoints"
+            )
+        },
+    )
+    save_safetensors: Optional[ bool ] = field(
+        default=False,
+        metadata={
+            "help": "Use safetensors saving and loading for state dicts instead of default torch.load and torch.save."
+        },
+    )
+    save_on_each_node: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "When doing multi-node distributed training, whether to save models and checkpoints on each node, or"
+                " only on the main one"
+            )
+        },
+    )
+    no_cuda: bool = field(
+        default=False,
+        metadata={"help": "This argument is deprecated. It will be removed in version 5.0 of 🤗 Transformers."},
+    )
+    use_cpu: bool = field(
+        default=False,
+        metadata={
+            "help": " Whether or not to use cpu. If set to False, we will use cuda/tpu/mps/npu device if available."
+        },
+    )
+
+    seed: int = field(default=42, metadata={"help": "Random seed that will be set at the beginning of training."})
+    data_seed: Optional[ int ] = field(default=None, metadata={"help": "Random seed to be used with data samplers."})
+    jit_mode_eval: bool = field(
+        default=False, metadata={"help": "Whether or not to use PyTorch jit trace for inference"}
+    )
+
+    bf16: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to use bf16 (mixed) precision instead of 32-bit. Requires Ampere or higher NVIDIA"
+                " architecture or using CPU (use_cpu). This is an experimental API and it may change."
+            )
+        },
+    )
+    fp16: bool = field(
+        default=False,
+        metadata={"help": "Whether to use fp16 (mixed) precision instead of 32-bit"},
+    )
+
+
+    fp16_full_eval: bool = field(
+        default=False,
+        metadata={"help": "Whether to use full float16 evaluation instead of 32-bit"},
+    )
+    tf32: Optional[ bool ] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Whether to enable tf32 mode, available in Ampere and newer GPU architectures. This is an experimental"
+                " API and it may change."
+            )
+        },
+    )
+    local_rank: int = field(default=-1, metadata={"help": "For distributed training: local_rank"})
+
+
+    dataloader_drop_last: bool = field(
+        default=False, metadata={"help": "Drop the last incomplete batch if it is not divisible by the batch size."}
+    )
+    eval_steps: Optional[ float ] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Run an evaluation every X steps. Should be an integer or a float in range `[0,1)`."
+                "If smaller than 1, will be interpreted as ratio of total training steps."
+            )
+        },
+    )
+    dataloader_num_workers: int = field(
+        default=0,
+        metadata={
+            "help": (
+                "Number of subprocesses to use for data loading (PyTorch only). 0 means that the data will be loaded"
+                " in the main process."
+            )
+        },
+    )
+
+
+
+    run_name: Optional[ str ] = field(
+        default=None, metadata={"help": "An optional descriptor for the run. Notably used for wandb logging."}
+    )
+    disable_tqdm: Optional[ bool ] = field(
+        default=None, metadata={"help": "Whether or not to disable the tqdm progress bars."}
+    )
+
+    remove_unused_columns: Optional[ bool ] = field(
+        default=True, metadata={"help": "Remove columns not required by the model when using an nlp.Dataset."}
+    )
+    label_names: Optional[ List[ str ] ] = field(
+        default=None, metadata={"help": "The list of keys in your dictionary of inputs that correspond to the labels."}
+    )
+    load_best_model_at_end: Optional[ bool ] = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether or not to load the best model found during training at the end of training. When this option"
+                " is enabled, the best checkpoint will always be saved. See `save_total_limit` for more."
+            )
+        },
+    )
+    metric_for_best_model: Optional[ str ] = field(
+        default=None, metadata={"help": "The metric to use to compare two different models."}
+    )
+    greater_is_better: Optional[ bool ] = field(
+        default=None, metadata={"help": "Whether the `metric_for_best_model` should be maximized or not."}
+    )
+    ignore_data_skip: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "When resuming training, whether or not to skip the first epochs and batches to get to the same"
+                " training data."
+            )
+        },
+    )
+
+
+    default_optim = "adamw_torch"
+    # XXX: enable when pytorch==2.0.1 comes out - we want to give it time to get all the bugs sorted out
+    # if is_torch_available() and version.parse(version.parse(torch.__version__).base_version) >= version.parse("2.1.0"):
+    #     default_optim = "adamw_torch_fused"
+    # and update the doc above to:
+    # optim (`str` or [`training_args.OptimizerNames`], *optional*, defaults to `"adamw_torch_fused"` (for torch<2.1.0 `"adamw_torch"`):
+    optim: Union[ OptimizerNames, str ] = field(
+        default=default_optim,
+        metadata={"help": "The optimizer to use."},
+    )
+    optim_args: Optional[ str ] = field(default=None, metadata={"help": "Optional arguments to supply to optimizer."})
+    adafactor: bool = field(default=False, metadata={"help": "Whether or not to replace AdamW by Adafactor."})
+    group_by_length: bool = field(
+        default=False,
+        metadata={"help": "Whether or not to group samples of roughly the same length together when batching."},
+    )
+    length_column_name: Optional[ str ] = field(
+        default="length",
+        metadata={"help": "Column name with precomputed lengths to use when grouping by length."},
+    )
+
+
+    dataloader_pin_memory: bool = field(
+        default=True, metadata={"help": "Whether or not to pin memory for DataLoader."}
+    )
+    skip_memory_metrics: bool = field(
+        default=True, metadata={"help": "Whether or not to skip adding of memory profiler reports to metrics."}
+    )
+    use_legacy_prediction_loop: bool = field(
+        default=False, metadata={"help": "Whether or not to use the legacy prediction_loop in the Trainer."}
+    )
+    push_to_hub: bool = field(
+        default=False, metadata={"help": "Whether or not to upload the trained model to the model hub after training."}
+    )
+    resume_from_checkpoint: Optional[ str ] = field(
+        default=None,
+        metadata={"help": "The path to a folder with a valid checkpoint for your model."},
+    )
+
+    gradient_checkpointing: bool = field(
+        default=False,
+        metadata={
+            "help": "If True, use gradient checkpointing to save memory at the expense of slower backward pass."
+        },
+    )
+    include_inputs_for_metrics: bool = field(
+        default=False, metadata={"help": "Whether or not the inputs will be passed to the `compute_metrics` function."}
+    )
+
+    include_tokens_per_second: Optional[ bool ] = field(
+        default=False,
+        metadata={"help": "If set to `True`, the speed metrics will include `tgs` (tokens per second per device)."},
+    )
+
+
+    def __post_init__(self):
+        if self.learning_rate_for_task is None:
+            self.learning_rate_for_task = self.learning_rate
+
+    def get_warmup_steps(self, num_training_steps: int):
+        """
+        Get number of steps used for a linear warmup.
+        """
+        warmup_steps = (
+            self.warmup_steps if self.warmup_steps > 0 else math.ceil(num_training_steps * self.warmup_ratio)
+        )
+        return warmup_steps
 
 @dataclass
 class ModelArguments:
