@@ -17,6 +17,9 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
 
   
 ## update
+- <strong>2023-10-07</strong>
+  - 0.2.5 support colossalai 训练 ，策略 ddp ,gemini,gemini_auto，zero2,zero2_cpu,3d 
+
 - <strong>2023-09-26</strong>
   - 0.2.4 support transformers trainer and qwen-7b 新版 和 qwen-14b ， 旧版不再支持，旧版可以安装 deep_training <= 0.2.3 
   - 0.2.4.post3 support ia3 finetuning

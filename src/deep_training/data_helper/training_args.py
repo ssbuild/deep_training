@@ -70,7 +70,7 @@ class TrainingArgumentsCL:
             )
         },
     )
-    strategy: Optional[ Union[str,Dict[str,Dict]] ] = field(
+    strategy: Optional[ Union[str,Dict ]] = field(
         default="gemini",
         metadata={
             "help": (

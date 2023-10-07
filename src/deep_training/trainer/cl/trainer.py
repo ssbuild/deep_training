@@ -238,7 +238,7 @@ class TrainerCL:
         mixed_precision = "fp16" if self.args.fp16 else "bf16"
         plugin_mode,plugin_args = (args.strategy,None) if isinstance(args.strategy,str) else (args.strategy.pop("name","ddp"),args.strategy)
 
-        if plugin_args:
+        if plugin_args and plugin_mode != "ddp":
             plugin_args.update(dict(
                 precision=mixed_precision,
                 max_norm=args.max_grad_norm,
