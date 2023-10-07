@@ -8,7 +8,6 @@ import torch
 from torch import optim
 from transformers.utils import ExplicitEnum, strtobool
 from ..scheduler import WarmupCosineSchedule
-from ...data_helper import TrainingArguments
 from ..optimizer import lion,lamb
 try:
     from transformers import AdamW as AdamWHF, Adafactor
@@ -47,7 +46,8 @@ class OptimizerNames(ExplicitEnum):
     ADAM_CPU_DP = 'adam_cpu_dp'
     ADAM_FUSED_DP = 'adam_fused_dp'
 
-def get_optimizer_cls_and_kwargs(optimizer_name,args: TrainingArguments) -> typing.Tuple[typing.Any, typing.Any]:
+
+def get_optimizer_cls_and_kwargs(optimizer_name,args) -> typing.Tuple[typing.Any, typing.Any]:
     """
     Returns the optimizer class and optimizer parameters based on the training arguments.
 
@@ -57,6 +57,9 @@ def get_optimizer_cls_and_kwargs(optimizer_name,args: TrainingArguments) -> typi
     """
 
     # parse optimizer_name
+    from ...data_helper import TrainingArguments
+    args: TrainingArguments
+
     optim_args = {}
     if args.optimizer_args:
         for mapping in args.optimizer_args.replace(" ", "").split(","):

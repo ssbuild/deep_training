@@ -6,20 +6,29 @@ import os
 import warnings
 from dataclasses import dataclass, field
 from typing import Optional,Union,List,Dict,Any
-from transformers import TrainingArguments as TrainingArgumentsHF_, IntervalStrategy
+import torch
+from packaging import version
+from transformers import TrainingArguments as TrainingArgumentsHF_, IntervalStrategy, is_torch_available
+from deep_training.nlp.optimizer.optimizer import OptimizerNames
+from deep_training.nlp.scheduler.scheduler import SchedulerType
+from transformers.trainer_utils import EvaluationStrategy
+from transformers.training_args import default_logdir
+from transformers.utils import logging
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 __all__ = [
     'ModelArguments',
     'PrefixModelArguments',
     'TrainingArguments',
     'TrainingArgumentsHF',
+    'TrainingArgumentsCL',
     'DataArguments',
     'MlmDataArguments',
-    "TrainingArgumentsCL",
+
 ]
 
-from deep_training.nlp.optimizer.optimizer import OptimizerNames
-from deep_training.nlp.scheduler.scheduler import SchedulerType
 
 
 @dataclass
@@ -166,6 +175,11 @@ class TrainingArgumentsCL:
 
 
     logging_dir: Optional[ str ] = field(default=None, metadata={"help": "Tensorboard log dir."})
+
+    logging_strategy: Union[IntervalStrategy, str] = field(
+        default="steps",
+        metadata={"help": "The logging strategy to use."},
+    )
 
     logging_first_step: bool = field(default=False, metadata={"help": "Log the first global_step"})
     logging_steps: float = field(
@@ -390,6 +404,143 @@ class TrainingArgumentsCL:
         if self.learning_rate_for_task is None:
             self.learning_rate_for_task = self.learning_rate
 
+        # expand paths, if not os.makedirs("~/bar") will make directory
+        # in the current directory instead of the actual home
+        # see https://github.com/huggingface/transformers/issues/10628
+        if self.output_dir is not None:
+            self.output_dir = os.path.expanduser(self.output_dir)
+        if self.logging_dir is None and self.output_dir is not None:
+            self.logging_dir = os.path.join(self.output_dir, default_logdir())
+        if self.logging_dir is not None:
+            self.logging_dir = os.path.expanduser(self.logging_dir)
+
+        if self.disable_tqdm is None:
+            self.disable_tqdm = logger.getEffectiveLevel() > logging.WARN
+
+        if isinstance(self.evaluation_strategy, EvaluationStrategy):
+            warnings.warn(
+                "using `EvaluationStrategy` for `evaluation_strategy` is deprecated and will be removed in version 5"
+                " of 🤗 Transformers. Use `IntervalStrategy` instead",
+                FutureWarning,
+            )
+            # Go back to the underlying string or we won't be able to instantiate `IntervalStrategy` on it.
+            self.evaluation_strategy = self.evaluation_strategy.value
+        if self.no_cuda:
+            warnings.warn(
+                "using `no_cuda` is deprecated and will be removed in version 5.0 of 🤗 Transformers. "
+                "Use `use_cpu` instead",
+                FutureWarning,
+            )
+            self.use_cpu = self.no_cuda
+
+        self.evaluation_strategy = IntervalStrategy(self.evaluation_strategy)
+        self.logging_strategy = IntervalStrategy(self.logging_strategy)
+        self.save_strategy = IntervalStrategy(self.save_strategy)
+
+        self.lr_scheduler_type = SchedulerType(self.lr_scheduler_type)
+        if self.do_eval is False and self.evaluation_strategy != IntervalStrategy.NO:
+            self.do_eval = True
+
+        # eval_steps has to be defined and non-zero, fallbacks to logging_steps if the latter is non-zero
+        if self.evaluation_strategy == IntervalStrategy.STEPS and (self.eval_steps is None or self.eval_steps == 0):
+            if self.logging_steps > 0:
+                logger.info(f"using `logging_steps` to initialize `eval_steps` to {self.logging_steps}")
+                self.eval_steps = self.logging_steps
+            else:
+                raise ValueError(
+                    f"evaluation strategy {self.evaluation_strategy} requires either non-zero --eval_steps or"
+                    " --logging_steps"
+                )
+
+        # logging_steps must be non-zero for logging_strategy that is other than 'no'
+        if self.logging_strategy == IntervalStrategy.STEPS and self.logging_steps == 0:
+            raise ValueError(f"logging strategy {self.logging_strategy} requires non-zero --logging_steps")
+
+        if self.logging_strategy == IntervalStrategy.STEPS and self.logging_steps > 1:
+            if self.logging_steps != int(self.logging_steps):
+                raise ValueError(f"--logging_steps must be an integer if bigger than 1: {self.logging_steps}")
+            self.logging_steps = int(self.logging_steps)
+        if self.evaluation_strategy == IntervalStrategy.STEPS and self.eval_steps > 1:
+            if self.eval_steps != int(self.eval_steps):
+                raise ValueError(f"--eval_steps must be an integer if bigger than 1: {self.eval_steps}")
+            self.eval_steps = int(self.eval_steps)
+        if self.save_strategy == IntervalStrategy.STEPS and self.save_steps > 1:
+            if self.save_steps != int(self.save_steps):
+                raise ValueError(f"--save_steps must be an integer if bigger than 1: {self.save_steps}")
+            self.save_steps = int(self.save_steps)
+
+        # Sanity checks for load_best_model_at_end: we require save and eval strategies to be compatible.
+        if self.load_best_model_at_end:
+            if self.evaluation_strategy != self.save_strategy:
+                raise ValueError(
+                    "--load_best_model_at_end requires the save and eval strategy to match, but found\n- Evaluation "
+                    f"strategy: {self.evaluation_strategy}\n- Save strategy: {self.save_strategy}"
+                )
+            if self.evaluation_strategy == IntervalStrategy.STEPS and self.save_steps % self.eval_steps != 0:
+                if self.eval_steps < 1 or self.save_steps < 1:
+                    if not (self.eval_steps < 1 and self.save_steps < 1):
+                        raise ValueError(
+                            "--load_best_model_at_end requires the saving steps to be a multiple of the evaluation "
+                            "steps, which cannot get guaranteed when mixing ratio and absolute steps for save_steps"
+                            f"{self.save_steps} and eval_steps {self.eval_steps}."
+                        )
+                    # Work around floating point precision issues
+                    LARGE_MULTIPLIER = 1_000_000
+                    if (self.save_steps * LARGE_MULTIPLIER) % (self.eval_steps * LARGE_MULTIPLIER) != 0:
+                        raise ValueError(
+                            "--load_best_model_at_end requires the saving steps to be a multiple of the evaluation "
+                            f"steps, but found {self.save_steps}, which is not a multiple of {self.eval_steps}."
+                        )
+                raise ValueError(
+                    "--load_best_model_at_end requires the saving steps to be a round multiple of the evaluation "
+                    f"steps, but found {self.save_steps}, which is not a round multiple of {self.eval_steps}."
+                )
+
+
+        if (
+                self.load_best_model_at_end or self.lr_scheduler_type == SchedulerType.REDUCE_ON_PLATEAU
+        ) and self.metric_for_best_model is None:
+            self.metric_for_best_model = "loss"
+        if self.greater_is_better is None and self.metric_for_best_model is not None:
+            self.greater_is_better = self.metric_for_best_model not in ["loss", "eval_loss"]
+        if self.run_name is None:
+            self.run_name = self.output_dir
+
+
+        if self.fp16 and self.bf16:
+            raise ValueError("At most one of fp16 and bf16 can be True, but not both")
+
+        if self.fp16_full_eval and self.bf16_full_eval:
+            raise ValueError("At most one of fp16 and bf16 can be True for full eval, but not both")
+
+        if self.bf16:
+            if self.half_precision_backend == "apex":
+                raise ValueError(
+                    " `--half_precision_backend apex`: GPU bf16 is not supported by apex. Use"
+                    " `--half_precision_backend cuda_amp` instead"
+                )
+
+        if self.lr_scheduler_type == SchedulerType.REDUCE_ON_PLATEAU:
+            if self.evaluation_strategy == IntervalStrategy.NO:
+                raise ValueError("lr_scheduler_type reduce_lr_on_plateau requires an eval strategy")
+            if not is_torch_available():
+                raise ValueError("lr_scheduler_type reduce_lr_on_plateau requires torch>=0.2.0")
+
+        self.optim = OptimizerNames(self.optim)
+        if self.adafactor:
+            warnings.warn(
+                "`--adafactor` is deprecated and will be removed in version 5 of 🤗 Transformers. Use `--optim"
+                " adafactor` instead",
+                FutureWarning,
+            )
+            self.optim = OptimizerNames.ADAFACTOR
+        if self.optim == OptimizerNames.ADAMW_TORCH_FUSED and is_torch_available():
+            if version.parse(version.parse(torch.__version__).base_version) < version.parse("2.0.0"):
+                raise ValueError("--optim adamw_torch_fused requires PyTorch 2.0 or higher")
+            # there is a bug in fp16/AMP in pt-2.0.0
+            if version.parse(version.parse(torch.__version__).base_version) == version.parse("2.0.0") and self.fp16:
+                raise ValueError("--optim adamw_torch_fused with --fp16 requires PyTorch>2.0")
+
     def get_warmup_steps(self, num_training_steps: int):
         """
         Get number of steps used for a linear warmup.
@@ -398,6 +549,27 @@ class TrainingArgumentsCL:
             self.warmup_steps if self.warmup_steps > 0 else math.ceil(num_training_steps * self.warmup_ratio)
         )
         return warmup_steps
+
+
+
+
+    # @property
+    # def train_batch_size(self) -> int:
+    #     """
+    #     The actual batch size for training (may differ from `per_gpu_train_batch_size` in distributed training).
+    #     """
+    #     per_device_batch_size = self.per_device_train_batch_size
+    #     train_batch_size = per_device_batch_size * max(1, self.n_gpu)
+    #     return train_batch_size
+    #
+    # @property
+    # def eval_batch_size(self) -> int:
+    #     """
+    #     The actual batch size for evaluation (may differ from `per_gpu_eval_batch_size` in distributed training).
+    #     """
+    #     per_device_batch_size = self.per_device_eval_batch_size or self.per_device_eval_batch_size
+    #     eval_batch_size = per_device_batch_size * max(1, self.n_gpu)
+    #     return eval_batch_size
 
 @dataclass
 class ModelArguments:
