@@ -35,7 +35,7 @@ from transformers.trainer import OPTIMIZER_NAME, SCALER_NAME, SCHEDULER_NAME, TR
 from transformers.trainer_callback import CallbackHandler, PrinterCallback, TrainerState, TrainerControl
 from transformers.trainer_pt_utils import get_parameter_names, IterableDatasetShard, reissue_pt_warnings
 from transformers.trainer_utils import has_length, PREFIX_CHECKPOINT_DIR, number_of_arguments
-from transformers.training_args import OptimizerNames
+from ...nlp.optimizer.optimizer import OptimizerNames
 from transformers.utils import strtobool, logging
 from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
@@ -406,9 +406,20 @@ class TrainerCL:
             "betas": (args.adam_beta1, args.adam_beta2),
             "eps": args.adam_epsilon,
         }
+
+
         if args.optim == OptimizerNames.ADAFACTOR:
             optimizer_cls = Adafactor
             optimizer_kwargs.update({"scale_parameter": False, "relative_step": False})
+        elif args.optim == OptimizerNames.ADAM_HYBRID_CL:
+            optimizer_cls = colossalai.nn.optimizer.hybrid_adam.HybridAdam
+            optimizer_kwargs.update(adam_kwargs)
+        elif args.optim == OptimizerNames.ADAM_CPU_CL:
+            optimizer_cls = colossalai.nn.optimizer.cpu_adam.CPUAdam
+            optimizer_kwargs.update(adam_kwargs)
+        elif args.optim == OptimizerNames.ADAM_FUSED_CL:
+            optimizer_cls = colossalai.nn.optimizer.fused_adam.FusedAdam
+            optimizer_kwargs.update(adam_kwargs)
         elif args.optim == OptimizerNames.ADAMW_HF:
             from ...nlp.optimizer.optimizer import AdamWHF
             optimizer_cls = AdamWHF

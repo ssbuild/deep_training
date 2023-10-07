@@ -45,6 +45,10 @@ class OptimizerNames(ExplicitEnum):
     ADAGRAD_CPU_DP = 'adagrad_cpu_dp'
     ADAM_CPU_DP = 'adam_cpu_dp'
     ADAM_FUSED_DP = 'adam_fused_dp'
+    RMSPROP = "rmsprop"
+    ADAM_HYBRID_CL = 'adam_hybrid_cl'
+    ADAM_CPU_CL = 'adam_cpu_cl'
+    ADAM_FUSED_CL = 'adam_fused_cl'
 
 
 def get_optimizer_cls_and_kwargs(optimizer_name,args) -> typing.Tuple[typing.Any, typing.Any]:
