@@ -924,8 +924,8 @@ class TrainerCL:
 
             # self._save_checkpoint(model, trial, metrics=metrics)
             self.control = self.callback_handler.on_save(self.args, self.state, self.control)
-
-            self._rotate_checkpoints()
+            run_dir = self._get_output_dir(trial=trial)
+            self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
 
 
     def _sorted_checkpoints(
