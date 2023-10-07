@@ -61,7 +61,7 @@ class TrainingArgumentsCL:
             )
         },
     )
-    plugin: Optional[ str ] = field(
+    plugin: Optional[ Union[str,dict] ] = field(
         default="gemini",
         metadata={
             "help": (

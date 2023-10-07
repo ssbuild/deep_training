@@ -39,6 +39,7 @@ from transformers.training_args import OptimizerNames
 from transformers.utils import strtobool, logging
 from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
+from ...data_helper import TrainingArgumentsCL
 
 import colossalai
 from colossalai.booster import Booster
@@ -54,11 +55,6 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 from colossalai.booster import Booster
 from colossalai.cluster import DistCoordinator
-
-
-
-
-from ...data_helper import TrainingArgumentsCL
 
 
 
@@ -91,59 +87,7 @@ def format_numel_str(numel: int) -> str:
     else:
         return f"{numel}"
 
-def save_checkpoint(
-    save_dir: Union[str, os.PathLike],
-    booster: Booster,
-    model: torch.nn.Module,
-    optimizer: Optimizer,
-    lr_scheduler: _LRScheduler,
-    epoch: int,
-    step: int,
-    batch_size: int,
-    coordinator: DistCoordinator,
-) -> None:
-    """
-    Save model checkpoint, optimizer, LR scheduler and intermedidate running states.
-    """
 
-    save_dir = os.path.join(save_dir, f"epoch-{epoch}_step-{step}")
-    os.makedirs(os.path.join(save_dir, "modeling"), exist_ok=True)
-
-    booster.save_model(model, os.path.join(save_dir, "modeling"), shard=True)
-
-    booster.save_optimizer(optimizer, os.path.join(save_dir, "optimizer"), shard=True)
-    booster.save_lr_scheduler(lr_scheduler, os.path.join(save_dir, "lr_scheduler"))
-    running_states = {
-        "epoch": epoch,
-        "step": step,
-        "sample_start_index": step * batch_size,
-    }
-    if coordinator.is_master():
-        save_json(running_states, os.path.join(save_dir, "running_states.json"))
-
-
-def load_checkpoint(
-    load_dir: Union[str, os.PathLike],
-    booster: Booster,
-    model: torch.nn.Module,
-    optimizer: Optimizer,
-    lr_scheduler: _LRScheduler,
-) -> Tuple[int, int, int]:
-    """
-    Load model checkpoint, optimizer, LR scheduler and intermedidate running states.
-    """
-
-    # Update booster params states.
-    booster.load_model(model=model, checkpoint=os.path.join(load_dir, "modeling"))
-    booster.load_optimizer(optimizer=optimizer, checkpoint=os.path.join(load_dir, "optimizer"))
-    booster.load_lr_scheduler(lr_scheduler=lr_scheduler, checkpoint=os.path.join(load_dir, "lr_scheduler"))
-
-    running_states = load_json(file_path=os.path.join(load_dir, "running_states.json"))
-    return (
-        running_states["epoch"],
-        running_states["step"],
-        running_states["sample_start_index"],
-    )
 
 
 def load_json(file_path: Union[str, os.PathLike]) -> Dict[str, Any]:
@@ -166,9 +110,10 @@ class TrainerCL:
                  model: Union[ PreTrainedModel, nn.Module ] = None,
                  args: TrainingArgumentsCL = None,
                  data_collator: Optional[ DataCollator ] = None,
-                 train_dataset: Optional[ Dataset ] = None,
-                 eval_dataset: Optional[ Union[ Dataset, Dict[ str, Dataset ] ] ] = None,
+                 train_dataset: Optional[ Union[Dataset,DataLoader] ] = None,
+                 eval_dataset: Optional[ Union[ Dataset,DataLoader, Dict[ str, Dataset ] ] ] = None,
                  tokenizer: Optional[ PreTrainedTokenizerBase ] = None,
+                 model_init: Optional[Callable[[], PreTrainedModel]] = None,
                  callbacks: Optional[ List[ TrainerCallback ] ] = None,
                  optimizers: Tuple[ torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR ] = (None, None),
                  **kwargs):
@@ -180,6 +125,33 @@ class TrainerCL:
         self.tokenizer = tokenizer
         self.callbacks = callbacks
         self.optimizers = optimizers
+
+        if model is None:
+            if model_init is not None:
+                self.model_init = model_init
+                model = self.call_model_init()
+            else:
+                raise RuntimeError("`Trainer` requires either a `model` or `model_init` argument")
+        else:
+            if model_init is not None:
+                warnings.warn(
+                    "`Trainer` requires either a `model` or `model_init` argument, but not both. `model_init` will"
+                    " overwrite your model when calling the `train` method. This will become a fatal error in the next"
+                    " release.",
+                    FutureWarning,
+                )
+            self.model_init = model_init
+
+
+        self.setup_model()
+
+        colossalai.launch_from_torch({})
+        coordinator = DistCoordinator()
+        self.coordinator = coordinator
+        if coordinator.is_master():
+            tensorboard_dir = self.args.logging_dir or self.args.output_dir
+            os.makedirs(tensorboard_dir, exist_ok=True)
+            self.writer = SummaryWriter(tensorboard_dir)
 
         default_callbacks = DEFAULT_CALLBACKS
         callbacks = default_callbacks if callbacks is None else default_callbacks + callbacks
@@ -200,6 +172,8 @@ class TrainerCL:
             is_world_process_zero=self.is_world_process_zero(),
         )
         self.control = self.callback_handler.on_init_end(self.args, self.state, self.control)
+
+        assert self.args.gradient_accumulation_steps == 1
 
     def add_callback(self, callback):
         """
@@ -244,41 +218,59 @@ class TrainerCL:
     def _setup_plugin(self):
         args = self.args
         mixed_precision = "fp16" if self.args.fp16 else "bf16"
-        if args.plugin == "gemini":
+        plugin_mode,plugin_args = (args.plugin,None) if isinstance(args.plugin,str) else (args.plugin.pop("mode","gemini"),args.plugin)
+
+        if plugin_args:
+            plugin_args.update(dict(
+                precision=mixed_precision,
+                max_norm=args.max_grad_norm,
+            ))
+
+        if plugin_mode == "gemini":
             plugin = GeminiPlugin(
-                precision=mixed_precision,
-                initial_scale=2 ** 16,
-                max_norm=args.max_grad_norm,
+                plugin_args or dict(
+                    precision=mixed_precision,
+                    initial_scale=2 ** 16,
+                    max_norm=args.max_grad_norm,
+                )
             )
-        elif args.plugin == "gemini_auto":
+        elif plugin_mode == "gemini_auto":
             plugin = GeminiPlugin(
-                precision=mixed_precision,
-                placement_policy="auto",
-                initial_scale=2 ** 16,
-                max_norm=args.max_grad_norm,
+                plugin_args or dict(
+                    precision=mixed_precision,
+                    placement_policy="auto",
+                    initial_scale=2 ** 16,
+                    max_norm=args.max_grad_norm,
+                )
             )
-        elif args.plugin == "zero2":
+        elif plugin_mode == "zero2":
             plugin = LowLevelZeroPlugin(
-                stage=2,
-                precision=mixed_precision,
-                initial_scale=2 ** 16,
-                max_norm=args.max_grad_norm,
+                plugin_args or dict(
+                    stage=2,
+                    precision=mixed_precision,
+                    initial_scale=2 ** 16,
+                    max_norm=args.max_grad_norm,
+                )
             )
-        elif args.plugin == "zero2_cpu":
+        elif plugin_mode == "zero2_cpu":
             plugin = LowLevelZeroPlugin(
-                stage=2,
-                precision=mixed_precision,
-                initial_scale=2 ** 16,
-                cpu_offload=True,
-                max_norm=args.max_grad_norm,
+                plugin_args or dict(
+                    stage=2,
+                    precision=mixed_precision,
+                    initial_scale=2 ** 16,
+                    cpu_offload=True,
+                    max_norm=args.max_grad_norm,
+                )
             )
-        elif args.plugin == "3d":
+        elif plugin_mode == "3d":
             plugin = HybridParallelPlugin(
-                tp_size=args.tp,
-                pp_size=1,
-                zero_stage=args.zero,
-                max_norm=args.max_grad_norm,
-                precision=mixed_precision,
+                plugin_args or dict(
+                    tp_size=args.tp,
+                    pp_size=1,
+                    zero_stage=args.zero,
+                    max_norm=args.max_grad_norm,
+                    precision=mixed_precision,
+                )
             )
         else:
             raise ValueError(f"Unknown plugin {args.plugin}")
@@ -291,7 +283,7 @@ class TrainerCL:
         model = self.model
         optimizer = self.optimizer
         lr_scheduler = self.lr_scheduler
-        dataloader = self.dataloader
+        dataloader = self.train_dataset
 
         model, optimizer, _, dataloader, lr_scheduler = booster.boost(
             model=model,
@@ -305,18 +297,10 @@ class TrainerCL:
         self.model = model
         self.optimizer = optimizer
         self.lr_scheduler = lr_scheduler
-        self.dataloader = dataloader
-
-        args = self.args
-        colossalai.launch_from_torch({})
 
 
-        coordinator = DistCoordinator()
-        self.coordinator = coordinator
-        if coordinator.is_master():
-            tensorboard_dir = self.args.logging_dir or self.args.output_dir
-            os.makedirs(tensorboard_dir, exist_ok=True)
-            self.writer = SummaryWriter(tensorboard_dir)
+
+
 
     def create_optimizer_and_scheduler(self, num_training_steps: int):
         """
@@ -614,6 +598,9 @@ class TrainerCL:
         booster = self.booster
 
         total_train_batch_size = self.args.per_device_train_batch_size * args.gradient_accumulation_steps * self.world_size
+
+        len_dataloader = None
+        num_train_tokens = None
         if has_length(train_dataloader):
             len_dataloader = len(train_dataloader)
             num_update_steps_per_epoch = len_dataloader // args.gradient_accumulation_steps
@@ -694,14 +681,23 @@ class TrainerCL:
         self.state.is_local_process_zero = self.is_local_process_zero()
         self.state.is_world_process_zero = self.is_world_process_zero()
 
-
-
         self.control = self.callback_handler.on_train_begin(args, self.state, self.control)
 
+        epochs_trained = 0
+        steps_trained_in_current_epoch = 0
+        steps_skipped = 0
+        total_batched_samples = 0
         for epoch in range(start_epoch, num_train_epochs):
             train_dataloader.sampler.set_epoch(epoch=epoch)
             num_steps_per_epoch = len(train_dataloader)
 
+            steps_in_epoch = (
+                len(train_dataloader)
+                if len_dataloader is not None
+                else args.max_steps * args.gradient_accumulation_steps
+            )
+            self.control = self.callback_handler.on_epoch_begin(args, self.state, self.control)
+            step = -1
             with tqdm(
                     iterable=enumerate(train_dataloader, start=start_step),
                     desc=f"Epoch {epoch}",
@@ -710,6 +706,7 @@ class TrainerCL:
                     initial=start_step,
             ) as pbar:
                 for step, batch in pbar:
+                    total_batched_samples += 1
                     if step % args.gradient_accumulation_steps == 0:
                         self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
@@ -731,8 +728,19 @@ class TrainerCL:
                             scalar_value=lr_scheduler.get_last_lr()[ 0 ],
                             global_step=global_step,
                         )
-                    # Save modeling.
-                    if (args.save_interval > 0 and (step + 1) % args.save_interval == 0) or (step + 1) == len(train_dataloader):
+                    is_last_step_and_steps_less_than_grad_acc = (
+                            steps_in_epoch <= args.gradient_accumulation_steps and (step + 1) == steps_in_epoch
+                    )
+
+                    if (
+                            total_batched_samples % args.gradient_accumulation_steps == 0
+                            or
+                            # last step in epoch but step is always smaller than gradient_accumulation_steps
+                            is_last_step_and_steps_less_than_grad_acc
+                    ):
+                        self.state.global_step += 1
+                        self.state.epoch = epoch + (step + 1 + steps_skipped) / steps_in_epoch
+                        self.control = self.callback_handler.on_step_end(args, self.state, self.control)
                         self._maybe_log_save_evaluate(loss, model, trial, epoch, step , ignore_keys_for_eval)
 
                     else:
@@ -741,78 +749,143 @@ class TrainerCL:
                     # Delete CUDA cache.
                     # del batch, batch_labels, batch_output, loss
                     torch.cuda.empty_cache()
+                if step < 0:
+                    logger.warning(
+                        "There seems to be not a single sample in your epoch_iterator, stopping training at step"
+                        f" {self.state.global_step}! This is expected if you're using an IterableDataset and set"
+                        f" num_steps ({max_steps}) higher than the number of available samples."
+                    )
+                    self.control.should_training_stop = True
 
+
+                self.control = self.callback_handler.on_epoch_end(args, self.state, self.control)
                 self._maybe_log_save_evaluate(loss, model, trial, epoch,step, ignore_keys_for_eval)
-
+        self.control = self.callback_handler.on_train_end(args, self.state, self.control)
     def _get_output_dir(self, trial):
         run_dir = self.args.output_dir
         return run_dir
 
-    def _save_checkpoint(self, model, trial, metrics=None):
-        # In all cases, including ddp/dp/deepspeed, self.model is always a reference to the model we
-        # want to save except FullyShardedDDP.
-        # assert unwrap_model(model) is self.model, "internal model should be a reference to self.model"
+    # def _save_checkpoint(self, model, trial, metrics=None):
+    #     # In all cases, including ddp/dp/deepspeed, self.model is always a reference to the model we
+    #     # want to save except FullyShardedDDP.
+    #     # assert unwrap_model(model) is self.model, "internal model should be a reference to self.model"
+    #
+    #     # Save model checkpoint
+    #     checkpoint_folder = f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}"
+    #
+    #
+    #     run_dir = self._get_output_dir(trial=trial)
+    #     output_dir = os.path.join(run_dir, checkpoint_folder)
+    #     self.save_model(output_dir, _internal_call=True)
+    #
+    #
+    #
+    #
+    #     if self.args.should_save:
+    #         # deepspeed.save_checkpoint above saves model/optim/sched
+    #         torch.save(self.optimizer.state_dict(), os.path.join(output_dir, OPTIMIZER_NAME))
+    #
+    #     # Save SCHEDULER & SCALER
+    #     if (
+    #         self.args.should_save
+    #         and (not self.is_deepspeed_enabled)
+    #     ):
+    #         with warnings.catch_warnings(record=True) as caught_warnings:
+    #             torch.save(self.lr_scheduler.state_dict(), os.path.join(output_dir, SCHEDULER_NAME))
+    #         reissue_pt_warnings(caught_warnings)
+    #         if self.do_grad_scaling:
+    #             torch.save(self.scaler.state_dict(), os.path.join(output_dir, SCALER_NAME))
+    #
+    #     # Determine the new best metric / best model checkpoint
+    #     if metrics is not None and self.args.metric_for_best_model is not None:
+    #         metric_to_check = self.args.metric_for_best_model
+    #         if not metric_to_check.startswith("eval_"):
+    #             metric_to_check = f"eval_{metric_to_check}"
+    #         metric_value = metrics[metric_to_check]
+    #
+    #         operator = np.greater if self.args.greater_is_better else np.less
+    #         if (
+    #             self.state.best_metric is None
+    #             or self.state.best_model_checkpoint is None
+    #             or operator(metric_value, self.state.best_metric)
+    #         ):
+    #             self.state.best_metric = metric_value
+    #             self.state.best_model_checkpoint = output_dir
+    #
+    #     # Save the Trainer state
+    #     if self.args.should_save:
+    #         self.state.save_to_json(os.path.join(output_dir, TRAINER_STATE_NAME))
+    #
+    #
+    #
+    #
+    #
+    #     # A process can arrive here before the process 0 has a chance to save the model, in which case output_dir may
+    #     # not yet exist.
+    #     os.makedirs(output_dir, exist_ok=True)
+    #
+    #
+    #
+    #     # Maybe delete some older checkpoints.
+    #     if self.args.should_save:
+    #         self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
 
-        # Save model checkpoint
+    def _save_checkpoint(
+            self,
+            model: torch.nn.Module,
+            optimizer: Optimizer,
+            lr_scheduler: _LRScheduler,
+            epoch: int,
+            step: int,
+            batch_size: int,
+            coordinator: DistCoordinator,
+    ) -> None:
+        """
+        Save model checkpoint, optimizer, LR scheduler and intermedidate running states.
+        """
+
         checkpoint_folder = f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}"
-
-
         run_dir = self._get_output_dir(trial=trial)
         output_dir = os.path.join(run_dir, checkpoint_folder)
-        self.save_model(output_dir, _internal_call=True)
 
+        os.makedirs(os.path.join(output_dir, "modeling"), exist_ok=True)
 
+        booster.save_model(model, os.path.join(output_dir, "modeling"), shard=True)
 
+        booster.save_optimizer(optimizer, os.path.join(output_dir, "optimizer"), shard=True)
+        booster.save_lr_scheduler(lr_scheduler, os.path.join(output_dir, "lr_scheduler"))
+        running_states = {
+            "epoch": epoch,
+            "step": step,
+            "sample_start_index": step * batch_size,
+        }
+        if coordinator.is_master():
+            save_json(running_states, os.path.join(save_dir, "running_states.json"))
 
-        if self.args.should_save:
-            # deepspeed.save_checkpoint above saves model/optim/sched
-            torch.save(self.optimizer.state_dict(), os.path.join(output_dir, OPTIMIZER_NAME))
+    @classmethod
+    def _load_checkpoint(
+            cls,
+            load_dir: Union[str, os.PathLike],
+            booster: Booster,
+            model: torch.nn.Module,
+            optimizer: Optimizer,
+            lr_scheduler: _LRScheduler,
+    ) -> Tuple[int, int, int]:
+        """
+        Load model checkpoint, optimizer, LR scheduler and intermedidate running states.
+        """
 
-        # Save SCHEDULER & SCALER
-        if (
-            self.args.should_save
-            and (not self.is_deepspeed_enabled)
-        ):
-            with warnings.catch_warnings(record=True) as caught_warnings:
-                torch.save(self.lr_scheduler.state_dict(), os.path.join(output_dir, SCHEDULER_NAME))
-            reissue_pt_warnings(caught_warnings)
-            if self.do_grad_scaling:
-                torch.save(self.scaler.state_dict(), os.path.join(output_dir, SCALER_NAME))
+        # Update booster params states.
+        booster.load_model(model=model, checkpoint=os.path.join(load_dir, "modeling"))
+        booster.load_optimizer(optimizer=optimizer, checkpoint=os.path.join(load_dir, "optimizer"))
+        booster.load_lr_scheduler(lr_scheduler=lr_scheduler, checkpoint=os.path.join(load_dir, "lr_scheduler"))
 
-        # Determine the new best metric / best model checkpoint
-        if metrics is not None and self.args.metric_for_best_model is not None:
-            metric_to_check = self.args.metric_for_best_model
-            if not metric_to_check.startswith("eval_"):
-                metric_to_check = f"eval_{metric_to_check}"
-            metric_value = metrics[metric_to_check]
-
-            operator = np.greater if self.args.greater_is_better else np.less
-            if (
-                self.state.best_metric is None
-                or self.state.best_model_checkpoint is None
-                or operator(metric_value, self.state.best_metric)
-            ):
-                self.state.best_metric = metric_value
-                self.state.best_model_checkpoint = output_dir
-
-        # Save the Trainer state
-        if self.args.should_save:
-            self.state.save_to_json(os.path.join(output_dir, TRAINER_STATE_NAME))
-
-
-
-
-
-        # A process can arrive here before the process 0 has a chance to save the model, in which case output_dir may
-        # not yet exist.
-        os.makedirs(output_dir, exist_ok=True)
-
-
-
-        # Maybe delete some older checkpoints.
-        if self.args.should_save:
-            self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
-
+        running_states = load_json(file_path=os.path.join(load_dir, "running_states.json"))
+        return (
+            running_states["epoch"],
+            running_states["step"],
+            running_states["sample_start_index"],
+        )
     def _maybe_log_save_evaluate(self, tr_loss, model, trial, epoch,step, ignore_keys_for_eval):
         # if self.control.should_log:
         #     if is_torch_tpu_available():
@@ -859,9 +932,7 @@ class TrainerCL:
 
         if self.control.should_save:
             self.coordinator.print_on_master("\nStart saving model checkpoint with running states")
-            save_checkpoint(
-                save_dir=self.args.output_dir,
-                booster=self.booster,
+            self._save_checkpoint(
                 model=model,
                 optimizer=self.optimizer,
                 lr_scheduler=self.lr_scheduler,
