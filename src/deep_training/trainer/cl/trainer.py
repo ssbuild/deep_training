@@ -47,6 +47,7 @@ from colossalai.booster.plugin import (
     GeminiPlugin,
     LowLevelZeroPlugin,
     HybridParallelPlugin,
+    TorchDDPPlugin,
 )
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
@@ -235,7 +236,7 @@ class TrainerCL:
     def _setup_plugin(self):
         args = self.args
         mixed_precision = "fp16" if self.args.fp16 else "bf16"
-        plugin_mode,plugin_args = (args.plugin,None) if isinstance(args.plugin,str) else (args.plugin.pop("mode","gemini"),args.plugin)
+        plugin_mode,plugin_args = (args.strategy,None) if isinstance(args.strategy,str) else (args.strategy.pop("mode","gemini"),args.strategy)
 
         if plugin_args:
             plugin_args.update(dict(
@@ -243,7 +244,17 @@ class TrainerCL:
                 max_norm=args.max_grad_norm,
             ))
 
-        if plugin_mode == "gemini":
+        if plugin_mode == "ddp":
+            plugin_args = plugin_args or dict(
+                broadcast_buffers= True,
+                bucket_cap_mb = 25,
+                find_unused_parameters = False,
+                check_reduction = False,
+                gradient_as_bucket_view = False,
+                static_graph = False,
+            )
+            plugin = TorchDDPPlugin(**plugin_args)
+        elif plugin_mode == "gemini":
             plugin_args = plugin_args or dict(
                 precision=mixed_precision,
                 initial_scale=2 ** 16,
@@ -913,6 +924,8 @@ class TrainerCL:
 
             # self._save_checkpoint(model, trial, metrics=metrics)
             self.control = self.callback_handler.on_save(self.args, self.state, self.control)
+
+            self._rotate_checkpoints()
 
 
     def _sorted_checkpoints(

@@ -70,11 +70,11 @@ class TrainingArgumentsCL:
             )
         },
     )
-    plugin: Optional[ Union[str,dict] ] = field(
+    strategy: Optional[ Union[str,dict] ] = field(
         default="gemini",
         metadata={
             "help": (
-                "one of ." "gemini", "gemini_auto", "zero2", "zero2_cpu", "3d"
+                "one of . ddp " "gemini", "gemini_auto", "zero2", "zero2_cpu", "3d"
             )
         },
     )
