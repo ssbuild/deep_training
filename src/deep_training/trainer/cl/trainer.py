@@ -20,6 +20,7 @@ from typing import Union, Optional, Callable, List, Tuple, Dict, Any
 import numpy as np
 from packaging import version
 from datasets import Dataset
+from peft import PeftModel
 from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -35,6 +36,8 @@ from transformers.trainer import OPTIMIZER_NAME, SCALER_NAME, SCHEDULER_NAME, TR
 from transformers.trainer_callback import CallbackHandler, PrinterCallback, TrainerState, TrainerControl
 from transformers.trainer_pt_utils import get_parameter_names, IterableDatasetShard, reissue_pt_warnings
 from transformers.trainer_utils import has_length, PREFIX_CHECKPOINT_DIR, number_of_arguments
+
+from ...nlp.models.petl import PetlModel, PromptModel
 from ...nlp.optimizer.optimizer import OptimizerNames
 from transformers.utils import strtobool, logging
 from torch.optim.optimizer import Optimizer
@@ -56,7 +59,7 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 from colossalai.booster import Booster
 from colossalai.cluster import DistCoordinator
-from colossalai.interface.optimizer import OptimizerWrapper
+from colossalai.interface import ModelWrapper, OptimizerWrapper
 
 
 
@@ -823,7 +826,15 @@ class TrainerCL:
 
         os.makedirs(output_dir, exist_ok=True)
 
-        booster.save_model(model, output_dir, shard=True)
+        if isinstance(model, ModelWrapper):
+            model_unwrap = model.unwrap()
+        else:
+            model_unwrap = model
+
+        if isinstance(model_unwrap.backbone,(PeftModel,PetlModel,PromptModel)):
+            model_unwrap.backbone.save_pretrained(output_dir)
+        else:
+            booster.save_model(model, output_dir, shard=True)
 
         try:
             booster.save_optimizer(optimizer, os.path.join(output_dir, "optimizer"), shard=True)
