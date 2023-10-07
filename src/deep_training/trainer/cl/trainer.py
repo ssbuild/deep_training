@@ -603,7 +603,7 @@ class TrainerCL:
         coordinator = self.coordinator
 
         writer = self.writer
-        booster = self.booster
+
 
         total_train_batch_size = self.args.per_device_train_batch_size * args.gradient_accumulation_steps * self.world_size
 
@@ -662,13 +662,15 @@ class TrainerCL:
         if self.optimizer is None or self.lr_scheduler is None:
             self.create_optimizer_and_scheduler(num_training_steps=max_steps)
 
-        if not isinstance(self.optimizer,OptimizerWrapper):
-            self.optimizer = OptimizerWrapper(self.optimizer)
-        optimizer = self.optimizer
-        lr_scheduler = self.lr_scheduler
         self.setup_model()
 
+        if not isinstance(self.optimizer, OptimizerWrapper):
+            self.optimizer = OptimizerWrapper(self.optimizer)
 
+        booster = self.booster
+        optimizer = self.optimizer
+        lr_scheduler = self.lr_scheduler
+        model = self.model
 
         # Compute absolute values for logging, eval, and save if given as ratio
         if args.logging_steps is not None:
@@ -797,11 +799,14 @@ class TrainerCL:
         run_dir = self._get_output_dir(trial=trial)
         output_dir = os.path.join(run_dir, checkpoint_folder)
 
-        os.makedirs(os.path.join(output_dir, "modeling"), exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
 
-        booster.save_model(model, os.path.join(output_dir, "modeling"), shard=True)
+        booster.save_model(model, output_dir, shard=True)
 
-        booster.save_optimizer(optimizer, os.path.join(output_dir, "optimizer"), shard=True)
+        try:
+            booster.save_optimizer(optimizer, os.path.join(output_dir, "optimizer"), shard=True)
+        except:
+            ...
         booster.save_lr_scheduler(lr_scheduler, os.path.join(output_dir, "lr_scheduler"))
         running_states = {
             "epoch": epoch,
