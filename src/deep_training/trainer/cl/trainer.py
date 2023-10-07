@@ -236,7 +236,7 @@ class TrainerCL:
     def _setup_plugin(self):
         args = self.args
         mixed_precision = "fp16" if self.args.fp16 else "bf16"
-        plugin_mode,plugin_args = (args.strategy,None) if isinstance(args.strategy,str) else (args.strategy.pop("mode","gemini"),args.strategy)
+        plugin_mode,plugin_args = (args.strategy,None) if isinstance(args.strategy,str) else (args.strategy.pop("name","ddp"),args.strategy)
 
         if plugin_args:
             plugin_args.update(dict(
@@ -288,15 +288,15 @@ class TrainerCL:
             plugin = LowLevelZeroPlugin(**plugin_args)
         elif plugin_mode == "3d":
             plugin_args = plugin_args or dict(
-                tp_size=args.tp,
+                tp_size=1,
                 pp_size=1,
-                zero_stage=args.zero,
+                zero_stage=1,
                 max_norm=args.max_grad_norm,
                 precision=mixed_precision,
             )
             plugin = HybridParallelPlugin(**plugin_args)
         else:
-            raise ValueError(f"Unknown plugin {args.plugin}")
+            raise ValueError(f"Unknown plugin {args.strategy}")
 
         return plugin
 

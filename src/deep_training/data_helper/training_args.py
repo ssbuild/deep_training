@@ -70,7 +70,7 @@ class TrainingArgumentsCL:
             )
         },
     )
-    strategy: Optional[ Union[str,dict] ] = field(
+    strategy: Optional[ Union[str,Dict[str,Dict]] ] = field(
         default="gemini",
         metadata={
             "help": (
@@ -78,23 +78,6 @@ class TrainingArgumentsCL:
             )
         },
     )
-    tp: Optional[ int ] = field(
-        default=1,
-        metadata={
-            "help": (
-                "tp."
-            )
-        },
-    )
-    zero: Optional[ int ] = field(
-        default=1,
-        metadata={
-            "help": (
-                "zero."
-            )
-        },
-    )
-
 
     learning_rate_for_task: Optional[ float ] = field(
         default=None,
