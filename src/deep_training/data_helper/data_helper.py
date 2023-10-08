@@ -39,12 +39,12 @@ class DataHelper(DataHelperBase):
     tokenizer: Optional[PreTrainedTokenizer] = None
     config: Optional[PretrainedConfig] = None
     model_args: Optional[ModelArguments] = None
-    training_args: Optional[Union[TrainingArgumentsHF,TrainingArguments]] = None
+    training_args: Optional[Union[TrainingArgumentsHF,TrainingArguments,TrainingArgumentsCL]] = None
     data_args: Optional[DataArguments] = None
 
     def __init__(self,
                  model_args: ModelArguments,
-                 training_args: Optional[Union[TrainingArgumentsHF,TrainingArguments]] = None,
+                 training_args: Optional[Union[TrainingArgumentsHF,TrainingArguments,TrainingArgumentsCL]] = None,
                  data_args: Optional[DataArguments] = None,
                  **kwargs):
 
