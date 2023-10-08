@@ -2,12 +2,14 @@
 # @Time:  11:30
 # @Author: tk
 # @File：configuration.py
-
+import copy
 import json
 import os
 from dataclasses import dataclass, field, asdict
 from typing import Union, Optional, List, Literal, AnyStr
 from transformers.utils import PushToHubMixin
+
+from .....utils.function import copy_dataclass
 from ....layers.petl.constants import WEIGHTS_NAME,SAFETENSORS_WEIGHTS_NAME,CONFIG_NAME
 
 
@@ -28,6 +30,9 @@ class PetlConfigMixin(PushToHubMixin):
 
     def to_dict(self):
         return self.__dict__
+
+    def __deepcopy__(self, memodict={}):
+        return self.__class__(**copy.deepcopy(asdict(self)))
 
     def save_pretrained(self, save_directory, **kwargs):
         r"""
