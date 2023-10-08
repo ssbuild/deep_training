@@ -1,20 +1,22 @@
 # @Time    : 2022/11/17 22:18
 # @Author  : tk
 # @FileName: training_args.py
+import copy
 import math
 import os
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from typing import Optional,Union,List,Dict,Any
 import torch
 from packaging import version
 from transformers import TrainingArguments as TrainingArgumentsHF_, IntervalStrategy, is_torch_available
-from deep_training.nlp.optimizer.optimizer import OptimizerNames
-from deep_training.nlp.scheduler.scheduler import SchedulerType
+
 from transformers.trainer_utils import EvaluationStrategy
 from transformers.training_args import default_logdir
 from transformers.utils import logging
-
+from ..nlp.optimizer.optimizer import OptimizerNames
+from ..nlp.scheduler.scheduler import SchedulerType
+from ..utils.function import copy_dataclass
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -29,10 +31,21 @@ __all__ = [
 
 ]
 
+class _ArgumentsBase:
+    @property
+    def __dict__(self):
+        return asdict(self)
+
+    def to_dict(self):
+        return self.__dict__
+    def __deepcopy__(self, memodict={}):
+        return self.__class__(**copy.deepcopy(asdict(self)))
+
 
 
 @dataclass
-class TrainingArgumentsHF(TrainingArgumentsHF_):
+class TrainingArgumentsHF(TrainingArgumentsHF_,_ArgumentsBase):
+
     data_backend: Optional[str] = field(
         default="record",
         metadata={
@@ -57,7 +70,8 @@ class TrainingArgumentsHF(TrainingArgumentsHF_):
             self.learning_rate_for_task = self.learning_rate
 
 @dataclass
-class TrainingArgumentsCL:
+class TrainingArgumentsCL(_ArgumentsBase):
+
     framework = "pt"
     output_dir: str = field(
         metadata={"help": "The output directory where the model predictions and checkpoints will be written."},
@@ -535,27 +549,8 @@ class TrainingArgumentsCL:
 
 
 
-
-    # @property
-    # def train_batch_size(self) -> int:
-    #     """
-    #     The actual batch size for training (may differ from `per_gpu_train_batch_size` in distributed training).
-    #     """
-    #     per_device_batch_size = self.per_device_train_batch_size
-    #     train_batch_size = per_device_batch_size * max(1, self.n_gpu)
-    #     return train_batch_size
-    #
-    # @property
-    # def eval_batch_size(self) -> int:
-    #     """
-    #     The actual batch size for evaluation (may differ from `per_gpu_eval_batch_size` in distributed training).
-    #     """
-    #     per_device_batch_size = self.per_device_eval_batch_size or self.per_device_eval_batch_size
-    #     eval_batch_size = per_device_batch_size * max(1, self.n_gpu)
-    #     return eval_batch_size
-
 @dataclass
-class ModelArguments:
+class ModelArguments(_ArgumentsBase):
     """
     Arguments pertaining to which model/config/tokenizer we are going to fine-tune, or train from scratch.
     """
@@ -621,7 +616,7 @@ class ModelArguments:
 
 
 @dataclass
-class PrefixModelArguments:
+class PrefixModelArguments(_ArgumentsBase):
     # prompt参数
     prompt_type: int = field(
         default=0,
@@ -652,7 +647,8 @@ class PrefixModelArguments:
 
 
 @dataclass
-class TrainingArguments:
+class TrainingArguments(_ArgumentsBase):
+
     optimizer: str = field(
         default='adamw',
         metadata={"help": "one of lamb,adam,adamw_hf,adamw,adamw_torch,adamw_torch_fused,adamw_torch_xla,adamw_apex_fused,"
@@ -806,7 +802,7 @@ class TrainingArguments:
 
 
 @dataclass
-class DataArguments:
+class DataArguments(_ArgumentsBase):
     """
     Arguments pertaining to what data we are going to input our model for training and eval.
     """
@@ -929,7 +925,7 @@ class DataArguments:
             self.test_max_seq_length = self.max_seq_length
 
 @dataclass
-class MlmDataArguments:
+class MlmDataArguments(_ArgumentsBase):
     do_whole_word_mask: bool = field(
         default=True,
         metadata={

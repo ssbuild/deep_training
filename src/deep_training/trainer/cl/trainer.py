@@ -610,10 +610,6 @@ class TrainerCL:
     def training_step(self, model: nn.Module, inputs: Dict[ str, Union[ torch.Tensor, Any ] ]) -> torch.Tensor:
         batch = {k: v.to(get_current_device()) for k, v in inputs.items() if isinstance(v, torch.Tensor)}
         loss = model(**batch)
-        if isinstance(loss,dict):
-            loss = loss["loss"]
-        elif isinstance(loss,(list,tuple)):
-            loss = loss[0]
         return loss
 
 
@@ -748,7 +744,14 @@ class TrainerCL:
                     if step % args.gradient_accumulation_steps == 0:
                         self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
-                    loss = self.training_step(model, batch)
+                    loss_obj = self.training_step(model, batch)
+                    if isinstance(loss_obj, (list, tuple)):
+                        loss_obj = loss_obj[0]
+
+                    if isinstance(loss_obj, dict):
+                        loss = loss_obj["loss"]
+                    else:
+                        loss = loss_obj
 
                     booster.backward(loss=loss, optimizer=optimizer)
 
@@ -760,7 +763,11 @@ class TrainerCL:
                     pbar.set_postfix({"Loss": f"{loss.item():.4f}"})
                     if coordinator.is_master():
                         global_step = epoch * num_steps_per_epoch + step
-                        writer.add_scalar(tag="Loss", scalar_value=loss.item(), global_step=global_step)
+                        if isinstance(loss_obj,dict):
+                            for k,v in loss_obj.items():
+                                writer.add_scalar(tag=k, scalar_value=v.item(), global_step=global_step)
+                        else:
+                            writer.add_scalar(tag="Loss", scalar_value=loss.item(), global_step=global_step)
                         writer.add_scalar(
                             tag="Learning Rate",
                             scalar_value=lr_scheduler.get_last_lr()[ 0 ],
