@@ -34,7 +34,7 @@ from transformers import TrainerCallback, PreTrainedModel, \
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.trainer_callback import CallbackHandler, PrinterCallback, TrainerState, TrainerControl
 from transformers.trainer_pt_utils import get_parameter_names, IterableDatasetShard, reissue_pt_warnings, \
-    nested_xla_mesh_reduce, smp_gather, distributed_concat, distributed_broadcast_scalars
+    nested_xla_mesh_reduce, distributed_concat, distributed_broadcast_scalars
 from transformers.trainer_utils import has_length, PREFIX_CHECKPOINT_DIR, number_of_arguments
 from transformers.training_args import ParallelMode
 
@@ -48,6 +48,15 @@ from ...data_helper import TrainingArgumentsAC
 if is_peft_available():
     from peft import PeftModel
 
+if is_sagemaker_mp_enabled():
+    import smdistributed.modelparallel.torch as smp
+    from smdistributed.modelparallel import __version__ as SMP_VERSION
+
+    IS_SAGEMAKER_MP_POST_1_10 = version.parse(SMP_VERSION) >= version.parse("1.10")
+
+    from transformers.trainer_pt_utils import smp_forward_backward, smp_forward_only, smp_gather, smp_nested_concat
+else:
+    IS_SAGEMAKER_MP_POST_1_10 = False
 
 if is_accelerate_available():
     from accelerate import Accelerator, skip_first_batches
@@ -609,6 +618,8 @@ class TrainerAC:
 
         len_dataloader = None
         num_train_tokens = None
+
+        include_tokens_per_second = getattr(args,"include_tokens_per_second",False)
         if has_length(train_dataloader):
             len_dataloader = len(train_dataloader)
             num_update_steps_per_epoch = len_dataloader // args.gradient_accumulation_steps
@@ -622,7 +633,7 @@ class TrainerAC:
                 # May be slightly incorrect if the last batch in the training dataloader has a smaller size but it's
                 # the best we can do.
                 num_train_samples = args.max_steps * total_train_batch_size
-                if args.include_tokens_per_second:
+                if include_tokens_per_second:
                     num_train_tokens = (
                         self.num_tokens(train_dataloader, args.max_steps) * args.gradient_accumulation_steps
                     )
@@ -630,7 +641,7 @@ class TrainerAC:
                 max_steps = math.ceil(args.num_train_epochs * num_update_steps_per_epoch)
                 num_train_epochs = math.ceil(args.num_train_epochs)
                 num_train_samples = self.num_examples(train_dataloader) * args.num_train_epochs
-                if args.include_tokens_per_second:
+                if include_tokens_per_second:
                     num_train_tokens = self.num_tokens(train_dataloader) * args.num_train_epochs
         elif args.max_steps > 0:  # Rely on max_steps when dataloader does not have a working size
             max_steps = args.max_steps
@@ -639,7 +650,7 @@ class TrainerAC:
             num_update_steps_per_epoch = max_steps
             num_examples = total_train_batch_size * args.max_steps
             num_train_samples = args.max_steps * total_train_batch_size
-            if args.include_tokens_per_second:
+            if include_tokens_per_second:
                 num_train_tokens = self.num_tokens(train_dataloader, args.max_steps) * args.gradient_accumulation_steps
         else:
             raise ValueError(
