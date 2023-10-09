@@ -23,6 +23,7 @@ __all__ = [
     "load_configure",
 ]
 
+TRAINING_ARGS_DTYPE = Optional[Union[TrainingArgumentsHF,TrainingArguments,TrainingArgumentsCL,TrainingArgumentsAC]]
 def get_filename_no_ext(filename):
     filename = os.path.basename(filename)
     pos = filename.rfind('.')
@@ -39,12 +40,12 @@ class DataHelper(DataHelperBase):
     tokenizer: Optional[PreTrainedTokenizer] = None
     config: Optional[PretrainedConfig] = None
     model_args: Optional[ModelArguments] = None
-    training_args: Optional[Union[TrainingArgumentsHF,TrainingArguments,TrainingArgumentsCL]] = None
+    training_args: TRAINING_ARGS_DTYPE = None
     data_args: Optional[DataArguments] = None
 
     def __init__(self,
                  model_args: ModelArguments,
-                 training_args: Optional[Union[TrainingArgumentsHF,TrainingArguments,TrainingArgumentsCL]] = None,
+                 training_args: TRAINING_ARGS_DTYPE = None,
                  data_args: Optional[DataArguments] = None,
                  **kwargs):
 
