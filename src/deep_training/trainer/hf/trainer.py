@@ -98,7 +98,7 @@ class TrainerHF(Trainer):
             labels = inputs.pop("labels")
         else:
             labels = None
-        outputs = model.compute_loss(**inputs)
+        outputs = model(**inputs)
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
         if self.args.past_index >= 0:
