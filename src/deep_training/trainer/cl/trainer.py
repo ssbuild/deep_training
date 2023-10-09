@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Union, Optional, Callable, List, Tuple, Dict, Any
 
 import numpy as np
+from lightning_utilities import apply_to_collection
 from packaging import version
 from datasets import Dataset
 from peft import PeftModel
@@ -756,9 +757,11 @@ class TrainerCL:
 
                     booster.backward(loss=loss, optimizer=optimizer)
 
-
-
                     all_reduce_mean(tensor=loss)
+
+                    loss_obj = apply_to_collection(loss_obj, dtype=torch.Tensor, function=lambda x: x.detach())
+                    loss = loss.detach()
+
                     pbar.set_postfix({"Loss": f"{loss.item():.4f}"})
                     if coordinator.is_master():
                         global_step = epoch * num_steps_per_epoch + step
