@@ -752,7 +752,7 @@ class TrainerAC:
 
                     self.accelerator.backward(loss=tr_loss_step)
 
-                    tr_loss_step = tr_loss_step / args.gradient_accumulation_steps
+                    tr_loss_step = tr_loss_step.detach() / args.gradient_accumulation_steps
 
                     if (
                             args.logging_nan_inf_filter
