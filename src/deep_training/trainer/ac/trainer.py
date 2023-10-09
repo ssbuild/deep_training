@@ -18,7 +18,8 @@ from pathlib import Path
 from typing import Union, Optional, Callable, List, Tuple, Dict, Any
 import numpy as np
 import accelerate
-from accelerate import Accelerator
+from accelerate import Accelerator, DistributedType
+from accelerate.checkpointing import save_accelerator_state, save_custom_state
 from accelerate.utils import GradientAccumulationPlugin, is_deepspeed_available
 from packaging import version
 from datasets import Dataset
@@ -847,8 +848,61 @@ class TrainerAC:
             "step": step,
             "sample_start_index": step * batch_size,
         }
-        self.accelerator.save_state(output_dir,**running_states)
+        # self.accelerator.save_state(output_dir,**running_states)
+        self._save_state(output_dir,**running_states)
+    
+    def _save_state(self,output_dir,**save_model_func_kwargs):
 
+        # Save the models taking care of FSDP and DeepSpeed nuances
+        weights = []
+        for i, model in enumerate(self.accelerator._models):
+            if self.accelerator.distributed_type == DistributedType.FSDP:
+                logger.info("Saving FSDP model")
+                # save_fsdp_model(self.accelerator.state.fsdp_plugin, self, model, output_dir, i)
+                logger.info(f"FSDP Model saved to output dir {output_dir}")
+            elif self.accelerator.distributed_type == DistributedType.DEEPSPEED:
+                logger.info("Saving DeepSpeed Model and Optimizer")
+                # ckpt_id = f"{MODEL_NAME}" if i == 0 else f"{MODEL_NAME}_{i}"
+                # model.save_checkpoint(output_dir, ckpt_id, **save_model_func_kwargs)
+                logger.info(f"DeepSpeed Model and Optimizer saved to output dir {output_dir}")
+            elif self.accelerator.distributed_type == DistributedType.MEGATRON_LM:
+                logger.info("Saving Megatron-LM Model, Optimizer and Scheduler")
+                # model.save_checkpoint(output_dir)
+                logger.info(f"Megatron-LM Model , Optimizer and Scheduler saved to output dir {output_dir}")
+            else:
+                pass
+                # weights.append(self.accelerator.get_state_dict(model, unwrap=False))
+
+        # Save the optimizers taking care of FSDP and DeepSpeed nuances
+        optimizers = []
+        if self.accelerator.distributed_type == DistributedType.FSDP:
+            for opt in self.accelerator._optimizers:
+                logger.info("Saving FSDP Optimizer")
+                save_fsdp_optimizer(self.accelerator.state.fsdp_plugin, self, opt, self.accelerator._models[i], output_dir, i)
+                logger.info(f"FSDP Optimizer saved to output dir {output_dir}")
+        elif self.accelerator.distributed_type not in [DistributedType.DEEPSPEED, DistributedType.MEGATRON_LM]:
+            optimizers = self.accelerator._optimizers
+
+        # Save the lr schedulers taking care of DeepSpeed nuances
+        schedulers = []
+        if self.accelerator.distributed_type == DistributedType.DEEPSPEED:
+            for i, scheduler in enumerate(self.accelerator._schedulers):
+                if isinstance(scheduler, DeepSpeedSchedulerWrapper):
+                    continue
+                schedulers.append(scheduler)
+        elif self.accelerator.distributed_type not in [DistributedType.MEGATRON_LM]:
+            schedulers = self.accelerator._schedulers
+
+        # Call model loading hooks that might have been registered with
+        # accelerator.register_model_state_hook
+        for hook in self.accelerator._save_model_state_pre_hook.values():
+            hook(self.accelerator._models, weights, output_dir)
+
+        save_location = save_accelerator_state(
+            output_dir, weights, optimizers, schedulers, self.accelerator.state.process_index, self.accelerator.scaler
+        )
+        for i, obj in enumerate(self.accelerator._custom_objects):
+            save_custom_state(obj, output_dir, i)
     def _get_learning_rate(self):
         if self.is_deepspeed_enabled:
             # with deepspeed's fp16 and dynamic loss scale enabled the optimizer/scheduler steps may
