@@ -191,6 +191,8 @@ def get_optimizer_cls_and_kwargs(optimizer_name,args) -> typing.Tuple[typing.Any
             raise ValueError("Please install https://github.com/pytorch/torchdistx")
     elif optimizer_name == OptimizerNames.SGD:
         optimizer_cls = torch.optim.SGD
+    elif optimizer_name == OptimizerNames.RMSPROP:
+        optimizer_cls = torch.optim.RMSprop
     elif optimizer_name == OptimizerNames.ADAGRAD:
         optimizer_cls = torch.optim.Adagrad
     else:

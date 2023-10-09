@@ -17,7 +17,6 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import Union, Optional, Callable, List, Tuple, Dict, Any
 import numpy as np
-import accelerate
 from accelerate import Accelerator, DistributedType
 from accelerate.checkpointing import save_accelerator_state, save_custom_state
 from accelerate.utils import GradientAccumulationPlugin, is_deepspeed_available
@@ -571,8 +570,18 @@ class TrainerAC:
     def training_step(self, model: nn.Module, inputs: Dict[ str, Union[ torch.Tensor, Any ] ]) -> torch.Tensor:
         device = torch.cuda.current_device()
         batch = {k: v.to(device) for k, v in inputs.items() if isinstance(v, torch.Tensor)}
-        loss = model(**batch)
-        return loss
+        loss_obj = model(**batch)
+
+        if isinstance(loss_obj, (list, tuple)):
+            loss_obj = loss_obj[ 0 ]
+
+        if isinstance(loss_obj, dict):
+            tr_loss_step = loss_obj[ "loss" ]
+        else:
+            tr_loss_step = loss_obj
+
+        self.accelerator.backward(loss=tr_loss_step)
+        return tr_loss_step.detach() / self.args.gradient_accumulation_steps
 
     def floating_point_ops(self, inputs: Dict[str, Union[torch.Tensor, Any]]):
         """
@@ -729,6 +738,7 @@ class TrainerAC:
             )
             self.control = self.callback_handler.on_epoch_begin(args, self.state, self.control)
             step = -1
+            model.train()
             with tqdm(
                     iterable=enumerate(train_dataloader, start=start_step),
                     desc=f"Epoch {epoch}",
@@ -741,18 +751,7 @@ class TrainerAC:
                     if step % args.gradient_accumulation_steps == 0:
                         self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
                     with self.accelerator.accumulate(model):
-                        loss_obj = self.training_step(model, batch)
-                    if isinstance(loss_obj, (list, tuple)):
-                        loss_obj = loss_obj[0]
-
-                    if isinstance(loss_obj, dict):
-                        tr_loss_step = loss_obj["loss"]
-                    else:
-                        tr_loss_step = loss_obj
-
-                    self.accelerator.backward(loss=tr_loss_step)
-
-                    tr_loss_step = tr_loss_step.detach() / args.gradient_accumulation_steps
+                        tr_loss_step = self.training_step(model, batch)
 
                     if (
                             args.logging_nan_inf_filter
