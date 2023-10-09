@@ -791,10 +791,12 @@ class TrainerAC:
 
                     else:
                         self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
-
+                    # Delete CUDA cache.
+                    # del batch, batch_labels, batch_output, loss
+                    torch.cuda.empty_cache()
                     if self.control.should_epoch_stop or self.control.should_training_stop:
                         break
-                torch.cuda.empty_cache()
+
                 if step < 0:
                     logger.warning(
                         "There seems to be not a single sample in your epoch_iterator, stopping training at step"
