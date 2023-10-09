@@ -9,7 +9,7 @@ import os
 import typing
 from typing import Optional, Union
 from transformers import PreTrainedTokenizer, PretrainedConfig
-from .training_args import ModelArguments, DataArguments, TrainingArguments,TrainingArgumentsHF,TrainingArgumentsCL
+from .training_args import ModelArguments, DataArguments, TrainingArguments,TrainingArgumentsHF,TrainingArgumentsCL,TrainingArgumentsAC
 from ..utils.func import is_chinese_char
 from numpy_io.pytorch_loader.data_helper import DataHelperBase,load_tokenizer, load_configure
 from numpy_io.core.writer import DataWriteHelper

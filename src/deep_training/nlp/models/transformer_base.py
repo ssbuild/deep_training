@@ -16,7 +16,7 @@ from transformers import (
 from ..utils import configure_optimizers, get_value_from_args_assert, get_value_from_args
 from ..utils.adversarial import AdversarialMethods
 from ...data_helper import TrainingArguments, ModelArguments, PrefixModelArguments, DataArguments, TrainingArgumentsHF, \
-    TrainingArgumentsCL
+    TrainingArgumentsCL, TrainingArgumentsAC
 
 
 def verify_manual_optimization_support(trainer: "pl.Trainer", model: "pl.LightningModule") -> None:
@@ -154,6 +154,7 @@ class TransformerBase(MyLightningModule, metaclass=TransformerFakeMeta):
                              not isinstance(v, TrainingArguments) and \
                              not isinstance(v, TrainingArgumentsHF) and \
                              not isinstance(v, TrainingArgumentsCL) and \
+                             not isinstance(v, TrainingArgumentsAC) and \
                              not isinstance(v,PretrainedConfig) and \
                              not isinstance(v,PrefixModelArguments) and \
                              not isinstance(v,DataArguments)
@@ -163,6 +164,7 @@ class TransformerBase(MyLightningModule, metaclass=TransformerFakeMeta):
                           not isinstance(v, TrainingArguments) and \
                           not isinstance(v, TrainingArgumentsHF) and \
                           not isinstance(v, TrainingArgumentsCL) and \
+                          not isinstance(v, TrainingArgumentsAC) and \
                           not isinstance(v, PretrainedConfig) and \
                           not isinstance(v, PrefixModelArguments) and \
                           not isinstance(v, DataArguments)
@@ -230,7 +232,7 @@ class TransformerLightningModule(MyLightningModule):
     def __init__(self, *args,**kwargs):
         config = get_value_from_args_assert('config',PretrainedConfig,*args,**kwargs)
         model_args = get_value_from_args_assert('model_args', ModelArguments, *args, **kwargs)
-        training_args = get_value_from_args('training_args', (TrainingArguments,TrainingArgumentsHF,TrainingArgumentsCL), *args, **kwargs)
+        training_args = get_value_from_args('training_args', (TrainingArguments,TrainingArgumentsHF,TrainingArgumentsCL,TrainingArgumentsAC), *args, **kwargs)
 
         super(TransformerLightningModule, self).__init__()
         if not hasattr(config, 'task_specific_params') or config.task_specific_params is None:
