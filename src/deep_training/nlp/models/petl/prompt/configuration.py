@@ -2,6 +2,7 @@
 # @Time:  11:30
 # @Author: tk
 # @File：configuration.py
+import copy
 import enum
 import json
 import os
@@ -38,6 +39,9 @@ class PromptConfigMixin(PushToHubMixin):
     @property
     def __dict__(self):
         return asdict(self)
+
+    def __deepcopy__(self, memodict={}):
+        return self.__class__(**copy.deepcopy(asdict(self)))
 
     def to_dict(self):
         return self.__dict__
