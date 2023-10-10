@@ -1,5 +1,6 @@
 # coding=utf-8
 # Copyright 2020-present the HuggingFace Inc. team.
+import dataclasses
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -8,7 +9,6 @@ from typing import Union, Iterable, List, Optional, Dict, Callable, Tuple
 import safetensors
 import torch
 from accelerate.utils import save_fsdp_model
-from peft import PeftModel
 from torch import nn
 from torch.nn import functional as F
 from datasets import Dataset
@@ -21,7 +21,7 @@ from transformers.modeling_utils import unwrap_model
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.trainer import IS_SAGEMAKER_MP_POST_1_10, TRAINING_ARGS_NAME
-from transformers.trainer_pt_utils import remove_dummy_checkpoint, get_parameter_names
+from transformers.trainer_pt_utils import get_parameter_names
 from transformers.trainer_utils import ShardedDDPOption, FSDPOption, IntervalStrategy
 from transformers.utils import is_peft_available, WEIGHTS_NAME, SAFE_WEIGHTS_NAME, is_sagemaker_mp_enabled, \
     is_accelerate_available
@@ -33,6 +33,8 @@ from ...nlp.models.petl.prompt import PromptModel
 
 from transformers.trainer import logger
 
+if is_peft_available:
+    from peft import PeftModel
 
 if is_accelerate_available():
     from accelerate import __version__ as accelerate_version
@@ -43,6 +45,17 @@ if is_fairscale_available():
 
 if is_sagemaker_mp_enabled():
     import smdistributed.modelparallel.torch as smp
+
+
+try:
+    from transformers.trainer_pt_utils import remove_dummy_checkpoint
+except:
+    def remove_dummy_checkpoint(is_main_process, output_dir, filenames):
+        if is_main_process:
+            for filename in filenames:
+                file = os.path.join(output_dir, filename)
+                if os.path.isfile(file):
+                    os.remove(file)
 
 class TrainerHF(Trainer):
     def __init__(self,
@@ -105,7 +118,12 @@ class TrainerHF(Trainer):
             self._past = outputs[self.args.past_index]
 
         if labels is not None:
-            if is_peft_available() and isinstance(model, (PeftModel,PetlModel,PromptModel)):
+            if not is_peft_available():
+                supported_classes = (PetlModel, PromptModel)
+                if is_peft_available():
+                    supported_classes += (PeftModel,)
+
+            if isinstance(model, supported_classes):
                 model_name = unwrap_model(model.base_model)._get_name()
             else:
                 model_name = unwrap_model(model)._get_name()
@@ -114,10 +132,10 @@ class TrainerHF(Trainer):
             else:
                 loss = self.label_smoother(outputs, labels)
         else:
-            if isinstance(outputs,tuple):
+            if dataclasses.is_dataclass(outputs):
+                loss = outputs.loss
+            elif isinstance(outputs,(tuple,list)):
                 loss = outputs[0]
-                if isinstance(loss,dict):
-                    loss = loss["loss"]
             elif isinstance(outputs, dict) and "loss" not in outputs:
                 raise ValueError(
                     "The model did not return a loss from the inputs, only the following keys: "
@@ -127,6 +145,8 @@ class TrainerHF(Trainer):
                 # We don't use .loss here since the model may return tuples instead of ModelOutput.
                 loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
 
+            if isinstance(loss, dict):
+                loss = loss["loss"]
         return (loss, outputs) if return_outputs else loss
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):

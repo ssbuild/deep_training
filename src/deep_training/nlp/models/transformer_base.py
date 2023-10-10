@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/4/11 14:35
-
+import dataclasses
 import sys
 from functools import partial
 from typing import Any, IO, Union, Optional, Dict
@@ -12,6 +12,7 @@ from torch import nn, Tensor
 from transformers import (
     PretrainedConfig,
 )
+from transformers.modeling_outputs import CausalLMOutputWithPast
 
 from ..utils import configure_optimizers, get_value_from_args_assert, get_value_from_args
 from ..utils.adversarial import AdversarialMethods
@@ -569,7 +570,9 @@ class TransformerLightningModule(MyLightningModule):
         return loss
 
     def on_train_batch_end(self, outputs: STEP_OUTPUT, batch: Any, batch_idx: int) -> None:
-        if isinstance(outputs, dict):
+        if dataclasses.is_dataclass(outputs):
+            self.log('loss', outputs.loss, prog_bar=True)
+        elif isinstance(outputs, dict):
             self.log_dict(outputs, prog_bar=True)
         else:
             self.log('loss', outputs, prog_bar=True)
@@ -578,7 +581,9 @@ class TransformerLightningModule(MyLightningModule):
         if not isinstance(batch, dict):
             batch = dict(batch)
         outputs = self.compute_loss(**batch)
-        if isinstance(outputs,tuple):
+        if dataclasses.is_dataclass(outputs):
+            return outputs.loss
+        if isinstance(outputs,(tuple,list)):
             return outputs[0]
         return outputs
 
@@ -587,7 +592,7 @@ class TransformerLightningModule(MyLightningModule):
             batch = dict(batch)
         outputs = self.compute_loss(**batch)
         outputs = apply_to_collection(outputs,dtype=torch.Tensor, function=lambda x: x.detach().numpy())
-        if isinstance(outputs, tuple):
+        if isinstance(outputs, (tuple, list)):
             outputs = {
                 "loss": outputs[0],
                 "outputs": outputs[1:]
@@ -599,7 +604,7 @@ class TransformerLightningModule(MyLightningModule):
             batch = dict(batch)
         outputs = self.compute_loss(**batch)
         outputs = apply_to_collection(outputs,dtype=torch.Tensor, function=lambda x: x.detach().numpy())
-        if isinstance(outputs,tuple):
+        if isinstance(outputs, (tuple, list)):
             outputs = {
                 "outputs": outputs
             }
