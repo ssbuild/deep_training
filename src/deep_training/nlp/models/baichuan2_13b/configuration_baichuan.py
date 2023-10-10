@@ -40,7 +40,7 @@ class BaichuanConfig(PretrainedConfig):
         self.rms_norm_eps = rms_norm_eps
         self.use_cache = use_cache
         self.z_loss_weight = z_loss_weight
-        self.gradient_checkpointing = (gradient_checkpointing,)
+        self.gradient_checkpointing = gradient_checkpointing
         self.quantization_method = quantization_method
         self.quantization_bit = quantization_bit
         super().__init__(

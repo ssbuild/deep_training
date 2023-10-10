@@ -10,16 +10,21 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from .petl_model_internel import PetlModelAbstract
-from ....layers.petl.ia3.ia3 import IA3Layer, Linear4bit, Linear, Linear8bitLt
+from ....layers.petl.ia3.layer import IA3Layer, Linear, is_bnb_4bit_available,Conv2d
+from ....layers.petl.petl_layer import check_target_module_exists
 from ....layers.petl.utils import transpose, is_bnb_available, _get_submodules, ModulesToSaveWrapper, \
     _is_valid_match, TRANSFORMERS_MODELS_TO_IA3_TARGET_MODULES_MAPPING, \
     TRANSFORMERS_MODELS_TO_IA3_FEEDFORWARD_MODULES_MAPPING
 from transformers.pytorch_utils import Conv1D
 
+
 if is_bnb_available():
     import bitsandbytes as bnb
 
+    from ....layers.petl.ia3.bnb import Linear8bitLt
 
+if is_bnb_4bit_available():
+    from ....layers.petl.ia3.bnb import Linear4bit
 
 class IA3Module(PetlModelAbstract):
     """
@@ -66,7 +71,6 @@ class IA3Module(PetlModelAbstract):
                          use_input_require_grads=use_input_require_grads,
                          use_gradient_checkpointing=use_gradient_checkpointing)
 
-
     @staticmethod
     def _create_new_module(ia3_config, adapter_name, target, **kwargs):
         bias = hasattr(target, "bias") and target.bias is not None
@@ -109,9 +113,22 @@ class IA3Module(PetlModelAbstract):
                 bias=bias,
                 **fourbit_kwargs,
             )
+        elif isinstance(target, torch.nn.Conv2d):
+            out_channels, in_channels = target.weight.size()[:2]
+            kernel_size = target.weight.size()[2:]
+            stride = target.stride
+            padding = target.padding
+            new_module = Conv2d(
+                adapter_name=adapter_name,
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=padding,
+                is_feedforward=is_feedforward,
+                **kwargs,
+            )
         else:
-            #  Create a new Linear module with (IA)^3 parameters for torch.nn.Linear
-            # or Conv1D modules
             if isinstance(target, torch.nn.Linear):
                 in_features, out_features = target.in_features, target.out_features
                 if kwargs["fan_in_fan_out"]:
@@ -133,7 +150,7 @@ class IA3Module(PetlModelAbstract):
             else:
                 raise ValueError(
                     f"Target module {target} is not supported. "
-                    f"Currently, only `torch.nn.Linear` and `Conv1D` are supported."
+                    f"Currently, only `torch.nn.Linear`, `torch.nn.Conv2d`, and `Conv1D` are supported."
                 )
             new_module = Linear(
                 adapter_name, in_features, out_features, is_feedforward=is_feedforward, bias=bias, **kwargs
@@ -142,11 +159,7 @@ class IA3Module(PetlModelAbstract):
 
     @staticmethod
     def _check_target_module_exists(ia3_config, key):
-        if isinstance(ia3_config.target_modules, str):
-            target_module_found = re.fullmatch(ia3_config.target_modules, key)
-        else:
-            target_module_found = any(_is_valid_match(key, target_key) for target_key in ia3_config.target_modules)
-        return target_module_found
+        return check_target_module_exists(ia3_config, key)
 
     def _mark_only_adapters_as_trainable(self) -> None:
         for n, p in self.model.named_parameters():
@@ -154,13 +167,13 @@ class IA3Module(PetlModelAbstract):
                 p.requires_grad = False
 
     def _create_and_replace(
-        self,
-        ia3_config,
-        adapter_name,
-        target,
-        target_name,
-        parent,
-        **optional_kwargs,
+            self,
+            ia3_config,
+            adapter_name,
+            target,
+            target_name,
+            parent,
+            **optional_kwargs,
     ):
         loaded_in_8bit = optional_kwargs["loaded_in_8bit"]
         loaded_in_4bit = optional_kwargs["loaded_in_4bit"]
@@ -181,10 +194,20 @@ class IA3Module(PetlModelAbstract):
         }
 
         if isinstance(target, IA3Layer):
-            target.update_layer(
-                adapter_name,
-                ia3_config.init_ia3_weights,
-            )
+            if target.is_feedforward != is_feedforward:
+                raise ValueError(
+                    "New adapter should have the same value for `is_feedforward` as previously added adapter."
+                )
+            if isinstance(target, torch.nn.Conv2d):
+                target.update_layer_conv2d(
+                    adapter_name,
+                    ia3_config.init_ia3_weights,
+                )
+            else:  # Linear
+                target.update_layer(
+                    adapter_name,
+                    ia3_config.init_ia3_weights,
+                )
         else:
             new_module = self._create_new_module(ia3_config, adapter_name, target, **kwargs)
             if adapter_name != self.active_adapter:
@@ -257,14 +280,17 @@ class IA3Module(PetlModelAbstract):
             ]
         return petl_config
 
-    def merge_and_unload(self):
+    def merge_and_unload(self, safe_merge: bool = False):
         r"""
         This method merges the (IA)^3 layers into the base model. This is needed if someone wants to use the base model
         as a standalone model.
-        """
-        if getattr(self.config, "model_type", None) == "gpt2":
-            raise ValueError("GPT2 models are not supported for merging ia3 layers")
 
+        Args:
+            safe_merge (`bool`, `optional`, defaults to `False`):
+                If True, the merge operation will be performed in a copy of the original weights and check for NaNs
+                before merging the weights. This is useful if you want to check if the merge operation will produce
+                NaNs. Defaults to `False`.
+        """
         if getattr(self.model, "is_loaded_in_8bit", False):
             raise ValueError("Cannot merge ia3 layers when the model is loaded in 8-bit mode")
 
@@ -277,14 +303,29 @@ class IA3Module(PetlModelAbstract):
                 parent, target, target_name = _get_submodules(self.model, key)
             except AttributeError:
                 continue
-            if isinstance(target, IA3Layer):
-                bias = target.bias is not None
-                new_module = torch.nn.Linear(target.in_features, target.out_features, bias=bias)
-                target.merge()
-                self._replace_module(parent, target_name, new_module, target)
 
             # save any additional trainable modules part of `modules_to_save`
             if isinstance(target, ModulesToSaveWrapper):
                 setattr(parent, target_name, target.modules_to_save[target.active_adapter])
+                continue
+
+            if not isinstance(target, IA3Layer):
+                continue
+
+            if isinstance(target, torch.nn.Conv2d):
+                new_module = torch.nn.Conv2d(
+                    target.in_channels,
+                    target.out_channels,
+                    kernel_size=target.kernel_size,
+                    stride=target.stride,
+                    padding=target.padding,
+                    dilation=target.dilation,
+                )
+            else:
+                bias = target.bias is not None
+                new_module = torch.nn.Linear(target.in_features, target.out_features, bias=bias)
+
+            target.merge(safe_merge=safe_merge)
+            self._replace_module(parent, target_name, new_module, target)
 
         return self.model

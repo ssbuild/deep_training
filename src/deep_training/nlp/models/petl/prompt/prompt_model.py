@@ -5,15 +5,17 @@
 import copy
 import inspect
 import os
-import typing
 import warnings
 from contextlib import contextmanager
+from typing import Callable, Optional, List
+
 import torch
 from torch.nn import MSELoss, CrossEntropyLoss, BCEWithLogitsLoss
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import SequenceClassifierOutput, TokenClassifierOutput
 from transformers.utils import PushToHubMixin
-
+from safetensors.torch import save_file as safe_save_file
+from ....layers.petl.constants import SAFETENSORS_WEIGHTS_NAME
 from .....utils.function import copy_dataclass
 from .configuration import PromptLearningConfig, PromptType, PromptBaseArguments, PROMPT_TYPE_TO_CONFIG_MAPPING, \
     WEIGHTS_NAME, TaskType
@@ -83,7 +85,10 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
 
         return self.base_model if isinstance(self.base_model, PreTrainedModel) else self.base_model.model
 
-    def save_pretrained(self, save_directory, **kwargs):
+    def save_pretrained(self, save_directory,
+                        safe_serialization=False,
+                        selected_adapters: Optional[List[str]] = None,
+                        **kwargs):
         r"""
         This function saves the adapter model and the adapter configuration files to a directory, so that it can be
         reloaded using the [`LoraModel.from_pretrained`] class method, and also used by the [`LoraModel.push_to_hub`]
@@ -100,14 +105,36 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
             raise ValueError(f"Provided path ({save_directory}) should be a directory, not a file")
         os.makedirs(save_directory, exist_ok=True)
 
-        for adapter_name, prompt_config in self.prompt_config.items():
+        if selected_adapters is None:
+            selected_adapters = list(self.prompt_config.keys())
+        else:
+            if any(
+                    selected_adapter_name not in list(self.prompt_config.keys())
+                    for selected_adapter_name in selected_adapters
+            ):
+                raise ValueError(
+                    f"You passed an invalid `selected_adapters` arguments, current supported adapter names are"
+                    f" {list(self.prompt_config.keys())} - got {selected_adapters}."
+                )
+
+        for adapter_name in selected_adapters:
+            prompt_config = self.prompt_config[adapter_name]
             # save only the trainable weights
             output_state_dict = get_prompt_model_state_dict(
                 self, state_dict=kwargs.get("state_dict", None), adapter_name=adapter_name
             )
             output_dir = os.path.join(save_directory, adapter_name) if adapter_name != "default" else save_directory
             os.makedirs(output_dir, exist_ok=True)
-            torch.save(output_state_dict, os.path.join(output_dir, WEIGHTS_NAME))
+
+            if safe_serialization:
+                safe_save_file(
+                    output_state_dict,
+                    os.path.join(output_dir, SAFETENSORS_WEIGHTS_NAME),
+                    metadata={"format": "pt"},
+                )
+            else:
+                torch.save(output_state_dict, os.path.join(output_dir, WEIGHTS_NAME))
+
 
             # save the config and change the inference mode to `True`
             if prompt_config.base_model_name_or_path is None:
@@ -361,7 +388,7 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
     def load_adapter(self, model_id, adapter_name,
                      config=None,
                      is_trainable=False,strict=False,
-                     map_preprocess: typing.Optional[typing.Callable]=None,**kwargs):
+                     map_preprocess: Optional[Callable]=None,**kwargs):
         if adapter_name not in self.prompt_config:
             if config is None:
                 # load the config

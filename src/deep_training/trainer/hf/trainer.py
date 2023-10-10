@@ -118,10 +118,9 @@ class TrainerHF(Trainer):
             self._past = outputs[self.args.past_index]
 
         if labels is not None:
-            if not is_peft_available():
-                supported_classes = (PetlModel, PromptModel)
-                if is_peft_available():
-                    supported_classes += (PeftModel,)
+            supported_classes = (PetlModel, PromptModel)
+            if is_peft_available():
+                supported_classes += (PeftModel,)
 
             if isinstance(model, supported_classes):
                 model_name = unwrap_model(model.base_model)._get_name()
@@ -156,7 +155,7 @@ class TrainerHF(Trainer):
         logger.info(f"Saving model checkpoint to {output_dir}")
 
         supported_classes = (PreTrainedModel,PetlModel,PromptModel)
-        if not is_peft_available():
+        if is_peft_available():
             supported_classes += (PeftModel,)
 
         model = self.model
