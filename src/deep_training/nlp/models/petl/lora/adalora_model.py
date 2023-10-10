@@ -5,11 +5,9 @@
 import re
 import warnings
 import torch
-from torch import nn
 from transformers import Conv1D
-from .configuration import COMMON_LAYERS_PATTERN
-from ....layers.petl.lora.layers import mark_only_lora_as_trainable, is_bnb_available, LoraLayer, is_bnb_4bit_available
-from ....layers.petl.lora.adalora import RankAllocator, SVDLinear, SVDLinear4bit, SVDQuantLinear, AdaLoraLayer
+from ....layers.petl.lora.layer import mark_only_lora_as_trainable, is_bnb_available, LoraLayer, is_bnb_4bit_available
+from ....layers.petl.adalora.layer import RankAllocator, SVDLinear,  AdaLoraLayer
 from ....layers.petl.utils import _freeze_adapter, _get_submodules, \
     TRANSFORMERS_MODELS_TO_ADALORA_TARGET_MODULES_MAPPING, prepare_model_for_kbit_training, get_quantization_config, \
     get_auto_gptq_quant_linear
@@ -20,12 +18,13 @@ __all__ = [
     'AdaLoraModule'
 ]
 
-
+from ....layers.petl.adalora.gptq import SVDQuantLinear
 
 if is_bnb_available():
     import bitsandbytes as bnb
-    from ....layers.petl.lora.adalora import SVDLinear8bitLt
-
+    from ....layers.petl.adalora.bnb import SVDLinear8bitLt
+if is_bnb_4bit_available():
+    from ....layers.petl.adalora.bnb import SVDLinear4bit
 
 class AdaLoraModule(LoraModule):
     """
@@ -215,8 +214,9 @@ class AdaLoraModule(LoraModule):
         try:
             return super().__getattr__(name)  # defer to nn.Module's logic
         except AttributeError:
-            return getattr(self.model, name)
-
+            if hasattr(self.model, name):
+                return getattr(self.model, name)
+            return getattr(self.model.model, name)
     def forward(self, *args, **kwargs):
         outputs = self.model.forward(*args, **kwargs)
 
