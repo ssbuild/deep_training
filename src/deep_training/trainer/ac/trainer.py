@@ -2,6 +2,8 @@
 # @Time:  0:37
 # @Author: tk
 # @File：trainer
+import contextlib
+import dataclasses
 import importlib
 import json
 import argparse
@@ -143,6 +145,7 @@ class TrainerAC:
         self.optimizer, self.lr_scheduler = optimizers
 
         self.current_flos = 0
+        self.use_cpu_amp = False
 
         # Activate gradient checkpointing if needed
         if args.gradient_checkpointing:
@@ -567,18 +570,42 @@ class TrainerAC:
         **kwargs,):
         self._train_loop(start_epoch=start_epoch,start_step=start_step,trial=trial,ignore_keys_for_eval=ignore_keys_for_eval,**kwargs)
 
+    def compute_loss_context_manager(self):
+        """
+        A helper wrapper to group together context managers.
+        """
+        return self.autocast_smart_context_manager()
+
+    def autocast_smart_context_manager(self, cache_enabled: Optional[bool] = True):
+        """
+        A helper wrapper that creates an appropriate context manager for `autocast` while feeding it the desired
+        arguments, depending on the situation.
+        """
+        if self.use_cpu_amp:
+            ctx_manager = torch.cpu.amp.autocast(cache_enabled=cache_enabled, dtype=self.amp_dtype)
+        else:
+            ctx_manager = contextlib.nullcontext()
+
+        return ctx_manager
+
     def training_step(self, model: nn.Module, inputs: Dict[ str, Union[ torch.Tensor, Any ] ]) -> torch.Tensor:
         device = torch.cuda.current_device()
         batch = {k: v.to(device) for k, v in inputs.items() if isinstance(v, torch.Tensor)}
-        loss_obj = model(**batch)
+        with self.compute_loss_context_manager():
+            loss_obj = model(**batch)
 
-        if isinstance(loss_obj, (list, tuple)):
+        if dataclasses.is_dataclass(loss_obj):
+            loss_obj =  loss_obj.loss
+        elif isinstance(loss_obj, (list, tuple)):
             loss_obj = loss_obj[ 0 ]
 
         if isinstance(loss_obj, dict):
             tr_loss_step = loss_obj[ "loss" ]
         else:
             tr_loss_step = loss_obj
+
+        if self.args.n_gpu > 1:
+            tr_loss_step = tr_loss_step.mean()  # mean() to average on multi-gpu parallel training
 
         self.accelerator.backward(loss=tr_loss_step)
         return tr_loss_step.detach() / self.args.gradient_accumulation_steps

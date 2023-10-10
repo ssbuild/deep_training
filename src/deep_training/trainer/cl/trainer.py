@@ -2,6 +2,7 @@
 # @Time:  0:37
 # @Author: tk
 # @File：trainer
+import dataclasses
 import importlib
 import json
 import argparse
@@ -18,7 +19,7 @@ from pathlib import Path
 from typing import Union, Optional, Callable, List, Tuple, Dict, Any
 
 import numpy as np
-from lightning_utilities import apply_to_collection
+from lightning_utilities.core.apply_func import apply_to_collection
 from packaging import version
 from datasets import Dataset
 from peft import PeftModel
@@ -608,7 +609,7 @@ class TrainerCL:
         **kwargs,):
         self._train_loop(start_epoch=start_epoch,start_step=start_step,trial=trial,ignore_keys_for_eval=ignore_keys_for_eval,**kwargs)
 
-    def training_step(self, model: nn.Module, inputs: Dict[ str, Union[ torch.Tensor, Any ] ]) -> torch.Tensor:
+    def training_step(self, model: nn.Module, inputs: Dict[ str, Union[ torch.Tensor, Any ] ]) -> Union[torch.Tensor,Dict,Any]:
         device = get_current_device()
         batch = {k: v.to(device) for k, v in inputs.items() if isinstance(v, torch.Tensor)}
         loss = model(**batch)
@@ -747,7 +748,10 @@ class TrainerCL:
                         self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
                     loss_obj = self.training_step(model, batch)
-                    if isinstance(loss_obj, (list, tuple)):
+
+                    if dataclasses.is_dataclass(loss_obj):
+                        loss_obj = loss_obj.loss
+                    elif isinstance(loss_obj, (list, tuple)):
                         loss_obj = loss_obj[0]
 
                     if isinstance(loss_obj, dict):
