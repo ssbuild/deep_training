@@ -17,6 +17,10 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
 
   
 ## update
+- <strong>2023-10-16</strong>
+- 0.2.6 support visualglm,qwen-vl 多模态训练
+
+
 - <strong>2023-10-07</strong>
   - 0.2.5 support colossalai 训练 ，策略 ddp ,gemini,gemini_auto，zero2,zero2_cpu,3d
   - 0.2.5.post2 support accelerator 训练 , fix some bug in accelerator and hf trainer
