@@ -811,9 +811,9 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
             self.prefix_encoder = PrefixEncoder(config)
             self.dropout = torch.nn.Dropout(0.1)
 
-            # total_params = sum(p.numel() for p in self.parameters())
-            # trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
-            # print("Using p-tuning v2: # trainable_params = {} / {}".format(trainable_params, total_params))
+            total_params = sum(p.numel() for p in self.parameters())
+            trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+            print("Using p-tuning v2: # trainable_params = {} / {}".format(trainable_params, total_params))
 
     def get_input_embeddings(self):
         return self.word_embeddings
@@ -1007,7 +1007,7 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
 
         self.quantized = False
 
-        if self.config.quantization_bit:
+        if self.config.quantization_bit in [4,8]:
             self.quantize(self.config.quantization_bit, empty_init=True)
 
     def get_output_embeddings(self):
@@ -1187,15 +1187,13 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
 
 
     @torch.no_grad()
-    def chat(self, tokenizer, query: str, history: List[Tuple[str, str]] = None, max_length: int = 2048, num_beams=1,
-             do_sample=True, top_p=0.7, temperature=0.95, logits_processor=None, **kwargs):
+    def chat(self, tokenizer, query: str, history: List[Tuple[str, str]] = None,  logits_processor=None, **kwargs):
         if history is None:
             history = []
         if logits_processor is None:
             logits_processor = LogitsProcessorList()
         logits_processor.append(InvalidScoreLogitsProcessor())
-        gen_kwargs = {"max_length": max_length, "num_beams": num_beams, "do_sample": do_sample, "top_p": top_p,
-                      "temperature": temperature, "logits_processor": logits_processor, **kwargs}
+        gen_kwargs = {"logits_processor": logits_processor, **kwargs}
         inputs = self.build_inputs(tokenizer, query, history=history)
         outputs = self.generate(**inputs, **gen_kwargs)
         outputs = outputs.tolist()[0][len(inputs["input_ids"][0]):]
@@ -1205,15 +1203,13 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
         return response, history
 
     @torch.no_grad()
-    def stream_chat(self, tokenizer, query: str, history: List[Tuple[str, str]] = None, max_length: int = 2048,
-                    do_sample=True, top_p=0.7, temperature=0.95, logits_processor=None, **kwargs):
+    def stream_chat(self, tokenizer, query: str, history: List[Tuple[str, str]] = None, logits_processor=None, **kwargs):
         if history is None:
             history = []
         if logits_processor is None:
             logits_processor = LogitsProcessorList()
         logits_processor.append(InvalidScoreLogitsProcessor())
-        gen_kwargs = {"max_length": max_length, "do_sample": do_sample, "top_p": top_p,
-                      "temperature": temperature, "logits_processor": logits_processor, **kwargs}
+        gen_kwargs = {"logits_processor": logits_processor, **kwargs}
         inputs = self.build_inputs(tokenizer, query, history=history)
         for outputs in self.stream_generate(**inputs, **gen_kwargs):
             outputs = outputs.tolist()[0][len(inputs["input_ids"][0]):]

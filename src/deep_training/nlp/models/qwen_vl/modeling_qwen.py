@@ -32,6 +32,10 @@ except ImportError:
     rearrange = None
 from torch import nn
 
+def setup_model_profile(skip_init_flag=True):
+    ...
+
+
 SUPPORT_CUDA = torch.cuda.is_available()
 SUPPORT_BF16 = SUPPORT_CUDA and torch.cuda.is_bf16_supported()
 SUPPORT_FP16 = SUPPORT_CUDA and torch.cuda.get_device_capability(0)[0] >= 6
@@ -907,6 +911,7 @@ class QWenLMHeadModel(QWenPreTrainedModel):
             for layer_past in past_key_values
         )
 
+    @torch.no_grad()
     def chat(
             self,
             tokenizer: PreTrainedTokenizer,
@@ -967,6 +972,7 @@ class QWenLMHeadModel(QWenPreTrainedModel):
 
         return response, history
 
+    @torch.no_grad()
     def chat_stream(
             self,
             tokenizer: PreTrainedTokenizer,
@@ -1030,6 +1036,7 @@ class QWenLMHeadModel(QWenPreTrainedModel):
 
         return stream_generator()
 
+    @torch.no_grad()
     def generate(
             self,
             inputs: Optional[torch.Tensor] = None,
