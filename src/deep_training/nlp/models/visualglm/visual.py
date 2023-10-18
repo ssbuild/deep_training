@@ -1,8 +1,5 @@
 import torch
 import torch.nn as nn
-from transformers import ViTModel
-
-ViTModel, BaseModel
 from sat.model import ViTModel, BaseModel
 from sat.model import BaseMixin
 from torchvision import transforms
