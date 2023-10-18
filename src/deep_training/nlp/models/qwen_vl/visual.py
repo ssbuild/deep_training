@@ -114,7 +114,7 @@ class Resampler(nn.Module):
         ).requires_grad_(False)
 
         self.query = nn.Parameter(torch.zeros(self.num_queries, embed_dim))
-        trunc_normal_(self.query, std=.02)
+        # trunc_normal_(self.query, std=.02)
 
         if kv_dim is not None and kv_dim != embed_dim:
             self.kv_proj = nn.Linear(kv_dim, embed_dim, bias=False)
@@ -129,7 +129,7 @@ class Resampler(nn.Module):
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
+            # trunc_normal_(m.weight, std=.02)
             if isinstance(m, nn.Linear) and m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.LayerNorm):
@@ -145,6 +145,8 @@ class Resampler(nn.Module):
 
         N = x.shape[1]
         q = self.ln_q(self.query)
+
+
         out = self.attn(
             self._repeat(q, N) + self.pos_embed.unsqueeze(1),
             x + pos_embed.unsqueeze(1),
@@ -390,27 +392,32 @@ class VisionTransformer(nn.Module):
         self.proj = nn.Parameter((output_dim** -0.5) * torch.randn(output_dim, output_dim))
 
     def forward(self, x: torch.Tensor):
-        x = x.to(
-            dtype=self.transformer.get_cast_dtype(),
-            device=self.transformer.get_cast_device(),
-        )
+        x = x.to(dtype=self.conv1.weight.dtype,device=self.conv1.weight.device)
+
         # to patches
         x = self.conv1(x)  # shape = [*, width, grid, grid]
         x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
         x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
 
         x = x + get_abs_pos(self.positional_embedding, x.size(1))
-
         x = self.ln_pre(x)
-
         x = x.permute(1, 0, 2)  # NLD -> LND
         x = self.transformer(x)
         x = x.permute(1, 0, 2)  # LND -> NLD
 
+        # x = x.to(
+        #     dtype=self.transformer.get_cast_dtype(),
+        #     device=self.transformer.get_cast_device(),
+        # )
         x = self.attn_pool(x)
         x = self.ln_post(x)
         x = x @ self.proj
 
+
+        x = x.to(
+            dtype=self.transformer.get_cast_dtype(),
+            device=self.transformer.get_cast_device(),
+        )
         return x
 
     def encode(self, image_paths: List[str]):
