@@ -18,8 +18,7 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
   
 ## update
 - <strong>2023-10-16</strong>
-- 0.2.6 support visualglm,qwen-vl 多模态训练
-
+- 0.2.6 support muti-model visualglm 完整训练 https://github.com/ssbuild/visualglm_finetuning  qwen-vl 完整训练  https://github.com/ssbuild/qwen_vl_finetuning 
 
 - <strong>2023-10-07</strong>
   - 0.2.5 support colossalai 训练 ，策略 ddp ,gemini,gemini_auto，zero2,zero2_cpu,3d
