@@ -114,7 +114,10 @@ class Resampler(nn.Module):
         ).requires_grad_(False)
 
         self.query = nn.Parameter(torch.zeros(self.num_queries, embed_dim))
-        # trunc_normal_(self.query, std=.02)
+        dtype = self.query.dtype
+        self.query = self.query.float()
+        trunc_normal_(self.query, std=.02)
+        self.query = self.query.type(dtype)
 
         if kv_dim is not None and kv_dim != embed_dim:
             self.kv_proj = nn.Linear(kv_dim, embed_dim, bias=False)
@@ -129,7 +132,10 @@ class Resampler(nn.Module):
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
-            # trunc_normal_(m.weight, std=.02)
+            dtype = m.weight.dtype
+            m.weight = m.weight.float()
+            trunc_normal_(m.weight, std=.02)
+            m.weight.type(dtype)
             if isinstance(m, nn.Linear) and m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.LayerNorm):
@@ -137,7 +143,6 @@ class Resampler(nn.Module):
             nn.init.constant_(m.weight, 1.0)
 
     def forward(self, x, attn_mask=None):
-
         pos_embed = get_abs_pos(self.pos_embed, x.size(1))
 
         x = self.kv_proj(x)
@@ -145,7 +150,6 @@ class Resampler(nn.Module):
 
         N = x.shape[1]
         q = self.ln_q(self.query)
-
 
         out = self.attn(
             self._repeat(q, N) + self.pos_embed.unsqueeze(1),
