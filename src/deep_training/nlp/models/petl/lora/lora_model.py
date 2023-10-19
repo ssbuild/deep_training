@@ -259,6 +259,14 @@ class LoraModule(PetlModelAbstract):
                         "Setting fan_in_fan_out to True."
                     )
                     kwargs["fan_in_fan_out"] = lora_config.fan_in_fan_out = True
+            elif 'sat.mpu.layers.ColumnParallelLinear' in str(type(target)) or 'sat.mpu.layers.RowParallelLinear' in str(type(target)):
+                in_features, out_features = target.input_size, target.output_size
+                if kwargs["fan_in_fan_out"]:
+                    warnings.warn(
+                        "fan_in_fan_out is set to True but the target module is `torch.nn.Linear`. "
+                        "Setting fan_in_fan_out to False."
+                    )
+                    kwargs["fan_in_fan_out"] = lora_config.fan_in_fan_out = False
             else:
                 raise ValueError(
                     f"Target module {target} is not supported. Currently, only the following modules are supported: "
