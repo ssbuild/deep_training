@@ -6,8 +6,7 @@
 # from fastdatasets.torch_dataset import IterableDataset as torch_IterableDataset, Dataset as torch_Dataset
 # from torch.utils.data import DataLoader, IterableDataset
 import os
-import typing
-from typing import Optional, Union
+from typing import Optional, Union,Any
 from transformers import PreTrainedTokenizer, PretrainedConfig, ProcessorMixin
 from transformers.image_processing_utils import BaseImageProcessor
 
@@ -25,7 +24,7 @@ __all__ = [
     "load_configure",
 ]
 
-TRAINING_ARGS_DTYPE = Optional[Union[TrainingArgumentsHF,TrainingArguments,TrainingArgumentsCL,TrainingArgumentsAC]]
+TRAINING_ARGS_DTYPE = Union[TrainingArgumentsHF,TrainingArguments,TrainingArgumentsCL,TrainingArgumentsAC]
 def get_filename_no_ext(filename):
     filename = os.path.basename(filename)
     pos = filename.rfind('.')
@@ -42,14 +41,14 @@ class DataHelper(DataHelperBase):
     tokenizer: Optional[PreTrainedTokenizer] = None
     config: Optional[PretrainedConfig] = None
     model_args: Optional[ModelArguments] = None
-    training_args: TRAINING_ARGS_DTYPE = None
+    training_args: Optional[TRAINING_ARGS_DTYPE] = None
     data_args: Optional[DataArguments] = None
     image_processor: Optional[BaseImageProcessor] = None
-    processor: Optional[ProcessorMixin] = None
+    processor: Optional[Union[ProcessorMixin, Any ] ] = None
 
     def __init__(self,
                  model_args: ModelArguments,
-                 training_args: TRAINING_ARGS_DTYPE = None,
+                 training_args: Optional[TRAINING_ARGS_DTYPE] = None,
                  data_args: Optional[DataArguments] = None,
                  **kwargs):
 
@@ -177,7 +176,7 @@ class DataHelper(DataHelperBase):
             config_kwargs = {}
 
         model_args: ModelArguments = self.model_args
-        training_args: typing.Optional[TrainingArguments,TrainingArgumentsHF] = self.training_args
+        training_args = self.training_args
         data_args: DataArguments = self.data_args
 
 
