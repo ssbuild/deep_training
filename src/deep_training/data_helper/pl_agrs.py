@@ -203,6 +203,9 @@ class ModelArguments(_ArgumentsBase):
     imageprocesser_name: Optional[ str ] = field(
         default=None, metadata={"help": "Pretrained imageprocesser name or path if not the same as model_name"}
     )
+    feature_extractor_name: Optional[ str ] = field(
+        default=None, metadata={"help": "Pretrained feature_extractor name or path if not the same as model_name"}
+    )
     cache_dir: Optional[str] = field(
         default=None,
         metadata={"help": "Where do you want to store the pretrained models downloaded from huggingface.co"},

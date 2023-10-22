@@ -6,7 +6,7 @@ ignore = ['test','tests']
 
 install_requires = [
     'lightning>=2.0 , <50.0',
-    'numpy-io>=0.0.9 , < 0.1.0',
+    'numpy-io>=0.0.10 , < 0.1.0',
     'sentencepiece',
     'numpy',
     'transformers>=4.22',

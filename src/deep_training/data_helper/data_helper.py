@@ -7,12 +7,17 @@
 # from torch.utils.data import DataLoader, IterableDataset
 import os
 from typing import Optional, Union,Any
-from transformers import PreTrainedTokenizer, PretrainedConfig, ProcessorMixin
+from transformers import PreTrainedTokenizer, PretrainedConfig, ProcessorMixin, FeatureExtractionMixin
 from transformers.image_processing_utils import BaseImageProcessor
 
 from .training_args import ModelArguments, DataArguments, TrainingArguments,TrainingArgumentsHF,TrainingArgumentsCL,TrainingArgumentsAC
 from ..utils.func import is_chinese_char
-from numpy_io.pytorch_loader.data_helper import DataHelperBase,load_tokenizer, load_configure,load_imageprocesser as load_imageprocesser_hf,load_processer as load_processer_hf
+from numpy_io.pytorch_loader.data_helper import (DataHelperBase,load_tokenizer,
+                                                 load_configure,
+                                                 load_imageprocesser as load_imageprocesser_hf,
+                                                 load_processer as load_processer_hf,
+                                                 load_feature_extractor as load_feature_extractor_hf
+                                                 )
 from numpy_io.core.writer import DataWriteHelper
 
 __all__ = [
@@ -45,6 +50,7 @@ class DataHelper(DataHelperBase):
     data_args: Optional[DataArguments] = None
     image_processor: Optional[BaseImageProcessor] = None
     processor: Optional[Union[ProcessorMixin, Any ] ] = None
+    feature_extractor = Optional[Union[FeatureExtractionMixin,Any]] = None
 
     def __init__(self,
                  model_args: ModelArguments,
@@ -268,3 +274,16 @@ class DataHelper(DataHelperBase):
                                  class_name=class_name,
                                  **kwargs)
         return self.processor
+
+
+    def load_feature_extractor(self,
+                       feature_extractor_name = None,
+                       class_name = None,
+                       model_name_or_path = None,**kwargs):
+        model_args = self.model_args
+        self.feature_extractor = load_feature_extractor_hf(feature_extractor_name or model_args.feature_extractor_name,
+                                 model_name_or_path=model_name_or_path or model_args.model_name_or_path,
+                                 class_name=class_name,
+                                 **kwargs)
+        return self.feature_extractor
+
