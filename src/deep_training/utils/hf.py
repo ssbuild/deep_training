@@ -3,7 +3,7 @@
 # @Time    : 2023/8/7 14:01
 from functools import partial
 import transformers
-from transformers import TOKENIZER_MAPPING,CONFIG_MAPPING,AutoTokenizer,AutoConfig
+from transformers import TOKENIZER_MAPPING, CONFIG_MAPPING, AutoTokenizer, AutoConfig, PROCESSOR_MAPPING
 
 
 def _config_register(self, key, value, exist_ok=False):
@@ -73,3 +73,18 @@ def register_transformer_tokenizer(tokenizer_class,slow_tokenizer_class, fast_to
     register(tokenizer_class, (slow_tokenizer_class, fast_tokenizer_class), exist_ok=exist_ok)
     if old_fn_back:
         TOKENIZER_MAPPING.register = old_fn_back
+
+
+def register_transformer_processer(config_class,processor_class, exist_ok=True):
+    ver = _parse_transformer_version()
+    old_fn_back = None
+    if ver[0] <= 4 and ver[1] <= 30:
+        old_fn_back = PROCESSOR_MAPPING.register
+        PROCESSOR_MAPPING.register = _config_register
+        self = PROCESSOR_MAPPING
+        register = partial(PROCESSOR_MAPPING.register, self)
+    else:
+        register = PROCESSOR_MAPPING.register
+    register(config_class.model_type, processor_class, exist_ok=exist_ok)
+    if old_fn_back:
+        PROCESSOR_MAPPING.register = old_fn_back

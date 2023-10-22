@@ -92,7 +92,7 @@ class PetlLayerAbstract:
 
 
 
-def check_target_module_exists(config, key: str) -> bool | re.Match[str] | None:
+def check_target_module_exists(config, key: str) -> Union[bool , re.Match[str] , None]:
     """A helper method to check if the passed module's key name matches any of the target modules in the adapter_config.
 
     Args:

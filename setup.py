@@ -6,7 +6,7 @@ ignore = ['test','tests']
 
 install_requires = [
     'lightning>=2.0 , <50.0',
-    'numpy-io>=0.0.8 , < 0.1.0',
+    'numpy-io>=0.0.9 , < 0.1.0',
     'sentencepiece',
     'numpy',
     'transformers>=4.22',
@@ -20,7 +20,7 @@ install_requires = [
 ]
 setup(
     name='deep_training',
-    version='0.2.6',
+    version='0.2.7.rc0',
     description='an easy training architecture',
     long_description='torch_training: https://github.com/ssbuild/deep_training.git',
     license='Apache License 2.0',

@@ -8,10 +8,12 @@
 import os
 import typing
 from typing import Optional, Union
-from transformers import PreTrainedTokenizer, PretrainedConfig
+from transformers import PreTrainedTokenizer, PretrainedConfig, ProcessorMixin
+from transformers.image_processing_utils import BaseImageProcessor
+
 from .training_args import ModelArguments, DataArguments, TrainingArguments,TrainingArgumentsHF,TrainingArgumentsCL,TrainingArgumentsAC
 from ..utils.func import is_chinese_char
-from numpy_io.pytorch_loader.data_helper import DataHelperBase,load_tokenizer, load_configure
+from numpy_io.pytorch_loader.data_helper import DataHelperBase,load_tokenizer, load_configure,load_imageprocesser as load_imageprocesser_hf,load_processer as load_processer_hf
 from numpy_io.core.writer import DataWriteHelper
 
 __all__ = [
@@ -42,6 +44,8 @@ class DataHelper(DataHelperBase):
     model_args: Optional[ModelArguments] = None
     training_args: TRAINING_ARGS_DTYPE = None
     data_args: Optional[DataArguments] = None
+    image_processor: Optional[BaseImageProcessor] = None
+    processor: Optional[ProcessorMixin] = None
 
     def __init__(self,
                  model_args: ModelArguments,
@@ -244,5 +248,24 @@ class DataHelper(DataHelperBase):
 
 
 
+    def load_imageprocesser(self,
+                            imageprocesser_name = None,
+                            class_name = None,
+                            model_name_or_path = None,**kwargs):
+        model_args = self.model_args
+        self.image_processor = load_imageprocesser_hf(imageprocesser_name or model_args.imageprocesser_name,
+                                      model_name_or_path=model_name_or_path or model_args.model_name_or_path,
+                                      class_name=class_name,
+                                      **kwargs)
+        return self.image_processor
 
-
+    def load_processer(self,
+                       processer_name = None,
+                       class_name = None,
+                       model_name_or_path = None,**kwargs):
+        model_args = self.model_args
+        self.processor = load_processer_hf(processer_name or model_args.processer_name,
+                                 model_name_or_path=model_name_or_path or model_args.model_name_or_path,
+                                 class_name=class_name,
+                                 **kwargs)
+        return self.processor
