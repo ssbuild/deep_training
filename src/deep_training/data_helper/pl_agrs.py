@@ -365,6 +365,24 @@ class DataArguments(_ArgumentsBase):
         default=False, metadata={"help": "是否测试"}
     )
 
+    max_duration_in_seconds: float = field(
+        default=20.0,
+        metadata={
+            "help": (
+                "Truncate audio files that are longer than `max_duration_in_seconds` seconds to"
+                " 'max_duration_in_seconds`"
+            )
+        },
+    )
+    min_duration_in_seconds: float = field(
+        default=0.0, metadata={"help": "Filter audio files that are shorter than `min_duration_in_seconds` seconds"}
+    )
+
+    sampling_rate: int = field(
+        default=None, metadata={"help": "audio files sampling_rate"}
+    )
+
+
     def __post_init__(self):
 
         if not self.train_file:
