@@ -3,7 +3,7 @@
 # @Time    : 2023/10/9 10:29
 import os
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Dict
 from transformers.utils import logging
 from .base_args import _ArgumentsBase
 
@@ -232,6 +232,9 @@ class ModelArguments(_ArgumentsBase):
         },
     )
 
+    model_custom: Optional[Dict] = field(
+        default_factory=lambda: {}, metadata={"help": "自定义参数 for model args"})
+
     def __post_init__(self):
         if self.config_overrides is not None and (self.config_name is not None or self.model_name_or_path is not None):
             raise ValueError(
@@ -382,6 +385,8 @@ class DataArguments(_ArgumentsBase):
         default=None, metadata={"help": "audio files sampling_rate"}
     )
 
+    data_custom: Optional[Dict] = field(
+        default_factory=lambda: {}, metadata={"help": "自定义参数 for data args"})
 
     def __post_init__(self):
 
