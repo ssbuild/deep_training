@@ -50,7 +50,7 @@ class DataHelper(DataHelperBase):
     data_args: Optional[DataArguments] = None
     image_processor: Optional[BaseImageProcessor] = None
     processor: Optional[Union[ProcessorMixin, Any ] ] = None
-    feature_extractor = Optional[Union[FeatureExtractionMixin,Any]] = None
+    feature_extractor: Optional[Union[FeatureExtractionMixin,Any]] = None
 
     def __init__(self,
                  model_args: ModelArguments,
