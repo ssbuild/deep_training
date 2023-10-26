@@ -93,7 +93,7 @@ def register_transformer_processer(config_class,processor_class, exist_ok=True):
         PROCESSOR_MAPPING.register = old_fn_back
 
 
-class BatchFeatureDertr(BatchFeature):
+class BatchFeatureDetr(BatchFeature):
     def to(self, *args, **kwargs) -> "BatchFeature":
         """
         Send all values to device by calling `v.to(*args, **kwargs)` (PyTorch only). This should support casting in
