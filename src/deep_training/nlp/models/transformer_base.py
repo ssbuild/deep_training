@@ -173,13 +173,13 @@ class TransformerBase(MyLightningModule, metaclass=TransformerFakeMeta):
 
             model_kwargs = {
                 "cache_dir": model_args.cache_dir,
-                "revision": model_args.model_revision,
+                "revision":  model_args.model_revision,
                 "use_auth_token": True if model_args.use_auth_token else None,
+                **kwargs_new,
             }
             cls_ = CLS.from_pretrained(
                 model_args.model_name_or_path,
                 *args_new,
-                **kwargs_new,
                 from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 **model_kwargs
