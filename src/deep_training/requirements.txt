@@ -1,6 +1,6 @@
 transformers >=4.22
 lightning >= 2.0 , < 50.0
-numpy-io>=0.0.8 , < 0.1.0
+numpy-io>=0.0.10 , < 0.1.0
 seqmetric >= 0.1.2
 scipy
 scikit-learn
@@ -9,3 +9,4 @@ tensorboard
 tqdm
 six
 safetensors
+fastdatasets>=0.9.16

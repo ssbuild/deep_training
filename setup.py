@@ -16,7 +16,8 @@ install_requires = [
     'tensorboard',
     'tqdm',
     'six',
-    'safetensors'
+    'safetensors',
+    'fastdatasets>=0.9.16',
 ]
 setup(
     name='deep_training',
