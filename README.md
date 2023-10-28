@@ -341,6 +341,10 @@ Create a model factory, lightweight and efficient training program and make it e
 ## 
     纯粹而干净的代码
 
+## 协议
+本仓库的代码依照 Apache-2.0 协议开源
+
+
 ## discuss
 QQ group：185144988
 
