@@ -9,4 +9,4 @@ tensorboard
 tqdm
 six
 safetensors
-fastdatasets>=0.9.16
+fastdatasets>=0.9.17
