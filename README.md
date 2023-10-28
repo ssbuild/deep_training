@@ -17,74 +17,105 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
 
   
 ## update
+- <strong>2023-10-22</strong>
+  - 0.2.7
+    - support clip 完整训练 https://github.com/ssbuild/clip_finetuning 
+    - support asr seq2seq 完整训练 https://github.com/ssbuild/asr_seq2seq_finetuning
+    - support asr ctc 完整训练 https://github.com/ssbuild/asr_ctc_finetuning
+    - support object detection 完整训练 https://github.com/ssbuild/detection_finetuning
+    - support semantic segmentation 完整训练 https://github.com/ssbuild/semantic_segmentation
+    - support chatglm3  完整训练 https://github.com/ssbuild/chatglm3_finetuning
+
+
 - <strong>2023-10-16</strong>
-- 0.2.6 support muti-model visualglm 完整训练 https://github.com/ssbuild/visualglm_finetuning  qwen-vl 完整训练  https://github.com/ssbuild/qwen_vl_finetuning 
+  - 0.2.6 support muti-model
+    - visualglm 完整训练 https://github.com/ssbuild/visualglm_finetuning  
+    - qwen-vl 完整训练  https://github.com/ssbuild/qwen_vl_finetuning 
 
 - <strong>2023-10-07</strong>
-  - 0.2.5 support colossalai 训练 ，策略 ddp ,gemini,gemini_auto，zero2,zero2_cpu,3d
-  - 0.2.5.post2 support accelerator 训练 , fix some bug in accelerator and hf trainer
-  - 0.2.5.post4 fix trainer some bug
+  - 0.2.5 
+    - support colossalai 训练 ，策略 ddp ,gemini,gemini_auto，zero2,zero2_cpu,3d
+  - 0.2.5.post2 
+    - support accelerator 训练 , fix some bug in accelerator and hf trainer
+  - 0.2.5.post4 
+    - fix trainer some bug
 
 - <strong>2023-09-26</strong>
-  - 0.2.4 support transformers trainer and qwen-7b 新版 和 qwen-14b ， 旧版不再支持，旧版可以安装 deep_training <= 0.2.3 
-  - 0.2.4.post3 support ia3 finetuning
+  - 0.2.4 
+    - support transformers trainer and qwen-7b 新版 和 qwen-14b ， 旧版不再支持，旧版可以安装 deep_training <= 0.2.3 
+  - 0.2.4.post3 
+    - support ia3 finetuning
 
 - <strong>2023-09-21</strong>
-  - 0.2.3 support dpo 完整训练 [dpo_finetuning](https://github.com/ssbuild/dpo_finetuning)
+  - 0.2.3 
+    - support dpo 完整训练 [dpo_finetuning](https://github.com/ssbuild/dpo_finetuning)
 
 - <strong>2023-09-06</strong>
-  - 0.2.2 调整baichuan模块命名 adjust baichuan v2 完整训练 [baichuan2_finetuning](https://github.com/ssbuild/baichuan2_finetuning)
-  - 0.2.2.post0 fix baichuan ptv2
-  - 0.2.2.post1 fix rwkv4 a bug
-  - 0.2.2.post4 fix llama and baichuan mask bug
+  - 0.2.2 
+    - 调整baichuan模块命名 adjust baichuan v2 完整训练 [baichuan2_finetuning](https://github.com/ssbuild/baichuan2_finetuning)
+  - 0.2.2.post0 
+    - fix baichuan ptv2
+  - 0.2.2.post1 
+    - fix rwkv4 a bug
+  - 0.2.2.post4 
+    - fix llama and baichuan mask bug
 
 - <strong>2023-09-02</strong>
-  - 0.2.1 fix llama model
+  - 0.2.1 
+    - fix llama model
 
 - <strong>2023-08-23</strong>
-  - 0.2.0 release lora内部调整
-  - 0.2.0.post0 add xverse-13b chat 
-  - 0.2.0.post1 fix muti lora
+  - 0.2.0 
+    - release lora内部调整
+  - 0.2.0.post1 
+    - add xverse-13b chat  and fix muti lora
   
 - <strong>2023-08-16</strong>
-  - 0.1.21 release 增加 5种 rope scale 方法 ， fix chatglm2-6b-32k 推理 rope_ratio
-  - 0.1.21.post1 fix moss rope
+  - 0.1.21 
+    - release 增加 5种 rope scale 方法 ， fix chatglm2-6b-32k 推理 rope_ratio
+  - 0.1.21.post1 
+    - fix moss rope
   
 - <strong>2023-08-09</strong>
-  - 0.1.17 update qwen model
-  - 0.1.17.post0 update qwen config
+  - 0.1.17 
+    - update qwen model
+  - 0.1.17.post0 
+    - update qwen config
 
 - <strong>2023-08-08</strong>
-  - 0.1.15.rc2 support XVERSE-13B  完整训练 [xverse_finetuning](https://github.com/ssbuild/xverse_finetuning)
+  - 0.1.15.rc2 
+    - support XVERSE-13B  完整训练 [xverse_finetuning](https://github.com/ssbuild/xverse_finetuning)
 
   
 - <strong>2023-08-05</strong>
-  - support qwen(千问)  完整训练 [qwen_finetuning](https://github.com/ssbuild/qwen_finetuning)
-  - 0.1.13.post2 fix quantization bug
-  - 0.1.14 release fix qwen stream
+  - 0.1.13
+    - support qwen(千问)  完整训练 [qwen_finetuning](https://github.com/ssbuild/qwen_finetuning)
+  - 0.1.13.post2 
+    - fix quantization bug
+  - 0.1.14 
+    - release fix qwen stream
 
 - <strong>2023-07-18</strong>
-  - support InternLm(书生)  完整训练 [internlm_finetuning](https://github.com/ssbuild/internlm_finetuning)
+  - 0.1.12
+    - support InternLm(书生)  完整训练 [internlm_finetuning](https://github.com/ssbuild/internlm_finetuning)
+    - support baichuan v2 完整训练 [baichuan2_finetuning](https://github.com/ssbuild/baichuan2_finetuning)
+    - fix adalora some bugs
+    - support rwkv world training
 
-
-- <strong>2023-07-11</strong>
-  - 2023-07-11 support baichuan v2 完整训练 [baichuan2_finetuning](https://github.com/ssbuild/baichuan2_finetuning)
-  - 2023-07-11 fix adalora some bugs
-  - 2023-07-16 support rwkv world training
-  - 2023-07-16 0.1.12 release
   
 - <strong>2023-07-04</strong>
-  - 0.1.11 release 
+  - 0.1.11 rc1 
+    - support baichuan model  完整训练 [baichuan_finetuning](https://github.com/ssbuild/baichuan_finetuning)
+    - support chatglm2 model  完整训练 [chatglm2_finetuning](https://github.com/ssbuild/chatglm2_finetuning)
+  - 0.1.11  
     - fix baichuan and chatglm2 some bugs 
     - support conv2d for lora 
     - support arrow parquet dataset
     
 - <strong>2023-06-06</strong>
-  - 0.1.11 rc0 add baichuan model  完整训练 [baichuan_finetuning](https://github.com/ssbuild/baichuan_finetuning)
-  - 0.1.11 rc1 add chatglm2 model  完整训练 [chatglm2_finetuning](https://github.com/ssbuild/chatglm2_finetuning)
+
   
 - <strong>2023-06-06</strong>
-  - 0.1.9 is merged into  0.1.10
   - 0.1.10 
     - release add qlora and support more optimizer and scheduler
     - support lora prompt for deepspeed training
@@ -96,52 +127,64 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
 
 
 - <strong>2023-05-24</strong>
-  - 0.1.8 release fix load weight in prompt_tuning,p_tuning,prefix_tuning,adaption_prompt
+  - 0.1.8  
+    - fix load weight in prompt_tuning,p_tuning,prefix_tuning,adaption_prompt
 
 - <strong>2023-05-19</strong>
-  - 0.1.7 release fix 0.1.5 rl bugs
-  - 0.1.7.post0 release fix chatglm-6b-int4,chatglm-6b-int4 p-tuning-v2 training , fix ilql lightning import
-  - 0.1.7.post1 release fix load weight in prompt_tuning,p_tuning,prefix_tuning,adaption_prompt
+  - 0.1.7 
+    - fix 0.1.5 rl bugs
+  - 0.1.7.post1 
+    - fix chatglm-6b-int4,chatglm-6b-int4 p-tuning-v2 training , fix ilql lightning import
+    - fix load weight in prompt_tuning,p_tuning,prefix_tuning,adaption_prompt
   
 - <strong>2023-05-10</strong>
-  - 0.1.5 release
-  - fix lora v2 modules_to_save 自定义额外训练模块
-  - 增加reward ppo  llm 完整训练 [rlhf_llm](https://github.com/ssbuild/rlhf_llm)
-  - 增加reward ppo  chatglm 完整训练 [rlhf_chatglm](https://github.com/ssbuild/rlhf_chatglm)
-  - 增加reward ppo  chatyuan 完整训练 [rlhf_chatyuan](https://github.com/ssbuild/rlhf_chatyuan)
+  - 0.1.5 
+    - fix lora v2 modules_to_save 自定义额外训练模块
+    - support reward ppo  llm 完整训练 [rlhf_llm](https://github.com/ssbuild/rlhf_llm)
+    - support reward ppo  chatglm 完整训练 [rlhf_chatglm](https://github.com/ssbuild/rlhf_chatglm)
+    - support reward ppo  chatyuan 完整训练 [rlhf_chatyuan](https://github.com/ssbuild/rlhf_chatyuan)
   - 0.1.5.post2 release
-  - fix prompt modules_to_save 自定义额外训练模块
-  - 增加 ilql 离线模式训练 ilql  完整训练 [rlhf_llm](https://github.com/ssbuild/rlhf_llm)
+    - fix prompt modules_to_save 自定义额外训练模块
+    - support ilql 离线模式训练 ilql  完整训练 [rlhf_llm](https://github.com/ssbuild/rlhf_llm)
   - 0.1.5.post4 release
-  - fix opt model hidden_size for ppo ilql 
-  - fix ppotrainer ilqltrainer deepspeed save weight
-  - import AdmaW from transformers or but torch firstly
+    - fix opt model hidden_size for ppo ilql 
+    - fix ppotrainer ilqltrainer deepspeed save weight
+    - import AdmaW from transformers or but torch firstly
   
 - <strong>2023-05-02</strong>
-  - 0.1.4 增加 prompt_tuning,p_tuning,prefix_tuning,adaption_prompt
-
-- <strong>2023-04-28</strong>
-  - 0.1.3.post0 新版本基于lightning
-  - pytorch-lightning 更名 lightning
-  - 分离numpy-io模块
+  - 0.1.4 
+    - support prompt_tuning,p_tuning,prefix_tuning,adaption_prompt
 
 - <strong>2023-04-21</strong>
-  - 0.1.3rc0 增加 moss chat模型 完整训练参考 [moss_finetuning](https://github.com/ssbuild/moss_finetuning)
-  - moss 量化int4 int8推理
+  - 0.1.3rc0 
+    - support moss chat模型 完整训练参考 [moss_finetuning](https://github.com/ssbuild/moss_finetuning)
+    - moss 量化int4 int8推理
+  - 0.1.3.post0 
+    - 新版本基于lightning, pytorch-lightning 更名 lightning,分离numpy-io模块
+
+
+
 
 - <strong>2023-04-11</strong>
-  - 0.1.2 重构lora v2, 增加adalora
-  - 0.1.2.post0 fix lova v1,lova v2 load_in_8bit
+  - 0.1.2 
+    - 重构lora v2, 增加adalora
+  - 0.1.2.post0 
+    - fix lova v1,lova v2 load_in_8bit
 - <strong>2023-04-07</strong>
-  - deep_training 0.1.1 同步更新chatglm 词表配置信息 
+  - deep_training 0.1.1 
+    - update chatglm config 
 - <strong>2023-04-02</strong>
   - release 0.1.0 and lightning >= 2
 - <strong>2023-03-15</strong>
-  - 增加ChatGLM模型(稳定版>=0.0.18.post7) 完整训练参考 [chatglm_finetuning](https://github.com/ssbuild/chatglm_finetuning)
-  - 0.0.18.post8 解决deepspeed进程数据平衡 
-  - 0.0.18.post9 增加流式输出接口stream_chat接口
-  - 0.0.20 ChatGLM lora 加载权重继续训练 ， 修改数据数据编码 ，权重自适应
-  - 0.0.21.post0 fix ChatGLM deepspeed stage 3 权重加载
+  - 0.0.18
+    - support ChatGLM模型(稳定版>=0.0.18.post7) 完整训练参考 [chatglm_finetuning](https://github.com/ssbuild/chatglm_finetuning)
+  - fix deepspeed进程数据平衡 
+  - 0.0.18.post9 
+    - 增加流式输出接口stream_chat接口
+  - 0.0.20 ChatGLM lora 
+    - 加载权重继续训练 ， 修改数据数据编码 ，权重自适应
+  - 0.0.21.post0 
+    - fix ChatGLM deepspeed stage 3 权重加载
 - <strong>2023-03-09</strong>
   - 增加LLaMA 模型(并行版) 完整训练参考 [llama_finetuning](https://github.com/ssbuild/llama_finetuning)
 - <strong>2023-03-08</strong>
@@ -297,6 +340,10 @@ Create a model factory, lightweight and efficient training program and make it e
 - [aigc_serving](https://github.com/ssbuild/aigc_serving)
 ## 
     纯粹而干净的代码
+
+## 协议
+本仓库的代码依照 Apache-2.0 协议开源
+
 
 ## discuss
 QQ group：185144988

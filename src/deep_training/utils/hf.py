@@ -3,7 +3,10 @@
 # @Time    : 2023/8/7 14:01
 from functools import partial
 import transformers
-from transformers import TOKENIZER_MAPPING,CONFIG_MAPPING,AutoTokenizer,AutoConfig
+from transformers import TOKENIZER_MAPPING, CONFIG_MAPPING, AutoTokenizer, AutoConfig, PROCESSOR_MAPPING, \
+    requires_backends
+from transformers.image_processing_utils import BatchFeature
+from transformers.utils import is_torch_dtype, is_torch_device
 
 
 def _config_register(self, key, value, exist_ok=False):
@@ -73,3 +76,79 @@ def register_transformer_tokenizer(tokenizer_class,slow_tokenizer_class, fast_to
     register(tokenizer_class, (slow_tokenizer_class, fast_tokenizer_class), exist_ok=exist_ok)
     if old_fn_back:
         TOKENIZER_MAPPING.register = old_fn_back
+
+
+def register_transformer_processer(config_class,processor_class, exist_ok=True):
+    ver = _parse_transformer_version()
+    old_fn_back = None
+    if ver[0] <= 4 and ver[1] <= 30:
+        old_fn_back = PROCESSOR_MAPPING.register
+        PROCESSOR_MAPPING.register = _config_register
+        self = PROCESSOR_MAPPING
+        register = partial(PROCESSOR_MAPPING.register, self)
+    else:
+        register = PROCESSOR_MAPPING.register
+    register(config_class.model_type, processor_class, exist_ok=exist_ok)
+    if old_fn_back:
+        PROCESSOR_MAPPING.register = old_fn_back
+
+
+class BatchFeatureDetr(BatchFeature):
+    def to(self, *args, **kwargs) -> "BatchFeature":
+        """
+        Send all values to device by calling `v.to(*args, **kwargs)` (PyTorch only). This should support casting in
+        different `dtypes` and sending the `BatchFeature` to a different `device`.
+
+        Args:
+            args (`Tuple`):
+                Will be passed to the `to(...)` function of the tensors.
+            kwargs (`Dict`, *optional*):
+                Will be passed to the `to(...)` function of the tensors.
+
+        Returns:
+            [`BatchFeature`]: The same instance after modification.
+        """
+        requires_backends(self, ["torch"])
+        import torch  # noqa
+
+        new_data = {}
+        device = kwargs.get("device")
+        # Check if the args are a device or a dtype
+        if device is None and len(args) > 0:
+            # device should be always the first argument
+            arg = args[0]
+            if is_torch_dtype(arg):
+                # The first argument is a dtype
+                pass
+            elif isinstance(arg, str) or is_torch_device(arg) or isinstance(arg, int):
+                device = arg
+            else:
+                # it's something else
+                raise ValueError(f"Attempting to cast a BatchFeature to type {str(arg)}. This is not supported.")
+        # We cast only floating point tensors to avoid issues with tokenizers casting `LongTensor` to `FloatTensor`
+        for k, v in self.items():
+            if k == 'labels':
+                new_data[k] = []
+                labels = new_data[k]
+                for label in v:
+                    label_new = {}
+                    for sub_k,sub_v in label.items():
+                        if torch.is_floating_point(sub_v):
+                            # cast and send to device
+                            label_new[sub_k] = sub_v.to(*args, **kwargs)
+                        elif device is not None:
+                            label_new[sub_k] = sub_v.to(device=device)
+                        else:
+                            label_new[sub_k] = sub_v
+                    labels.append(label_new)
+            else:
+                # check if v is a floating point
+                if torch.is_floating_point(v):
+                    # cast and send to device
+                    new_data[k] = v.to(*args, **kwargs)
+                elif device is not None:
+                    new_data[k] = v.to(device=device)
+                else:
+                    new_data[k] = v
+        self.data = new_data
+        return self

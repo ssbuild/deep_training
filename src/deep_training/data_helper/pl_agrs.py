@@ -3,7 +3,7 @@
 # @Time    : 2023/10/9 10:29
 import os
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Dict
 from transformers.utils import logging
 from .base_args import _ArgumentsBase
 
@@ -197,6 +197,15 @@ class ModelArguments(_ArgumentsBase):
     tokenizer_name: Optional[str] = field(
         default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
     )
+    processer_name: Optional[ str ] = field(
+        default=None, metadata={"help": "Pretrained processer name  or path if not the same as model_name"}
+    )
+    imageprocesser_name: Optional[ str ] = field(
+        default=None, metadata={"help": "Pretrained imageprocesser name or path if not the same as model_name"}
+    )
+    feature_extractor_name: Optional[ str ] = field(
+        default=None, metadata={"help": "Pretrained feature_extractor name or path if not the same as model_name"}
+    )
     cache_dir: Optional[str] = field(
         default=None,
         metadata={"help": "Where do you want to store the pretrained models downloaded from huggingface.co"},
@@ -222,6 +231,9 @@ class ModelArguments(_ArgumentsBase):
             )
         },
     )
+
+    model_custom: Optional[Dict] = field(
+        default_factory=lambda: {}, metadata={"help": "自定义参数 for model args"})
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.config_name is not None or self.model_name_or_path is not None):
@@ -355,6 +367,26 @@ class DataArguments(_ArgumentsBase):
     do_test: bool = field(
         default=False, metadata={"help": "是否测试"}
     )
+
+    max_duration_in_seconds: float = field(
+        default=20.0,
+        metadata={
+            "help": (
+                "Truncate audio files that are longer than `max_duration_in_seconds` seconds to"
+                " 'max_duration_in_seconds`"
+            )
+        },
+    )
+    min_duration_in_seconds: float = field(
+        default=0.0, metadata={"help": "Filter audio files that are shorter than `min_duration_in_seconds` seconds"}
+    )
+
+    sampling_rate: int = field(
+        default=None, metadata={"help": "audio files sampling_rate"}
+    )
+
+    data_custom: Optional[Dict] = field(
+        default_factory=lambda: {}, metadata={"help": "自定义参数 for data args"})
 
     def __post_init__(self):
 
