@@ -25,7 +25,8 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
     - support object detection 完整训练 https://github.com/ssbuild/detection_finetuning
     - support semantic segmentation 完整训练 https://github.com/ssbuild/semantic_segmentation
     - support chatglm3  完整训练 https://github.com/ssbuild/chatglm3_finetuning
-
+  - 0.2.7.post0
+    - support skywork 完整训练 https://github.com/ssbuild/skywork_finetuning
 
 - <strong>2023-10-16</strong>
   - 0.2.6 support muti-model
