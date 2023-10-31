@@ -215,14 +215,14 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
 
 
 class SkyworkMLP(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config,**kwargs):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
         self.intermediate_size = config.intermediate_size
-        self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
-        self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
-        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
+        self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False,**kwargs)
+        self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False,**kwargs)
+        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False,**kwargs)
         self.act_fn = ACT2FN[config.hidden_act]
 
     def forward(self, x):
@@ -263,7 +263,7 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
 class SkyworkAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
-    def __init__(self, config: SkyworkConfig):
+    def __init__(self, config: SkyworkConfig,**kwargs):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
@@ -281,10 +281,10 @@ class SkyworkAttention(nn.Module):
             )
         global skip_init_function
         init_method = skip_init_function
-        self.q_proj = init_method(nn.Linear,self.hidden_size, self.num_heads * self.head_dim, bias=False)
-        self.k_proj = init_method(nn.Linear,self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
-        self.v_proj = init_method(nn.Linear,self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
-        self.o_proj = init_method(nn.Linear,self.num_heads * self.head_dim, self.hidden_size, bias=False)
+        self.q_proj = init_method(nn.Linear,self.hidden_size, self.num_heads * self.head_dim, bias=False,**kwargs)
+        self.k_proj = init_method(nn.Linear,self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False,**kwargs)
+        self.v_proj = init_method(nn.Linear,self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False,**kwargs)
+        self.o_proj = init_method(nn.Linear,self.num_heads * self.head_dim, self.hidden_size, bias=False,**kwargs)
         self._init_rope()
 
     def _init_rope(self):
@@ -425,7 +425,7 @@ class SkyworkDecoderLayer(nn.Module):
     def __init__(self, config: SkyworkConfig,**kwargs):
         super().__init__()
         self.hidden_size = config.hidden_size
-        self.self_attn = SkyworkAttention(config=config)
+        self.self_attn = SkyworkAttention(config=config,**kwargs)
         global skip_init_function
         init_method = skip_init_function
         self.mlp = init_method(SkyworkMLP,config,**kwargs)
@@ -693,7 +693,7 @@ class SkyworkForCausalLM(SkyworkPreTrainedModel):
 
     def __init__(self, config,**kwargs):
         super().__init__(config)
-        self.model = SkyworkModel(config)
+        self.model = SkyworkModel(config,**kwargs)
         self.vocab_size = config.vocab_size
         global skip_init_function
         init_method = skip_init_function
