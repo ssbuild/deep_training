@@ -494,6 +494,10 @@ class SkyworkPreTrainedModel(PreTrainedModel):
     _skip_keys_device_placement = "past_key_values"
 
     def _init_weights(self, module):
+        global skip_init_function
+        init_method = skip_init_function
+        if init_method == skip_init:
+            return
         std = self.config.initializer_range
         if isinstance(module, nn.Linear):
             module.weight.data.normal_(mean=0.0, std=std)

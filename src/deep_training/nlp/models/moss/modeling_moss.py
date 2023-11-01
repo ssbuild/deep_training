@@ -386,7 +386,9 @@ class MossPreTrainedModel(PreTrainedModel):
         super().__init__(*inputs, **kwargs)
 
     def _init_weights(self, module):
-        if not getattr(self.config, 'initializer_weight', False):
+        global skip_init_function
+        init_method = skip_init_function
+        if init_method == skip_init:
             return
         """Initialize the weights."""
         if isinstance(module, (nn.Linear,)):
