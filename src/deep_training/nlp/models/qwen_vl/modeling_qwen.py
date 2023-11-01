@@ -15,6 +15,7 @@ from torch.cuda.amp import autocast
 from torch.nn import CrossEntropyLoss
 from transformers import PreTrainedTokenizer, GenerationConfig, StoppingCriteriaList
 from transformers.generation.logits_process import LogitsProcessorList
+from ...utils.torch_utils import skip_init
 
 if TYPE_CHECKING:
     from transformers.generation.streamers import BaseStreamer
@@ -32,8 +33,16 @@ except ImportError:
     rearrange = None
 from torch import nn
 
+def default_init(cls, *args, **kwargs):
+    return cls(*args, **kwargs)
+skip_init_function = skip_init
+
 def setup_model_profile(skip_init_flag=True):
-    ...
+    global skip_init_function
+    if skip_init_flag:
+        skip_init_function = skip_init
+    else:
+        skip_init_function = default_init
 
 
 SUPPORT_CUDA = torch.cuda.is_available()
@@ -415,6 +424,10 @@ class QWenPreTrainedModel(PreTrainedModel):
 
     def _init_weights(self, module):
         """Initialize the weights."""
+        global skip_init_function
+        init_method = skip_init_function
+        if init_method == skip_init:
+            return
         if isinstance(module, nn.Linear):
             module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
             if module.bias is not None:
