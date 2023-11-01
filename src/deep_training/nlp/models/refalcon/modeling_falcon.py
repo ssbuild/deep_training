@@ -695,6 +695,12 @@ class FalconPreTrainedModel(PreTrainedModel):
 
     def _init_weights(self, module: nn.Module):
         """Initialize the weights."""
+
+        global skip_init_function
+        init_method = skip_init_function
+        if init_method == skip_init:
+            return
+
         if isinstance(module, nn.Linear) or isinstance(module, FalconLinear):
             # Slightly different from the TF version which uses truncated_normal for initialization
             # cf https://github.com/pytorch/pytorch/pull/5617

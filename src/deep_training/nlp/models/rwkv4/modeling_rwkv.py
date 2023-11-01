@@ -401,7 +401,9 @@ class RwkvPreTrainedModel(PreTrainedModel):
     _keep_in_fp32_modules = ["time_decay", "time_first"]
 
     def _init_weights(self, module):
-        if not getattr(self.config, 'initializer_weight', False):
+        global skip_init_function
+        init_method = skip_init_function
+        if init_method == skip_init:
             return
 
         """Initialize the weights."""

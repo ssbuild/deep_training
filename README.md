@@ -27,7 +27,9 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
     - support chatglm3  完整训练 https://github.com/ssbuild/chatglm3_finetuning
   - 0.2.7.post1
     - support skywork 完整训练 https://github.com/ssbuild/skywork_finetuning
-
+  - 0.2.7.post2
+     - support bluelm 完整训练 https://github.com/ssbuild/bluelm_finetuning
+  
 - <strong>2023-10-16</strong>
   - 0.2.6 support muti-model
     - visualglm 完整训练 https://github.com/ssbuild/visualglm_finetuning  
