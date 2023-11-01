@@ -1001,7 +1001,7 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
 
     def process_response(self, output, history):
         content = ""
-        history = deepcopy(history)
+        history = copy.deepcopy(history)
         for response in output.split("<|assistant|>"):
             metadata, content = response.split("\n", maxsplit=1)
             if not metadata.strip():
@@ -1012,8 +1012,10 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
                 history.append({"role": "assistant", "metadata": metadata, "content": content})
                 if history[0]["role"] == "system" and "tools" in history[0]:
                     content = "\n".join(content.split("\n")[1:-1])
+
                     def tool_call(**kwargs):
                         return kwargs
+
                     parameters = eval(content)
                     content = {"name": metadata.strip(), "parameters": parameters}
                 else:
@@ -1021,35 +1023,42 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
         return content, history
 
     @torch.inference_mode()
-    def chat(self, tokenizer, query: str, history: List[Tuple[str, str]] = None, role: str = "user",logits_processor=None,
-             **kwargs):
+    def chat(self, tokenizer, query: str, history: List[Tuple[str, str]] = None, role: str = "user",
+             logits_processor=None, with_postprocess=True, **kwargs):
         if history is None:
             history = []
         if logits_processor is None:
             logits_processor = LogitsProcessorList()
+
+        if "eos_token_id" not in kwargs:
+            eos_token_id = [tokenizer.eos_token_id, tokenizer.get_command("<|user|>"),
+                            tokenizer.get_command("<|observation|>")]
+            kwargs["eos_token_id"] = eos_token_id
         logits_processor.append(InvalidScoreLogitsProcessor())
         gen_kwargs = {"logits_processor": logits_processor, **kwargs}
         inputs = tokenizer.build_chat_input(query, history=history, role=role)
         inputs = inputs.to(self.device)
-        eos_token_id = [tokenizer.eos_token_id, tokenizer.get_command("<|user|>"),
-                        tokenizer.get_command("<|observation|>")]
-        outputs = self.generate(**inputs, **gen_kwargs, eos_token_id=eos_token_id)
+        outputs = self.generate(**inputs, **gen_kwargs)
         outputs = outputs.tolist()[0][len(inputs["input_ids"][0]):-1]
         response = tokenizer.decode(outputs)
         history.append({"role": role, "content": query})
-        response, history = self.process_response(response, history)
+        if with_postprocess:
+            response, history = self.process_response(response, history)
         return response, history
 
     @torch.inference_mode()
-    def stream_chat(self, tokenizer, query: str, history: List[Tuple[str, str]] = None, role: str = "user",past_key_values=None,
-                    logits_processor=None, return_past_key_values=False, **kwargs):
+    def stream_chat(self, tokenizer, query: str, history: List[Tuple[str, str]] = None, role: str = "user",
+                    past_key_values=None,
+                    logits_processor=None, return_past_key_values=False, with_postprocess=True, **kwargs):
         if history is None:
             history = []
         if logits_processor is None:
             logits_processor = LogitsProcessorList()
         logits_processor.append(InvalidScoreLogitsProcessor())
-        eos_token_id = [tokenizer.eos_token_id, tokenizer.get_command("<|user|>"),
-                        tokenizer.get_command("<|observation|>")]
+        if "eos_token_id" not in kwargs:
+            eos_token_id = [tokenizer.eos_token_id, tokenizer.get_command("<|user|>"),
+                            tokenizer.get_command("<|observation|>")]
+            kwargs["eos_token_id"] = eos_token_id
         gen_kwargs = {"logits_processor": logits_processor, **kwargs}
         if past_key_values is None:
             inputs = tokenizer.build_chat_input(query, history=history, role=role)
@@ -1066,14 +1075,17 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
             inputs['attention_mask'] = attention_mask
         history.append({"role": role, "content": query})
         for outputs in self.stream_generate(**inputs, past_key_values=past_key_values,
-                                            eos_token_id=eos_token_id, return_past_key_values=return_past_key_values,
+                                            return_past_key_values=return_past_key_values,
                                             **gen_kwargs):
             if return_past_key_values:
                 outputs, past_key_values = outputs
             outputs = outputs.tolist()[0][len(inputs["input_ids"][0]):-1]
             response = tokenizer.decode(outputs)
             if response and response[-1] != "�":
-                response, new_history = self.process_response(response, history)
+                if with_postprocess:
+                    response, new_history = self.process_response(response, history)
+                else:
+                    new_history = history
                 if return_past_key_values:
                     yield response, new_history, past_key_values
                 else:
