@@ -3,7 +3,7 @@
 import dataclasses
 import sys
 from functools import partial
-from typing import Any, IO, Union, Optional, Dict
+from typing import Any, IO, Union, Optional, Dict, List
 import lightning as pl
 import torch
 from lightning.pytorch.utilities.types import STEP_OUTPUT
@@ -13,6 +13,8 @@ from transformers import (
     PretrainedConfig,
 )
 from transformers.modeling_outputs import CausalLMOutputWithPast
+from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
+from transformers.trainer_pt_utils import get_parameter_names
 
 from ..utils import configure_optimizers, get_value_from_args_assert, get_value_from_args
 from ..utils.adversarial import AdversarialMethods
@@ -404,26 +406,53 @@ class TransformerLightningModule(MyLightningModule):
             setattr(self.backbone, 'estimated_stepping_batches', self.trainer.estimated_stepping_batches)
 
 
+    def get_decay_parameter_names(self, model) -> List[str]:
+        """
+        Get all parameter names that weight decay will be applied to
+
+        Note that some models implement their own layernorm instead of calling nn.LayerNorm, weight decay could still
+        apply to those modules since this function only filter out instance of nn.LayerNorm
+        """
+        decay_parameters = get_parameter_names(model, ALL_LAYERNORM_LAYERS)
+        decay_parameters = [name for name in decay_parameters if "bias" not in name]
+        return decay_parameters
+
     def get_named_parameters(self,*args,**kwargs):
         training_args = self.training_args
         model_attrs = self.get_model_lr(*args,**kwargs)
-        no_decay = ["bias", "LayerNorm.weight"]
-        def __get_named_parameters(a : nn.Module):
-            return [
+        # no_decay = ["bias", "LayerNorm.weight"]
+        def __get_named_parameters(a : nn.Module,decay_parameters,lr):
+            optimizer_grouped_parameters = [
                 {
-                    "params": [p for n, p in a.named_parameters() if not any(nd in n for nd in no_decay)],
-                    "weight_decay": training_args.weight_decay, "lr": lr,
+                    "params": [
+                        p for n, p in a.named_parameters() if (n in decay_parameters and p.requires_grad)
+                    ],
+                    "weight_decay": training_args.weight_decay,"lr": lr,
                 },
                 {
-                    "params": [p for n, p in a.named_parameters() if any(nd in n for nd in no_decay)],
-                    "weight_decay": 0.0, "lr": lr,
+                    "params": [
+                        p for n, p in a.named_parameters() if (n not in decay_parameters and p.requires_grad)
+                    ],
+                    "weight_decay": 0.0,"lr": lr,
                 },
             ]
+            return optimizer_grouped_parameters
+            # return [
+            #     {
+            #         "params": [p for n, p in a.named_parameters() if not any(nd in n for nd in no_decay)],
+            #         "weight_decay": training_args.weight_decay, "lr": lr,
+            #     },
+            #     {
+            #         "params": [p for n, p in a.named_parameters() if any(nd in n for nd in no_decay)],
+            #         "weight_decay": 0.0, "lr": lr,
+            #     },
+            # ]
 
         opt = []
         a: nn.Module
         for a, lr in model_attrs:
-            opt += __get_named_parameters(a)
+            decay_parameters = self.get_decay_parameter_names(a)
+            opt += __get_named_parameters(a,decay_parameters,lr)
         return opt
 
     def configure_optimizers(self):

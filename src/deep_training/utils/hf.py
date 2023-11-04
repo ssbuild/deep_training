@@ -63,7 +63,7 @@ def register_transformer_model(model_class,transormer_auto_class, exist_ok=True)
         transormer_auto_class._model_mapping.register = old_fn_back
 
 
-def register_transformer_tokenizer(tokenizer_class,slow_tokenizer_class, fast_tokenizer_class, exist_ok=True):
+def register_transformer_tokenizer(config_class,slow_tokenizer_class, fast_tokenizer_class, exist_ok=True):
     ver = _parse_transformer_version()
     old_fn_back = None
     if ver[0] <= 4 and ver[1] <= 30:
@@ -73,7 +73,7 @@ def register_transformer_tokenizer(tokenizer_class,slow_tokenizer_class, fast_to
         register = partial(TOKENIZER_MAPPING.register, self)
     else:
         register = TOKENIZER_MAPPING.register
-    register(tokenizer_class, (slow_tokenizer_class, fast_tokenizer_class), exist_ok=exist_ok)
+    register(config_class, (slow_tokenizer_class, fast_tokenizer_class), exist_ok=exist_ok)
     if old_fn_back:
         TOKENIZER_MAPPING.register = old_fn_back
 
