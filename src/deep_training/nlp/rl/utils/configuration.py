@@ -2,6 +2,7 @@
 # @Time    : 2023/5/13 23:26
 # @Author  : tk
 # @FileName: __init__.py
+import copy
 import json
 import os
 from dataclasses import field, dataclass, asdict
@@ -19,12 +20,15 @@ class RLConfigMixin(PushToHubMixin):
 
     """
 
-    @property
-    def __dict__(self):
-        return asdict(self)
+    # @property
+    # def __dict__(self):
+    #     return asdict(self)
 
     def to_dict(self):
-        return self.__dict__
+        return asdict(self)
+
+    def __deepcopy__(self, memodict={}):
+        return self.__class__(**copy.deepcopy(self.to_dict()))
 
     def save_pretrained(self, save_directory, **kwargs):
         r"""

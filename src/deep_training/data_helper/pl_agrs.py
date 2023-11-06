@@ -233,9 +233,12 @@ class ModelArguments(_ArgumentsBase):
     )
 
     model_custom: Optional[Dict] = field(
-        default_factory=lambda: {}, metadata={"help": "自定义参数 for model args"})
+        default=None, metadata={"help": "自定义参数 for model args"})
 
     def __post_init__(self):
+        if self.model_custom is None:
+            self.model_custom = {}
+
         if self.config_overrides is not None and (self.config_name is not None or self.model_name_or_path is not None):
             raise ValueError(
                 "--config_overrides can't be used in combination with --config_name or --model_name_or_path"
