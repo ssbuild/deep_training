@@ -32,7 +32,7 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
   - 0.2.7.post3
     - support yi 完整训练 https://github.com/ssbuild/yi_finetuning
   - 0.2.7.post4
-    - fix datalcass serialization in deepspeed
+    - fix dataclass serialization in deepspeed
     
 - <strong>2023-10-16</strong>
   - 0.2.6 support muti-model
