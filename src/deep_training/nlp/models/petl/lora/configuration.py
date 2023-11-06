@@ -24,15 +24,15 @@ class PetlConfigMixin(PushToHubMixin):
 
     """
 
-    @property
-    def __dict__(self):
-        return asdict(self)
+    # @property
+    # def __dict__(self):
+    #     return asdict(self)
 
     def to_dict(self):
-        return self.__dict__
+        return asdict(self)
 
     def __deepcopy__(self, memodict={}):
-        return self.__class__(**copy.deepcopy(asdict(self)))
+        return self.__class__(**copy.deepcopy(self.to_dict()))
 
     def save_pretrained(self, save_directory, **kwargs):
         r"""
