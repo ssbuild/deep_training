@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Union, Any, Dict, AnyStr, List
 from torch import nn
 
-from lora.configuration import PetlConfig
+from .lora.configuration import PetlConfig
 from ..transformer_base import TransformerBase
 from ...layers.petl.utils import _get_submodules, prepare_model_for_kbit_training
 from ...layers.petl.petl_layer import PetlLayerBase
