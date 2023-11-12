@@ -108,7 +108,7 @@ def is_adaption_prompt_trainable(params: str) -> bool:
 
 
 def prepare_config(
-    peft_config: AdaptionPromptConfig,
+    petl_config: AdaptionPromptConfig,
     model,
 ) -> AdaptionPromptConfig:
     """Prepare the config based on the llama model type."""
@@ -117,10 +117,10 @@ def prepare_config(
 
     model_config = TRANSFORMERS_MODEL_CONFIG[model.config.model_type]
 
-    if peft_config.target_modules is None:
-        peft_config.target_modules = model_config.target_modules
+    if petl_config.target_modules is None:
+        petl_config.target_modules = model_config.target_modules
 
-    return peft_config
+    return petl_config
 
 
 class AdaptionPromptModel(nn.Module):

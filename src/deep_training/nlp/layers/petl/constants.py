@@ -80,6 +80,8 @@ TRANSFORMERS_MODELS_TO_ADALORA_TARGET_MODULES_MAPPING = {
     "falcon": ["query_key_value"],
     "btlm": ["c_proj", "c_attn"],
     "codegen": ["qkv_proj"],
+    "mistral": [ "q_proj", "v_proj" ],
+    "stablelm": [ "q_proj", "v_proj" ],
     'moss': ['qkv_proj'],
     'cpmant': ['project_q', 'project_v'],
     'rwkv': ['key', 'value', 'receptance'],

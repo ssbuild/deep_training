@@ -2,5 +2,5 @@
 # @Author  : tk
 # @FileName: __init__.py
 from ...layers.petl.utils import is_bnb_available # noqa
-from .lora.petl_model import PetlModel,LoraModule,LoraConfig,AdaLoraConfig,IA3Config,PetlArguments
+from .petl_model import PetlModel,LoraModule,LoraConfig,AdaLoraConfig,IA3Config,PetlArguments
 from .prompt import PromptModel,PromptLearningConfig,PromptArguments,get_prompt_model

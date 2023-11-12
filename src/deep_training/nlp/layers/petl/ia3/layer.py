@@ -20,13 +20,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..petl_layer import PetlLayerAbstract
+from ..petl_layer import PetlLayerBase
 from ..utils import transpose, is_bnb_available,is_bnb_4bit_available,is_auto_gptq_available,is_optimum_available
 
 
-class IA3Layer(PetlLayerAbstract):
-    # List all names of layers that may contain adapter weights
-    adapter_layer_names = ["ia3_l"]
+class IA3Layer(PetlLayerBase):
+    # All names of layers that may contain adapter weights
+    adapter_layer_names = ("ia3_l",)
+    # All names of other parameters that may contain adapter-related parameters
+    other_layer_names = ("scaling",)
 
     def __init__(
         self,
@@ -42,10 +44,6 @@ class IA3Layer(PetlLayerAbstract):
         self.in_features = in_features
         self.out_features = out_features
         self.is_feedforward = is_feedforward
-
-    @property
-    def merged(self) -> bool:
-        return bool(self.merged_adapters)
 
     def update_layer(self, adapter_name, init_ia3_weights):
         # Actual trainable parameters
@@ -74,6 +72,7 @@ class Linear(nn.Linear, IA3Layer):
         out_features: int,
         fan_in_fan_out: bool = False,  # Set this to True if the layer to replace stores weight like (fan_in, fan_out)
         is_feedforward: bool = False,  # Set to True if the layer is treated as a feedforward layer
+        is_target_conv_1d_layer: bool = False,  # whether target module is a conv1d layer. useful while unloading later
         **kwargs,
     ) -> None:
         init_ia3_weights = kwargs.pop("init_ia3_weights", True)
@@ -87,6 +86,8 @@ class Linear(nn.Linear, IA3Layer):
         self.fan_in_fan_out = fan_in_fan_out
         if fan_in_fan_out:
             self.weight.data = self.weight.data.T
+
+        self.is_target_conv_1d_layer = is_target_conv_1d_layer
 
         nn.Linear.reset_parameters(self)
         self.update_layer(adapter_name, init_ia3_weights)

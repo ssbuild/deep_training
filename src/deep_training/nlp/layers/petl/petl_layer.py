@@ -2,35 +2,46 @@
 # @Author  : ssbuild
 # @Time    : 2023/8/22 9:13
 import re
-from typing import Union
+import warnings
+from typing import Union, List, Tuple
 from .utils import COMMON_LAYERS_PATTERN
 
 
-class PetlLayerAbstract:
+class PetlLayerBase:
     r"""
-       A tuner layer mixin that provides the common methods and attributes for all tuners.
+    A tuner layer mixin that provides the common methods and attributes for all tuners.
 
-       Args:
-           is_plugable (`bool`, *optional*):
-               Whether the adapter layer can be plugged to any pytorch module
-           active_adapters (Union[List[`str`], `str`], *optional*):
-               The name of the active adapter.
-       """
+    Args:
+        is_plugable (`bool`, *optional*):
+            Whether the adapter layer can be plugged to any pytorch module
+        active_adapters (Union[List[`str`], `str`], *optional*):
+            The name of the active adapter.
+    """
+    active_adapter = None
 
-    # List all names of layers that may contain adapter weights
-    adapter_layer_names: list[str] = []
+    # All names of layers that may contain adapter (trainable) weights
+    adapter_layer_names: Tuple[str ] = ()
+    # All names of other parameters that may contain adapter-related parameters
+    other_param_names: Tuple[str ] = ()
 
     # indicates whether all adapters should be disabled
     _disable_adapters: bool = False
 
     # the currently active adapter(s)
-    _active_adapter: Union[str, list[str]] = "default"
+    _active_adapter: Union[ str, List[ str ] ] = "default"
 
-    def merge(self) -> None:
+    # List all merged adapters
+    merged_adapters: List[str ] = []
+
+    def merge(self, *args) -> None:
         raise NotImplementedError
 
-    def unmerge(self) -> None:
+    def unmerge(self, *args) -> None:
         raise NotImplementedError
+
+    @property
+    def merged(self) -> bool:
+        return bool(self.merged_adapters)
 
     @property
     def disable_adapters(self) -> bool:
@@ -67,7 +78,7 @@ class PetlLayerAbstract:
                 layer.requires_grad_(False)
             self._disable_adapters = True
 
-    def set_adapter(self, adapter_names: Union[str, list[str]]):
+    def set_adapter(self, adapter_names: Union[ str, List[ str ] ]):
         """Set the active adapter
 
         Args:
@@ -89,14 +100,62 @@ class PetlLayerAbstract:
 
         self._active_adapter = adapter_names
 
+    def _all_available_adapter_names(self) -> List[str ]:
+        """Return a sorted list of all available adapter names"""
+        adapter_names = set()
+        for name in self.adapter_layer_names + self.other_param_names:
+            # we check each possible attribute and if it's a dict or ModuleDict, we assume that the keys are the adapter
+            # names
+            attr = getattr(self, name)
+            if hasattr(attr, "keys"):
+                adapter_names.update(attr.keys())
+        return sorted(adapter_names)
+
+    def delete_adapter(self, adapter_name: str) -> None:
+        """
+        Delete an adapter from the layer
+
+        This should be called on all adapter layers, or else we will get an inconsistent state.
+
+        This method will also set a new active adapter if the deleted adapter was an active adapter. It is important
+        that the new adapter is chosen in a deterministic way, so that the same adapter is chosen on all layers.
+
+        Args:
+            adapter_name (`str`): The name of the adapter to delete
+
+        """
+        for attr in self.adapter_layer_names + self.other_param_names:
+            if adapter_name in getattr(self, attr):
+                del getattr(self, attr)[adapter_name]
+
+        if adapter_name in self.active_adapters:
+            # choose a new active adapter
+            active_adapters = self.active_adapters[:]
+            active_adapters.remove(adapter_name)
+            if active_adapters:
+                self.set_adapter(active_adapters)
+            else:
+                # no active adapters left, set a new default adapter
+                # here we get the list of all adapters existing adapter names and choose the first one
+                remaining_adapters = self._all_available_adapter_names()
+                if not remaining_adapters:
+                    self.set_adapter([])
+                else:
+                    new_active_adapter = remaining_adapters[0]
+                    warnings.warn(
+                        f"Adapter {adapter_name} was active which is now deleted. Setting active adapter to "
+                        f"{new_active_adapter}."
+                    )
+                    self.set_adapter(remaining_adapters[0])
 
 
 
-def check_target_module_exists(config, key: str) -> Union[bool , re.Match[str] , None]:
+
+def check_target_module_exists(config, key: str) -> Union[ bool, re.Match[ str ], None ]:
     """A helper method to check if the passed module's key name matches any of the target modules in the adapter_config.
 
     Args:
-        config (`LoraConfig` | `LoHaConfig`): A config to match target modules from
+        config (`LoraConfig` | `LycorisConfig`): A config to match target modules from
         key (`str`): A key to search any matches in config
 
     Returns:
@@ -129,3 +188,4 @@ def check_target_module_exists(config, key: str) -> Union[bool , re.Match[str] ,
                 else:
                     target_module_found = False
     return target_module_found
+

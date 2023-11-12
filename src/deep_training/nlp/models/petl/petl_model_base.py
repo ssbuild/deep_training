@@ -3,17 +3,17 @@
 # @Time    : 2023/8/22 9:17
 import logging
 from abc import ABC, abstractmethod
-from typing import Union, Any,Dict,AnyStr
+from typing import Union, Any, Dict, AnyStr, List
 from torch import nn
 
-from .configuration import PetlConfig
-from ...transformer_base import TransformerBase
-from ....layers.petl.utils import _get_submodules, prepare_model_for_kbit_training
-from ....layers.petl.petl_layer import PetlLayerAbstract
+from lora.configuration import PetlConfig
+from ..transformer_base import TransformerBase
+from ...layers.petl.utils import _get_submodules, prepare_model_for_kbit_training
+from ...layers.petl.petl_layer import PetlLayerBase
 
 logger = logging.getLogger(__name__)
 
-class PetlModelAbstract(nn.Module, ABC):
+class PetlModelBase(nn.Module, ABC):
     r"""
     A base tuner model that provides the common methods and attributes for all tuners that are injectable into a
     torch.nn.Module
@@ -50,7 +50,7 @@ class PetlModelAbstract(nn.Module, ABC):
     def __init__(self, model, petl_config: Union[PetlConfig, Dict[AnyStr, PetlConfig]], adapter_name: AnyStr,
                  auto_prepare_kbit_training=True,
                  use_input_require_grads=True,
-                 use_gradient_checkpointing=True
+                 use_gradient_checkpointing=False
                  ) -> None:
         super().__init__()
 
@@ -89,7 +89,7 @@ class PetlModelAbstract(nn.Module, ABC):
         return self.model.model if isinstance(self.model, TransformerBase) else self.model
 
     @property
-    def active_adapters(self) -> list[str]:
+    def active_adapters(self) -> List[str ]:
         if isinstance(self.active_adapter, str):
             return [self.active_adapter]
         # is already a list of str
@@ -254,7 +254,7 @@ class PetlModelAbstract(nn.Module, ABC):
         This method merges the LoRa layers into the base model.
         """
         for module in self.model.modules():
-            if isinstance(module, PetlLayerAbstract):
+            if isinstance(module, PetlLayerBase):
                 module.merge()
 
     def unmerge_adapter(self):
@@ -262,5 +262,5 @@ class PetlModelAbstract(nn.Module, ABC):
         This method unmerges the LoRa layers from the base model.
         """
         for module in self.model.modules():
-            if isinstance(module, PetlLayerAbstract):
+            if isinstance(module, PetlLayerBase):
                 module.unmerge()

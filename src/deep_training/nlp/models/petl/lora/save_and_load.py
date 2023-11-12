@@ -15,7 +15,6 @@
 import os
 from typing import Optional
 import torch
-from safetensors.torch import save_file as safe_save_file
 from safetensors.torch import load_file as safe_load_file
 from ....layers.petl.constants import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
 from ....layers.petl.utils import infer_device
