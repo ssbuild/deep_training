@@ -303,8 +303,8 @@ class DecoderLayer(nn.Module):
             hidden_act=config.hidden_act,
             **kwargs
         )
-        self.input_layernorm = init_method(RMSNorm,config.hidden_size, eps=config.rms_norm_eps,**kwargs)
-        self.post_attention_layernorm = init_method(RMSNorm,config.hidden_size, eps=config.rms_norm_eps,**kwargs)
+        self.input_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps,**kwargs)
+        self.post_attention_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps,**kwargs)
 
     def forward(
             self,

@@ -274,8 +274,8 @@ class DecoderLayer(nn.Module):
             hidden_act=config.hidden_act,
             **kwargs
         )
-        self.input_layernorm = init_method(RMSNorm,config.hidden_size, eps=config.rms_norm_eps,**kwargs)
-        self.post_attention_layernorm = init_method(RMSNorm,config.hidden_size, eps=config.rms_norm_eps,**kwargs)
+        self.input_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps,**kwargs)
+        self.post_attention_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps,**kwargs)
 
     def forward(
             self,
@@ -444,7 +444,7 @@ class BaichuanModel(BaichuanPreTrainedModel):
 
         self.embed_tokens = init_method(nn.Embedding,config.vocab_size, config.hidden_size, self.padding_idx,**kwargs)
         self.layers = nn.ModuleList([DecoderLayer(config,**kwargs) for _ in range(config.num_hidden_layers)])
-        self.norm = init_method(RMSNorm,config.hidden_size, eps=config.rms_norm_eps,**kwargs)
+        self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps,**kwargs)
 
         self.gradient_checkpointing = False
         # Initialize weights and apply final processing

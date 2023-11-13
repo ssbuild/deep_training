@@ -240,8 +240,8 @@ class BaichuanLayer(torch.nn.Module):
             intermediate_size=config.intermediate_size,
             hidden_act=config.hidden_act,**kwargs
         )
-        self.input_layernorm = init_method(RMSNorm,config.hidden_size, epsilon=config.rms_norm_eps,**kwargs)
-        self.post_attention_layernorm = init_method(RMSNorm,
+        self.input_layernorm = RMSNorm(config.hidden_size, epsilon=config.rms_norm_eps,**kwargs)
+        self.post_attention_layernorm = RMSNorm(
             config.hidden_size, epsilon=config.rms_norm_eps,**kwargs
         )
 
@@ -414,7 +414,7 @@ class BaichuanModel(BaichuanPreTrainedModel):
         self.layers = torch.nn.ModuleList(
             [BaichuanLayer(config,**kwargs) for _ in range(config.num_hidden_layers)]
         )
-        self.norm = init_method(RMSNorm,config.hidden_size, epsilon=config.rms_norm_eps,**kwargs)
+        self.norm = RMSNorm(config.hidden_size, epsilon=config.rms_norm_eps,**kwargs)
 
         self.gradient_checkpointing = config.gradient_checkpointing
         self.post_init()

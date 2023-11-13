@@ -275,8 +275,8 @@ class InternLMDecoderLayer(nn.Module):
             hidden_act=config.hidden_act,
             **kwargs,
         )
-        self.input_layernorm = init_method(InternLMRMSNorm,config.hidden_size, eps=config.rms_norm_eps,**kwargs)
-        self.post_attention_layernorm = init_method(InternLMRMSNorm,config.hidden_size, eps=config.rms_norm_eps,**kwargs)
+        self.input_layernorm = InternLMRMSNorm(config.hidden_size, eps=config.rms_norm_eps,**kwargs)
+        self.post_attention_layernorm = InternLMRMSNorm(config.hidden_size, eps=config.rms_norm_eps,**kwargs)
 
     def forward(
         self,
@@ -467,7 +467,7 @@ class InternLMModel(InternLMPreTrainedModel):
         init_method = skip_init_function
         self.embed_tokens = init_method(nn.Embedding,config.vocab_size, config.hidden_size, self.padding_idx,**kwargs)
         self.layers = nn.ModuleList([InternLMDecoderLayer(config,**kwargs) for _ in range(config.num_hidden_layers)])
-        self.norm = init_method(InternLMRMSNorm,config.hidden_size, eps=config.rms_norm_eps,**kwargs)
+        self.norm = InternLMRMSNorm(config.hidden_size, eps=config.rms_norm_eps,**kwargs)
 
         self.gradient_checkpointing = False
         # Initialize weights and apply final processing
