@@ -48,13 +48,13 @@ class PetlModelBase(nn.Module, ABC):
     """
 
     def __init__(self, model, petl_config: Union[PetlConfig, Dict[AnyStr, PetlConfig]], adapter_name: AnyStr,
-                 auto_prepare_kbit_training=True,
-                 use_gradient_checkpointing=False,
+                 gradient_checkpointing=True,
+                 gradient_checkpointing_kwargs=None,
                  **kwargs) -> None:
         super().__init__()
 
-        self.auto_prepare_kbit_training = auto_prepare_kbit_training
-        self.use_gradient_checkpointing = use_gradient_checkpointing
+        self.gradient_checkpointing = gradient_checkpointing
+        self.gradient_checkpointing_kwargs = gradient_checkpointing_kwargs
         self.model = model
 
         # For advanced developpers, if you want to attach multiple adapters to your
@@ -200,8 +200,10 @@ class PetlModelBase(nn.Module, ABC):
         loaded_in_4bit = getattr(transformer_model, "is_loaded_in_4bit", False)
         loaded_in_8bit = getattr(transformer_model, "is_loaded_in_8bit", False)
 
-        if self.auto_prepare_kbit_training and (loaded_in_4bit or loaded_in_8bit):
-            prepare_model_for_kbit_training(self.model,use_gradient_checkpointing=self.use_gradient_checkpointing)
+        if self.gradient_checkpointing and (loaded_in_4bit or loaded_in_8bit):
+            prepare_model_for_kbit_training(self.model,
+                                            gradient_checkpointing=self.gradient_checkpointing,
+                                            gradient_checkpointing_kwargs=self.gradient_checkpointing_kwargs)
 
         petl_config = self.petl_config[adapter_name]
         # Note: If possible, all checks should be performed *at the start of this method*.

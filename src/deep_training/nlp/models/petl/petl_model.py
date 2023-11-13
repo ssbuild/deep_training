@@ -70,9 +70,9 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
     """
 
     def __init__(self, model, petl_config: PetlConfig, adapter_name="default",
-                 auto_prepare_kbit_training=True,
-                 use_input_require_grads=True,
-                 use_gradient_checkpointing=True):
+                 gradient_checkpointing=True,
+                 gradient_checkpointing_kwargs=None,
+                 **kwargs):
         '''
             model TransformerBase , model.model
         '''
@@ -88,9 +88,9 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
         self.petl_config[adapter_name] = petl_config
         self.base_model: LoraModule = PETL_TYPE_TO_MODEL_MAPPING[petl_config.lora_type](
             self.base_model, self.petl_config, adapter_name,
-            auto_prepare_kbit_training=auto_prepare_kbit_training,
-            use_input_require_grads=use_input_require_grads,
-            use_gradient_checkpointing=use_gradient_checkpointing,
+            gradient_checkpointing=gradient_checkpointing,
+            gradient_checkpointing_kwargs=gradient_checkpointing_kwargs,
+            **kwargs
         )
         self.set_additional_trainable_modules(petl_config, adapter_name)
 

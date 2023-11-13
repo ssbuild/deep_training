@@ -66,7 +66,7 @@ def starcoder_model_postprocess_past_key_value(past_key_values):
 
 
 
-def prepare_model_for_kbit_training(model,use_gradient_checkpointing=True,gradient_checkpointing_kwargs=None,**kwargs):
+def prepare_model_for_kbit_training(model,gradient_checkpointing=True,gradient_checkpointing_kwargs=None,**kwargs):
     r"""
        This method wraps the entire protocol for preparing a model before running a training. This includes:
            1- Cast the layernorm in fp32 2- making output embedding layer require grads 3- Add the upcasting of the lm
@@ -96,7 +96,7 @@ def prepare_model_for_kbit_training(model,use_gradient_checkpointing=True,gradie
             if (param.dtype == torch.float16) or (param.dtype == torch.bfloat16):
                 param.data = param.data.to(torch.float32)
 
-    if (loaded_in_kbit or is_gptq_quantized) and use_gradient_checkpointing:
+    if (loaded_in_kbit or is_gptq_quantized) and gradient_checkpointing:
         # When having `use_reentrant=False` + gradient_checkpointing, there is no need for this hack
         if "use_reentrant" not in gradient_checkpointing_kwargs or gradient_checkpointing_kwargs["use_reentrant"]:
             # For backward compatibility
