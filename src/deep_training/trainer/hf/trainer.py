@@ -15,14 +15,11 @@ from datasets import Dataset
 from torch.utils.data import DataLoader
 from transformers import Trainer, TrainingArguments, PreTrainedModel, DataCollator, PreTrainedTokenizerBase, \
     EvalPrediction, TrainerCallback, is_torch_tpu_available
-from transformers.dependency_versions_check import dep_version_check
-from transformers.integrations import is_fairscale_available
 from transformers.modeling_utils import unwrap_model
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.trainer import IS_SAGEMAKER_MP_POST_1_10, TRAINING_ARGS_NAME
 from transformers.trainer_pt_utils import get_parameter_names
-from transformers.trainer_utils import ShardedDDPOption, FSDPOption, IntervalStrategy
 from transformers.utils import is_peft_available, WEIGHTS_NAME, SAFE_WEIGHTS_NAME, is_sagemaker_mp_enabled, \
     is_accelerate_available
 from packaging import version
@@ -30,7 +27,6 @@ from ...data_helper.training_args import TrainingArguments, DataArguments, \
     ModelArguments, TrainingArgumentsHF
 from ...nlp.models.petl import PetlModel
 from ...nlp.models.petl.prompt import PromptModel
-
 from transformers.trainer import logger
 
 if is_peft_available:
@@ -39,9 +35,7 @@ if is_peft_available:
 if is_accelerate_available():
     from accelerate import __version__ as accelerate_version
 
-if is_fairscale_available():
-    dep_version_check("fairscale")
-    from fairscale.optim import OSS
+
 
 if is_sagemaker_mp_enabled():
     import smdistributed.modelparallel.torch as smp
@@ -206,12 +200,7 @@ class TrainerHF(Trainer):
             if IS_SAGEMAKER_MP_POST_1_10:
                 # 'user_content.pt' indicates model state_dict saved with smp >= 1.10
                 Path(os.path.join(output_dir, "user_content.pt")).touch()
-        elif (
-                ShardedDDPOption.ZERO_DP_2 in self.args.sharded_ddp
-                or ShardedDDPOption.ZERO_DP_3 in self.args.sharded_ddp
-                or self.fsdp is not None
-                or self.is_fsdp_enabled
-        ):
+        elif self.fsdp is not None or self.is_fsdp_enabled:
             state_dict = self.model.state_dict() if not self.is_fsdp_enabled else {}
             if self.args.should_save:
                 self._save(output_dir, state_dict=state_dict)
@@ -304,28 +293,21 @@ class TrainerHF(Trainer):
         if self.optimizer is None:
             optimizer_grouped_parameters = self.get_optimizer_grouped_parameters(opt_model)
             optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
+            self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
 
-            if self.sharded_ddp == ShardedDDPOption.SIMPLE:
-                self.optimizer = OSS(
-                    params=optimizer_grouped_parameters,
-                    optim=optimizer_cls,
-                    **optimizer_kwargs,
-                )
-            else:
-                self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
-                if optimizer_cls.__name__ == "Adam8bit":
-                    import bitsandbytes
+            if optimizer_cls.__name__ == "Adam8bit":
+                import bitsandbytes
 
-                    manager = bitsandbytes.optim.GlobalOptimManager.get_instance()
+                manager = bitsandbytes.optim.GlobalOptimManager.get_instance()
 
-                    skipped = 0
-                    for module in opt_model.modules():
-                        if isinstance(module, nn.Embedding):
-                            skipped += sum({p.data_ptr(): p.numel() for p in module.parameters()}.values())
-                            logger.info(f"skipped {module}: {skipped / 2 ** 20}M params")
-                            manager.register_module_override(module, "weight", {"optim_bits": 32})
-                            logger.debug(f"bitsandbytes: will optimize {module} in fp32")
-                    logger.info(f"skipped: {skipped / 2 ** 20}M params")
+                skipped = 0
+                for module in opt_model.modules():
+                    if isinstance(module, nn.Embedding):
+                        skipped += sum({p.data_ptr(): p.numel() for p in module.parameters()}.values())
+                        logger.info(f"skipped {module}: {skipped/2**20}M params")
+                        manager.register_module_override(module, "weight", {"optim_bits": 32})
+                        logger.debug(f"bitsandbytes: will optimize {module} in fp32")
+                logger.info(f"skipped: {skipped/2**20}M params")
 
         if is_sagemaker_mp_enabled():
             self.optimizer = smp.DistributedOptimizer(self.optimizer)

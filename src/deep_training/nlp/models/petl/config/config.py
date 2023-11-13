@@ -90,9 +90,11 @@ class PetlArguments:
         self.enable,self.with_lora = False,False
         for key in list(PETL_TYPE_TO_CONFIG_MAPPING.keys()):
             conf = getattr(self, key)
-            if conf is not None and isinstance(conf, dict):
-                conf = PETL_TYPE_TO_CONFIG_MAPPING[key].from_memory(conf)
-                setattr(self,key,conf)
+            if conf is not None:
+                if isinstance(conf, dict):
+                    conf = PETL_TYPE_TO_CONFIG_MAPPING[key].from_memory(conf)
+                    setattr(self,key,conf)
+
                 conf.with_lora = conf.enable = conf.enable | conf.with_lora
                 self.enable = self.with_lora = conf.enable | self.enable
 
@@ -125,15 +127,9 @@ class PromptArguments:
 
     def __post_init__(self):
         self.enable,self.with_prompt = False,False
-        if self.prompt is not None and isinstance(self.prompt, dict):
-            self.prompt = PROMPT_TYPE_TO_CONFIG_MAPPING[self.prompt["prompt_type"]].from_memory(self.prompt)
-        conf = self.prompt
-        conf.with_prompt = conf.enable = conf.enable | conf.with_prompt
-        self.enable = self.with_prompt = conf.enable | self.enable
-        # for key in PROMPT_TYPE_TO_CONFIG_MAPPING:
-        #     conf = getattr(PROMPT_TYPE_TO_CONFIG_MAPPING, key)
-        #     if conf is not None and isinstance(conf, dict):
-        #         conf = PROMPT_TYPE_TO_CONFIG_MAPPING[key].from_memory(conf)
-        #         setattr(self,key,conf)
-        #         conf.with_prompt = conf.enable = conf.enable | conf.with_prompt
-        #         self.enable = self.with_prompt = conf.enable | self.enable
+        if self.prompt is not None:
+            if isinstance(self.prompt, dict):
+                self.prompt = PROMPT_TYPE_TO_CONFIG_MAPPING[self.prompt["prompt_type"]].from_memory(self.prompt)
+            self.prompt.with_prompt = self.prompt.enable = self.prompt.enable | self.prompt.with_prompt
+            self.enable = self.with_prompt = self.prompt.enable | self.enable
+
