@@ -95,5 +95,5 @@ class LoKrConfig(LycorisConfig):
     )
 
     def __post_init__(self):
-        self.peft_type = "lokr"
+        self.lora_type = "lokr"
 

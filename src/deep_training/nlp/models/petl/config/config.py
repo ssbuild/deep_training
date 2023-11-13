@@ -52,16 +52,15 @@ PETL_TYPE_TO_CONFIG_MAPPING = {
     "lokr": LoKrConfig,
 }
 
-__CONFIG_MAP__ = copy.deepcopy(PROMPT_TYPE_TO_CONFIG_MAPPING)
-__CONFIG_MAP__.update(copy.deepcopy(PETL_TYPE_TO_CONFIG_MAPPING))
+
+
 @dataclass
 class PetlArguments:
-
-    lora: LoraConfig= field(default=None, metadata={"help": "LoraConfig."})
-    adalora: AdaLoraConfig = field(default=None, metadata={"help": "AdaLoraConfig."})
-    ia3: IA3Config = field(default=None, metadata={"help": "IA3Config."})
-    loha: LoHaConfig = field(default=None, metadata={"help": "LoHaConfig."})
-    lokr: LoHaConfig = field(default=None, metadata={"help": "LoKrConfig."})
+    lora: Optional[LoraConfig] = field(default=None, metadata={"help": "LoraConfig."})
+    adalora: Optional[AdaLoraConfig] = field(default=None, metadata={"help": "AdaLoraConfig."})
+    ia3: Optional[IA3Config] = field(default=None, metadata={"help": "IA3Config."})
+    loha: Optional[LoHaConfig] = field(default=None, metadata={"help": "LoHaConfig."})
+    lokr: Optional[LoKrConfig] = field(default=None, metadata={"help": "LoKrConfig."})
     def save_pretrained(self, save_directory, **kwargs):
         for key in list(PETL_TYPE_TO_CONFIG_MAPPING.keys()):
             conf = getattr(self,key)
@@ -71,56 +70,69 @@ class PetlArguments:
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
-        config_ = PetlConfig.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        if hasattr(config_,"prompt_type"):
-            config = __CONFIG_MAP__[config_.prompt_type].from_pretrained(
-                pretrained_model_name_or_path, **kwargs)
-        else:
-            config = __CONFIG_MAP__[config_.lora_type].from_pretrained(
-                pretrained_model_name_or_path, **kwargs)
-        if hasattr(config,"with_prompt"):
-            config.enable  |= config.with_prompt
-        else:
-            config.enable |= config.with_lora
-
+        config = PETL_TYPE_TO_CONFIG_MAPPING[PetlConfig.from_pretrained(pretrained_model_name_or_path, **kwargs).lora_type].from_pretrained(pretrained_model_name_or_path, **kwargs)
+        config.enable = config.with_lora = config.enable | config.with_lora
         assert config.enable , ValueError('petl config get bad enable ',config.enable)
-        # config = cls()
-        # config.lora = None
-        # config.adalora = None
-        # setattr(config,obj.lora_type,obj)
-        # if config.lora is not None:
-        #     config.enable = config.lora.enable
-        # if config.adalora is not None:
-        #     config.enable = config.adalora.enable
         return config
 
     @property
     def config(self) -> Optional[PetlConfigMixin]:
         if not self.enable:
             return None
-        for key in list(__CONFIG_MAP__.keys()):
+        for key in list(PETL_TYPE_TO_CONFIG_MAPPING.keys()):
             conf = getattr(self, key)
-            if conf is not None and (conf.enable or (getattr(conf,"with_lora",None) or getattr(conf,"with_prompt",None))):
+            if conf is not None and (conf.enable or getattr(conf,"with_lora",None)):
                 return conf
         return None
 
 
     def __post_init__(self):
-        self.enable = False
-        self.with_lora = False
-        self.with_prompt = False
-        for key in list(__CONFIG_MAP__.keys()):
+        self.enable,self.with_lora = False,False
+        for key in list(PETL_TYPE_TO_CONFIG_MAPPING.keys()):
             conf = getattr(self, key)
             if conf is not None and isinstance(conf, dict):
-                conf = __CONFIG_MAP__[key].from_memory(conf)
+                conf = PETL_TYPE_TO_CONFIG_MAPPING[key].from_memory(conf)
                 setattr(self,key,conf)
-                if hasattr(conf,"with_prompt"):
-                    conf.enable |= self.with_prompt
-                else:
-                    conf.enable |= self.with_lora
-                self.enable = conf.enable | self.enable
-                self.with_lora,self.with_prompt  = conf.enable
+                conf.with_lora = conf.enable = conf.enable | conf.with_lora
+                self.enable = self.with_lora = conf.enable | self.enable
 
 
-#兼容 <= 0.2.7
-PromptArguments = PetlArguments
+@dataclass
+class PromptArguments:
+    prompt: Optional[PromptLearningConfig] = field(default=None, metadata={"help": "PromptLearningConfig."})
+    def save_pretrained(self, save_directory, **kwargs):
+        conf = self.prompt
+        if conf is not None and conf.enable:
+            conf.save_pretrained(save_directory, **kwargs)
+
+
+    @classmethod
+    def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
+        config = PROMPT_TYPE_TO_CONFIG_MAPPING[PetlConfigMixin.from_pretrained(pretrained_model_name_or_path, **kwargs).prompt_type].from_pretrained(pretrained_model_name_or_path, **kwargs)
+        config.enable = config.with_prompt = config.enable | config.with_prompt
+        assert config.enable , ValueError('petl config get bad enable ',config.enable)
+        return config
+
+    @property
+    def config(self) -> Optional[PetlConfigMixin]:
+        if not self.enable:
+            return None
+        conf = self.prompt
+        if conf is not None and (conf.enable or getattr(conf,"with_prompt",None)):
+            return conf
+        return None
+
+
+    def __post_init__(self):
+        self.enable,self.with_prompt = False,False
+        conf = self.prompt
+        if conf is not None and isinstance(conf, dict):
+            conf.with_prompt = conf.enable = conf.enable | conf.with_prompt
+            self.enable = self.with_prompt = conf.enable | self.enable
+        # for key in PROMPT_TYPE_TO_CONFIG_MAPPING:
+        #     conf = getattr(PROMPT_TYPE_TO_CONFIG_MAPPING, key)
+        #     if conf is not None and isinstance(conf, dict):
+        #         conf = PROMPT_TYPE_TO_CONFIG_MAPPING[key].from_memory(conf)
+        #         setattr(self,key,conf)
+        #         conf.with_prompt = conf.enable = conf.enable | conf.with_prompt
+        #         self.enable = self.with_prompt = conf.enable | self.enable

@@ -169,4 +169,5 @@ class IA3Config(PetlConfig):
     )
 
     def __post_init__(self):
-        self.lora_type = "ia3"
+        if self.lora_type is None:
+            self.lora_type = 'ia3'

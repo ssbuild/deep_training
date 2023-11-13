@@ -89,7 +89,7 @@ class LoHaConfig(LycorisConfig):
     )
 
     def __post_init__(self):
-        self.peft_type = "loha"
+        self.lora_type = "loha"
         self.target_modules = (
             set(self.target_modules) if isinstance(self.target_modules, list) else self.target_modules
         )
