@@ -232,6 +232,19 @@ class ModelArguments(_ArgumentsBase):
         },
     )
 
+    gradient_checkpointing: bool = field(
+        default=False,
+        metadata={
+            "help": "If True, use gradient checkpointing to save memory at the expense of slower backward pass."
+        },
+    )
+    gradient_checkpointing_kwargs: dict = field(
+        default=None,
+        metadata={
+            "help": "Gradient checkpointing key word arguments such as `use_reentrant`. Will be passed to `torch.utils.checkpoint.checkpoint` through `model.gradient_checkpointing_enable`."
+        },
+    )
+
     model_custom: Optional[Dict] = field(
         default=None, metadata={"help": "自定义参数 for model args"})
 

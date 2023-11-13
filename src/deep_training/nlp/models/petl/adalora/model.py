@@ -11,7 +11,7 @@ from ....layers.petl.adalora.layer import RankAllocator, SVDLinear,  AdaLoraLaye
 from ....layers.petl.utils import _freeze_adapter, _get_submodules, \
     TRANSFORMERS_MODELS_TO_ADALORA_TARGET_MODULES_MAPPING, prepare_model_for_kbit_training, get_quantization_config, \
     get_auto_gptq_quant_linear
-from .lora_model import LoraModule,LoraConfig
+from ..lora.model import LoraModule,LoraConfig
 
 __all__ = [
     'is_bnb_available',

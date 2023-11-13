@@ -7,31 +7,44 @@ import os
 from typing import Optional,Tuple,Dict,List,Any,Union,Callable
 from contextlib import contextmanager
 import torch
-from accelerate.hooks import remove_hook_from_submodules
 from torch import nn
+from accelerate.hooks import remove_hook_from_submodules
 from transformers.utils import PushToHubMixin
 from safetensors.torch import save_file as safe_save_file
 from ...layers.petl.constants import WEIGHTS_NAME,SAFETENSORS_WEIGHTS_NAME 
 from ....utils.function import copy_dataclass
 from ...layers.petl.utils import _set_trainable, _set_adapter, infer_device
-from .lora.configuration import LoraConfig, AdaLoraConfig, PetlConfig, IA3Config, PetlArguments
-from .lora.lora_model import LoraModule
-from .lora.adalora_model import AdaLoraModule
-from .lora.ia3_model import IA3Module
+from .config.configuration import *
+from .lora.model import LoraModule
+from .adalora.model import AdaLoraModule
+from .ia3.model import IA3Module
+from .loha.model import LoHaModule
+from .lokr.model import LoKrModule
 from .lora.save_and_load import get_lora_model_state_dict, set_lora_model_state_dict, load_petl_weights
 
-LORA_TYPE_TO_MODEL_MAPPING = {
+PETL_TYPE_TO_MODEL_MAPPING = {
     "ia3": IA3Module,
     "lora": LoraModule,
     "adalora": AdaLoraModule,
+    "loha": LoHaModule,
+    "lokr": LoKrModule,
 }
 
-LORA_TYPE_TO_CONFIG_MAPPING = {
-    "ia3": IA3Config,
-    "lora": LoraConfig,
-    "adalora": AdaLoraConfig,
-}
 
+__all__ = [
+    "WEIGHTS_NAME",
+    "SAFETENSORS_WEIGHTS_NAME",
+    "PETL_TYPE_TO_MODEL_MAPPING",
+    "PetlModel",
+    "LoraModule",
+    "AdaLoraModule",
+    "IA3Module",
+    "LoHaModule",
+    "LoKrModule",
+    "get_lora_model_state_dict",
+    "set_lora_model_state_dict",
+    "load_petl_weights"
+]
 class PetlModel(PushToHubMixin, torch.nn.Module):
     """
     Base model encompassing various Lora methods.
@@ -73,7 +86,7 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
         self.lora_type = petl_config.lora_type
         self.base_model_torch_dtype = getattr(model, "dtype", None)
         self.petl_config[adapter_name] = petl_config
-        self.base_model: LoraModule = LORA_TYPE_TO_MODEL_MAPPING[petl_config.lora_type](
+        self.base_model: LoraModule = PETL_TYPE_TO_MODEL_MAPPING[petl_config.lora_type](
             self.base_model, self.petl_config, adapter_name,
             auto_prepare_kbit_training=auto_prepare_kbit_training,
             use_input_require_grads=use_input_require_grads,
@@ -203,7 +216,7 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
 
         # load the config
         if lora_config is None:
-            lora_config = LORA_TYPE_TO_CONFIG_MAPPING[
+            lora_config = PETL_TYPE_TO_CONFIG_MAPPING[
                 LoraConfig.from_pretrained(pretrained_model_name_or_path, subfolder=kwargs.get("subfolder", None)).lora_type
             ].from_pretrained(pretrained_model_name_or_path, subfolder=kwargs.get("subfolder", None))
         elif isinstance(lora_config, PetlConfig):
@@ -304,7 +317,7 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
         if adapter_name not in self.petl_config:
             if config is None:
                 # load the config
-                lora_config = LORA_TYPE_TO_CONFIG_MAPPING[
+                lora_config = PETL_TYPE_TO_CONFIG_MAPPING[
                     LoraConfig.from_pretrained(model_id, subfolder=kwargs.get("subfolder", None)).lora_type
                 ].from_pretrained(model_id, subfolder=kwargs.get("subfolder", None))
             else:

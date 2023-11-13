@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Union, Any, Dict, AnyStr, List
 from torch import nn
 
-from .lora.configuration import PetlConfig
+from .config.petl_configuration import PetlConfig
 from ..transformer_base import TransformerBase
 from ...layers.petl.utils import _get_submodules, prepare_model_for_kbit_training
 from ...layers.petl.petl_layer import PetlLayerBase
@@ -49,13 +49,11 @@ class PetlModelBase(nn.Module, ABC):
 
     def __init__(self, model, petl_config: Union[PetlConfig, Dict[AnyStr, PetlConfig]], adapter_name: AnyStr,
                  auto_prepare_kbit_training=True,
-                 use_input_require_grads=True,
-                 use_gradient_checkpointing=False
-                 ) -> None:
+                 use_gradient_checkpointing=False,
+                 **kwargs) -> None:
         super().__init__()
 
         self.auto_prepare_kbit_training = auto_prepare_kbit_training
-        self.use_input_require_grads = use_input_require_grads
         self.use_gradient_checkpointing = use_gradient_checkpointing
         self.model = model
 
@@ -203,9 +201,7 @@ class PetlModelBase(nn.Module, ABC):
         loaded_in_8bit = getattr(transformer_model, "is_loaded_in_8bit", False)
 
         if self.auto_prepare_kbit_training and (loaded_in_4bit or loaded_in_8bit):
-            prepare_model_for_kbit_training(self.model,
-                                            use_input_require_grads=self.use_input_require_grads,
-                                            use_gradient_checkpointing=self.use_gradient_checkpointing)
+            prepare_model_for_kbit_training(self.model,use_gradient_checkpointing=self.use_gradient_checkpointing)
 
         petl_config = self.petl_config[adapter_name]
         # Note: If possible, all checks should be performed *at the start of this method*.

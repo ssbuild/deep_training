@@ -124,4 +124,4 @@ class PetlConfig(PetlConfigMixin):
     base_model_name_or_path: str = field(default=None, metadata={"help": "The name of the base model to use."})
     inference_mode: bool = field(default=False, metadata={"help": "Whether to use inference mode"})
     lora_type: str = field(default='lora', metadata={"help": "one of lora,adalora,ia3,lycoris,lokr"})
-    with_lora: bool = field(default=False, metadata={"help": "whether use lora"})
+    enable: bool = field(default=False, metadata={"help": "whether use lora"})

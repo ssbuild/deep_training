@@ -14,7 +14,8 @@ from accelerate.utils import is_xpu_available, is_npu_available
 from .constants import (TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING,
                         TRANSFORMERS_MODELS_TO_ADALORA_TARGET_MODULES_MAPPING,
                         TRANSFORMERS_MODELS_TO_IA3_FEEDFORWARD_MODULES_MAPPING,
-                        TRANSFORMERS_MODELS_TO_IA3_TARGET_MODULES_MAPPING)
+                        TRANSFORMERS_MODELS_TO_IA3_TARGET_MODULES_MAPPING,
+                        COMMON_LAYERS_PATTERN)
 
 
 def is_bnb_available():
@@ -65,9 +66,7 @@ def starcoder_model_postprocess_past_key_value(past_key_values):
 
 
 
-def prepare_model_for_kbit_training(model,
-                                    use_input_require_grads=True,
-                                    use_gradient_checkpointing=True):
+def prepare_model_for_kbit_training(model,use_gradient_checkpointing=True,gradient_checkpointing_kwargs=None,**kwargs):
     r"""
        This method wraps the entire protocol for preparing a model before running a training. This includes:
            1- Cast the layernorm in fp32 2- making output embedding layer require grads 3- Add the upcasting of the lm
@@ -84,6 +83,9 @@ def prepare_model_for_kbit_training(model,
             loaded_in_kbit = getattr(s_model, "is_loaded_in_8bit", False) or getattr(s_model, "is_loaded_in_4bit", False)
 
     is_gptq_quantized = getattr(model, "quantization_method", None) == "gptq"
+    if gradient_checkpointing_kwargs is None:
+        gradient_checkpointing_kwargs = {}
+
     for name, param in model.named_parameters():
         # freeze base model's layers
         param.requires_grad = False
@@ -94,21 +96,37 @@ def prepare_model_for_kbit_training(model,
             if (param.dtype == torch.float16) or (param.dtype == torch.bfloat16):
                 param.data = param.data.to(torch.float32)
 
-    if (loaded_in_kbit or is_gptq_quantized) and use_input_require_grads:
-        # For backward compatibility
-        if hasattr(model, "enable_input_require_grads"):
-            model.enable_input_require_grads()
-        else:
-            def make_inputs_require_grad(module, input, output):
-                output.requires_grad_(True)
+    if (loaded_in_kbit or is_gptq_quantized) and use_gradient_checkpointing:
+        # When having `use_reentrant=False` + gradient_checkpointing, there is no need for this hack
+        if "use_reentrant" not in gradient_checkpointing_kwargs or gradient_checkpointing_kwargs["use_reentrant"]:
+            # For backward compatibility
+            if hasattr(model, "enable_input_require_grads"):
+                model.enable_input_require_grads()
+            else:
 
-            model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
+                def make_inputs_require_grad(module, input, output):
+                    output.requires_grad_(True)
 
-    if loaded_in_kbit and use_gradient_checkpointing:
+                model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
+
+        # To support older transformers versions, check if the model supports gradient_checkpointing_kwargs
+        _supports_gc_kwargs = "gradient_checkpointing_kwargs" in list(
+            inspect.signature(model.gradient_checkpointing_enable).parameters
+        )
+
+        if not _supports_gc_kwargs and len(gradient_checkpointing_kwargs) > 0:
+            warnings.warn(
+                "gradient_checkpointing_kwargs is not supported in this version of transformers. The passed kwargs will be ignored."
+                " if you want to use that feature, please upgrade to the latest version of transformers.",
+                FutureWarning,
+            )
+
+        gc_enable_kwargs = (
+            {} if not _supports_gc_kwargs else {"gradient_checkpointing_kwargs": gradient_checkpointing_kwargs}
+        )
 
         # enable gradient checkpointing for memory efficiency
-        model.gradient_checkpointing_enable()
-
+        model.gradient_checkpointing_enable(**gc_enable_kwargs)
     return model
 
 
@@ -349,7 +367,7 @@ def infer_device():
 
 
 
-COMMON_LAYERS_PATTERN = ["layers", "h", "block", "blocks", "layer"]
+
 
 
 TRANSFORMERS_MODELS_TO_PREFIX_TUNING_POSTPROCESS_MAPPING = {

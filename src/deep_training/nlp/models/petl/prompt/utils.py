@@ -10,6 +10,8 @@ def _prepare_prompt_learning_config(prompt_config, model_config):
             num_layers = model_config["num_hidden_layers"]
         elif "num_layers" in model_config:
             num_layers = model_config["num_layers"]
+        elif "num_layer" in model_config:
+            num_layers = model_config["num_layer"]
         elif "n_layer" in model_config:
             num_layers = model_config["n_layer"]
         else:
