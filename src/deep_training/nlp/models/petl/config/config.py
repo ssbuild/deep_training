@@ -108,13 +108,13 @@ class PromptArguments:
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
-        config = PROMPT_TYPE_TO_CONFIG_MAPPING[PetlConfigMixin.from_pretrained(pretrained_model_name_or_path, **kwargs).prompt_type].from_pretrained(pretrained_model_name_or_path, **kwargs)
+        config = PROMPT_TYPE_TO_CONFIG_MAPPING[PromptLearningConfig.from_pretrained(pretrained_model_name_or_path, **kwargs).prompt_type].from_pretrained(pretrained_model_name_or_path, **kwargs)
         config.enable = config.with_prompt = config.enable | config.with_prompt
         assert config.enable , ValueError('petl config get bad enable ',config.enable)
         return config
 
     @property
-    def config(self) -> Optional[PetlConfigMixin]:
+    def config(self) -> Optional[PromptLearningConfig]:
         if not self.enable:
             return None
         conf = self.prompt
@@ -125,10 +125,11 @@ class PromptArguments:
 
     def __post_init__(self):
         self.enable,self.with_prompt = False,False
+        if self.prompt is not None and isinstance(self.prompt, dict):
+            self.prompt = PROMPT_TYPE_TO_CONFIG_MAPPING[self.prompt["prompt_type"]].from_memory(self.prompt)
         conf = self.prompt
-        if conf is not None and isinstance(conf, dict):
-            conf.with_prompt = conf.enable = conf.enable | conf.with_prompt
-            self.enable = self.with_prompt = conf.enable | self.enable
+        conf.with_prompt = conf.enable = conf.enable | conf.with_prompt
+        self.enable = self.with_prompt = conf.enable | self.enable
         # for key in PROMPT_TYPE_TO_CONFIG_MAPPING:
         #     conf = getattr(PROMPT_TYPE_TO_CONFIG_MAPPING, key)
         #     if conf is not None and isinstance(conf, dict):

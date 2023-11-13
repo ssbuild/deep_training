@@ -16,7 +16,7 @@ import os
 from typing import Optional
 import torch
 from safetensors.torch import load_file as safe_load_file
-from .config.prompt import PromptType
+from .config.prompt import PromptType, PromptLearningConfig
 from ...layers.petl.constants import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
 from ...layers.petl.utils import infer_device
 
