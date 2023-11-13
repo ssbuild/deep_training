@@ -4,7 +4,7 @@
 # @File：loha
 from dataclasses import dataclass, field
 from typing import Union, Optional, List
-from .lycoris_configuration import LycorisConfig
+from .lycoris import LycorisConfig
 
 
 @dataclass

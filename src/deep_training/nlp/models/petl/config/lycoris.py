@@ -4,7 +4,7 @@
 # @File：lycoris_config
 from dataclasses import dataclass, field
 from typing import Union, Optional, List
-from .petl_configuration import PetlConfig
+from .petl import PetlConfig
 
 @dataclass
 class LycorisConfig(PetlConfig):

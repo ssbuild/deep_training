@@ -10,7 +10,7 @@ import torch
 from torch import nn
 from tqdm import tqdm
 from ..petl_model_base import PetlModelBase
-from ..config.lycoris_configuration import LycorisConfig
+from ..config.lycoris import LycorisConfig
 from ....layers.petl.lycoris.layer import LycorisLayer
 from ....layers.petl.petl_layer import check_target_module_exists, PetlLayerBase
 from ....layers.petl.utils import ModulesToSaveWrapper, _get_submodules

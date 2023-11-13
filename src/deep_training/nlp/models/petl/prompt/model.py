@@ -2,33 +2,33 @@
 # @Time:  14:50
 # @Author: tk
 # @File：prompt_model
-import copy
 import inspect
 import os
 import warnings
 from contextlib import contextmanager
 from typing import Callable, Optional, List
-
 import torch
 from torch.nn import MSELoss, CrossEntropyLoss, BCEWithLogitsLoss
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import SequenceClassifierOutput, TokenClassifierOutput
 from transformers.utils import PushToHubMixin
 from safetensors.torch import save_file as safe_save_file
-from ....layers.petl.constants import SAFETENSORS_WEIGHTS_NAME
+from ....layers.petl.constants import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
 from .....utils.function import copy_dataclass
-from ..config.config import PromptLearningConfig, PromptType, PromptConfigBase, PROMPT_TYPE_TO_CONFIG_MAPPING, \
-    WEIGHTS_NAME, TaskType
-from .save_and_load import get_prompt_model_state_dict, set_prompt_model_state_dict
-from .utils import _prepare_prompt_learning_config
+from ..config.config import PromptLearningConfig, PromptType, PromptConfigBase, PROMPT_TYPE_TO_CONFIG_MAPPING, TaskType
+from ..save_and_load import get_prompt_model_state_dict, set_prompt_model_state_dict
 from ...transformer_base import TransformerBase
 from ....layers.petl.prompt.prefix_tuning import PrefixEncoder
 from ....layers.petl.prompt.p_tuning import PromptEncoder
 from ....layers.petl.prompt.prompt_tuning import PromptEmbedding
 from ....layers.petl.utils import _set_trainable, _set_adapter, \
-    TRANSFORMERS_MODELS_TO_PREFIX_TUNING_POSTPROCESS_MAPPING, shift_tokens_right
+    TRANSFORMERS_MODELS_TO_PREFIX_TUNING_POSTPROCESS_MAPPING, shift_tokens_right, _prepare_prompt_learning_config
 
 
+__all__ = [
+    "get_prompt_model",
+    "PromptModel"
+]
 def get_prompt_model(model, prompt_config):
     """
     Returns a Prompt model object from a model and a config.

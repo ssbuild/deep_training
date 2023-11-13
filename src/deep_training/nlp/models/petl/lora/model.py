@@ -13,7 +13,7 @@ import torch
 from torch import nn
 from tqdm import tqdm
 from transformers import Conv1D
-from ..config.lora_configuration import LoraConfig
+from ..config.config import LoraConfig
 from ..petl_model_base import PetlModelBase
 from ....layers.petl.lora.layer import is_bnb_available, LoraLayer, Linear, \
     is_bnb_4bit_available, Embedding, Conv2d

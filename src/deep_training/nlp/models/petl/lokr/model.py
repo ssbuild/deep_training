@@ -5,7 +5,7 @@ from typing import Dict, Type
 
 import torch
 
-from ..lycoris.lycoris_model import PetlLycorisBase
+from ..lycoris.lycoris import PetlLycorisBase
 from ....layers.petl.lokr.layer import Conv2d, Linear, LoKrLayer
 
 

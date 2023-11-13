@@ -3,7 +3,7 @@
 # @Time    : 2023/11/13 8:49
 from typing import Dict, Type
 import torch
-from ..lycoris.lycoris_model import PetlLycorisBase
+from ..lycoris.lycoris import PetlLycorisBase
 from ....layers.petl.loha.layer import Conv2d, Linear, LoHaLayer
 
 

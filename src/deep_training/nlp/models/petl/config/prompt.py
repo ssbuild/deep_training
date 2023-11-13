@@ -15,6 +15,8 @@ __all__ = [
     "PromptTuningConfig",
     "PrefixTuningConfig",
     "AdaptionPromptConfig",
+    "PromptEncoderReparameterizationType",
+    "PromptTuningInit",
 ]
 
 class TaskType(str, enum.Enum):

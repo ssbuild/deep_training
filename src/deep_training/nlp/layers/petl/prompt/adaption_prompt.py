@@ -22,7 +22,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ..utils import _get_submodules, _freeze_adapter
-from ....models.petl.prompt.configuration import AdaptionPromptConfig
+from ....models.petl.config.config import AdaptionPromptConfig
 
 
 # from peft.utils.config import PeftConfig, PeftType
