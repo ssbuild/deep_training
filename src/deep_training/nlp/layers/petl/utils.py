@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 # @Author  : ssbuild
 # @Time    : 2023/8/22 8:36
+import torch
 import copy
 import importlib
 import inspect
 import warnings
 from typing import Optional, Tuple
-import torch
+import importlib_metadata
+import packaging
 import accelerate
 from accelerate.hooks import remove_hook_from_module, add_hook_to_module
 from accelerate.utils import is_xpu_available, is_npu_available
@@ -34,7 +36,16 @@ def is_bnb_4bit_available():
 
 
 def is_auto_gptq_available():
-    return importlib.util.find_spec("auto_gptq") is not None
+    if importlib.util.find_spec("auto_gptq") is not None:
+        AUTOGPTQ_MINIMUM_VERSION = packaging.version.parse("0.5.0")
+        version_autogptq = packaging.version.parse(importlib_metadata.version("auto_gptq"))
+        if AUTOGPTQ_MINIMUM_VERSION <= version_autogptq:
+            return True
+        else:
+            raise ImportError(
+                f"Found an incompatible version of auto-gptq. Found version {version_autogptq}, "
+                f"but only versions above {AUTOGPTQ_MINIMUM_VERSION} are supported"
+            )
 
 
 def is_optimum_available():
@@ -399,5 +410,47 @@ TRANSFORMERS_MODELS_TO_PREFIX_TUNING_POSTPROCESS_MAPPING = {
     "gpt_bigcode": starcoder_model_postprocess_past_key_value,
 }
 
-# WEIGHTS_NAME = "adapter_model.bin"
-# CONFIG_NAME = "adapter_config.json"
+
+
+def _prepare_prompt_learning_config(prompt_config, model_config):
+    if prompt_config.num_layers is None:
+        if "num_hidden_layers" in model_config:
+            num_layers = model_config["num_hidden_layers"]
+        elif "num_layers" in model_config:
+            num_layers = model_config["num_layers"]
+        elif "num_layer" in model_config:
+            num_layers = model_config["num_layer"]
+        elif "n_layer" in model_config:
+            num_layers = model_config["n_layer"]
+        else:
+            raise ValueError("Please specify `num_layers` in `prompt_config`")
+        prompt_config.num_layers = num_layers
+
+    if prompt_config.token_dim is None:
+        if "hidden_size" in model_config:
+            token_dim = model_config["hidden_size"]
+        elif "n_embd" in model_config:
+            token_dim = model_config["n_embd"]
+        elif "d_model" in model_config:
+            token_dim = model_config["d_model"]
+        else:
+            raise ValueError("Please specify `token_dim` in `prompt_config`")
+        prompt_config.token_dim = token_dim
+
+    if prompt_config.num_attention_heads is None:
+        if "num_attention_heads" in model_config:
+            num_attention_heads = model_config["num_attention_heads"]
+        elif "n_head" in model_config:
+            num_attention_heads = model_config["n_head"]
+        elif "num_heads" in model_config:
+            num_attention_heads = model_config["num_heads"]
+        elif "encoder_attention_heads" in model_config:
+            num_attention_heads = model_config["encoder_attention_heads"]
+        else:
+            raise ValueError("Please specify `num_attention_heads` in `prompt_config`")
+        prompt_config.num_attention_heads = num_attention_heads
+
+    if getattr(prompt_config, "encoder_hidden_size", None) is None:
+        setattr(prompt_config, "encoder_hidden_size", prompt_config.token_dim)
+
+    return prompt_config

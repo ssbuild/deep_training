@@ -16,7 +16,7 @@ from ..transformer_base import TransformerBase
 from ...layers.petl.constants import WEIGHTS_NAME,SAFETENSORS_WEIGHTS_NAME 
 from ....utils.function import copy_dataclass
 from ...layers.petl.utils import _set_trainable, _set_adapter, infer_device, id_tensor_storage
-from .config.configuration import *
+from .config.config import *
 from .lora.model import LoraModule
 from .adalora.model import AdaLoraModule
 from .ia3.model import IA3Module

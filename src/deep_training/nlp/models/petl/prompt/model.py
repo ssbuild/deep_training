@@ -17,7 +17,7 @@ from transformers.utils import PushToHubMixin
 from safetensors.torch import save_file as safe_save_file
 from ....layers.petl.constants import SAFETENSORS_WEIGHTS_NAME
 from .....utils.function import copy_dataclass
-from .configuration import PromptLearningConfig, PromptType, PromptBaseArguments, PROMPT_TYPE_TO_CONFIG_MAPPING, \
+from ..config.config import PromptLearningConfig, PromptType, PromptConfigBase, PROMPT_TYPE_TO_CONFIG_MAPPING, \
     WEIGHTS_NAME, TaskType
 from .save_and_load import get_prompt_model_state_dict, set_prompt_model_state_dict
 from .utils import _prepare_prompt_learning_config
@@ -193,7 +193,7 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
         # load the config
         if prompt_config is None:
             prompt_config = PROMPT_TYPE_TO_CONFIG_MAPPING[
-                PromptBaseArguments.from_pretrained(pretrained_model_name_or_path,
+                PromptConfigBase.from_pretrained(pretrained_model_name_or_path,
                                                     subfolder=kwargs.get("subfolder", None)).prompt_type
             ].from_pretrained(pretrained_model_name_or_path, subfolder=kwargs.get("subfolder", None))
 
@@ -393,7 +393,7 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
             if config is None:
                 # load the config
                 prompt_config = PROMPT_TYPE_TO_CONFIG_MAPPING[
-                    PromptBaseArguments.from_pretrained(model_id, subfolder=kwargs.get("subfolder", None)).prompt_type
+                    PromptConfigBase.from_pretrained(model_id, subfolder=kwargs.get("subfolder", None)).prompt_type
                 ].from_pretrained(model_id, subfolder=kwargs.get("subfolder", None))
             else:
                 prompt_config = config
