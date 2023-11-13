@@ -63,10 +63,10 @@ def get_petl_model_state_dict(model, state_dict=None, adapter_name="default"):
                 to_return = model.resize_state_dict_by_rank_pattern(rank_pattern, to_return, adapter_name)
     elif config.lora_type == "ia3":
         to_return = {k: state_dict[k] for k in state_dict if "ia3_" in k}
-    elif config.peft_type == "loha":
+    elif config.lora_type == "loha":
         to_return = {k: state_dict[k] for k in state_dict if "hada_" in k}
 
-    elif config.peft_type == "lokr":
+    elif config.lora_type == "lokr":
         to_return = {k: state_dict[k] for k in state_dict if "lokr_" in k}
     else:
         raise NotImplementedError
@@ -120,7 +120,7 @@ def set_petl_model_state_dict(model, petl_model_state_dict, adapter_name="defaul
                 petl_model_state_dict[k] = v
             else:
                 petl_model_state_dict[k] = v
-        if config.peft_type == "adalora":
+        if config.lora_type == "adalora":
             rank_pattern = config.rank_pattern
             if rank_pattern is not None:
                 model.resize_modules_by_rank_pattern(rank_pattern, adapter_name)
