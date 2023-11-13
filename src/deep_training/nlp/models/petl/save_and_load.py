@@ -63,6 +63,11 @@ def get_petl_model_state_dict(model, state_dict=None, adapter_name="default"):
                 to_return = model.resize_state_dict_by_rank_pattern(rank_pattern, to_return, adapter_name)
     elif config.lora_type == "ia3":
         to_return = {k: state_dict[k] for k in state_dict if "ia3_" in k}
+    elif config.peft_type == "loha":
+        to_return = {k: state_dict[k] for k in state_dict if "hada_" in k}
+
+    elif config.peft_type == "lokr":
+        to_return = {k: state_dict[k] for k in state_dict if "lokr_" in k}
     else:
         raise NotImplementedError
     if getattr(model, "modules_to_save", None) is not None:
@@ -95,9 +100,15 @@ def set_petl_model_state_dict(model, petl_model_state_dict, adapter_name="defaul
     else:
         state_dict = petl_model_state_dict
 
-    if config.lora_type in ('lora', 'adalora', 'ia3'):
+    if config.lora_type in ('lora', 'adalora', 'ia3',"loha","lokr"):
         petl_model_state_dict = {}
-        parameter_prefix = "ia3_" if config.lora_type == "ia3" else "lora_"
+        parameter_prefix = {
+            "ia3": "ia3_",
+            "lora": "lora_",
+            "adalora": "lora_",
+            "loha": "hada_",
+            "lokr": "lokr_",
+        }[config.lora_type]
         for k, v in state_dict.items():
             if parameter_prefix in k:
                 suffix = k.split(parameter_prefix)[1]
@@ -109,7 +120,7 @@ def set_petl_model_state_dict(model, petl_model_state_dict, adapter_name="defaul
                 petl_model_state_dict[k] = v
             else:
                 petl_model_state_dict[k] = v
-        if config.lora_type == "adalora":
+        if config.peft_type == "adalora":
             rank_pattern = config.rank_pattern
             if rank_pattern is not None:
                 model.resize_modules_by_rank_pattern(rank_pattern, adapter_name)
@@ -197,7 +208,7 @@ def get_prompt_model_state_dict(model, state_dict=None, adapter_name="default"):
         to_return["prompt_embeddings"] = prompt_embeddings
     else:
         raise NotImplementedError
-    if model.modules_to_save is not None:
+    if getattr(model, "modules_to_save", None) is not None:
         for key, value in state_dict.items():
             if any(f"{module_name}.modules_to_save.{adapter_name}" in key for module_name in model.modules_to_save):
                 to_return[key.replace("modules_to_save.", "")] = value
@@ -216,7 +227,7 @@ def set_prompt_model_state_dict(model, prompt_model_state_dict, adapter_name="de
     """
     config = model.prompt_config[adapter_name]
     state_dict = {}
-    if model.modules_to_save is not None:
+    if getattr(model, "modules_to_save", None) is not None:
         for key, value in prompt_model_state_dict.items():
             if any(module_name in key for module_name in model.modules_to_save):
                 for module_name in model.modules_to_save:

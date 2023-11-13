@@ -2,6 +2,7 @@
 # @Time:  14:50
 # @Author: tk
 # @File：prompt_model
+import collections
 import inspect
 import os
 import warnings
@@ -22,8 +23,8 @@ from ....layers.petl.prompt.prefix_tuning import PrefixEncoder
 from ....layers.petl.prompt.p_tuning import PromptEncoder
 from ....layers.petl.prompt.prompt_tuning import PromptEmbedding
 from ....layers.petl.utils import _set_trainable, _set_adapter, \
-    TRANSFORMERS_MODELS_TO_PREFIX_TUNING_POSTPROCESS_MAPPING, shift_tokens_right, _prepare_prompt_learning_config
-
+    TRANSFORMERS_MODELS_TO_PREFIX_TUNING_POSTPROCESS_MAPPING, shift_tokens_right, _prepare_prompt_learning_config, \
+    id_tensor_storage
 
 __all__ = [
     "get_prompt_model",
@@ -127,11 +128,27 @@ class PromptModel(PushToHubMixin, torch.nn.Module):
             os.makedirs(output_dir, exist_ok=True)
 
             if safe_serialization:
-                safe_save_file(
-                    output_state_dict,
-                    os.path.join(output_dir, SAFETENSORS_WEIGHTS_NAME),
-                    metadata={"format": "pt"},
-                )
+                # Section copied from: https://github.com/huggingface/transformers/blob/main/src/transformers/modeling_utils.py#L2111-L2134
+                # Safetensors does not allow tensor aliasing.
+                # We're going to remove aliases before saving
+                ptrs = collections.defaultdict(list)
+                for name, tensor in output_state_dict.items():
+                    # Sometimes in the state_dict we have non-tensor objects.
+                    # e.g. in bitsandbytes we have some `str` objects in the state_dict
+                    if isinstance(tensor, torch.Tensor):
+                        ptrs[id_tensor_storage(tensor)].append(name)
+                    else:
+                        # In the non-tensor case, fall back to the pointer of the object itself
+                        ptrs[id(tensor)].append(name)
+
+                # These are all the pointers of shared tensors.
+                shared_ptrs = {ptr: names for ptr, names in ptrs.items() if len(names) > 1}
+
+                for _, names in shared_ptrs.items():
+                    # Here we just clone the shared tensors to avoid tensor aliasing which is
+                    # not supported in safetensors.
+                    for shared_tensor_name in names[1:]:
+                        output_state_dict[shared_tensor_name] = output_state_dict[shared_tensor_name].clone()
             else:
                 torch.save(output_state_dict, os.path.join(output_dir, WEIGHTS_NAME))
 
