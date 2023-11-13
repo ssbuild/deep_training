@@ -5,12 +5,14 @@ import copy
 import importlib
 import inspect
 import warnings
-from typing import Optional
-
-import accelerate
+from typing import Optional, Tuple
 import torch
+import accelerate
 from accelerate.hooks import remove_hook_from_module, add_hook_to_module
 from accelerate.utils import is_xpu_available, is_npu_available
+from safetensors.torch import storage_ptr, storage_size
+from transformers import is_torch_tpu_available
+
 from .constants import (TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING,
                         TRANSFORMERS_MODELS_TO_ADALORA_TARGET_MODULES_MAPPING,
                         TRANSFORMERS_MODELS_TO_IA3_FEEDFORWARD_MODULES_MAPPING,
@@ -367,7 +369,29 @@ def infer_device():
 
 
 
+def id_tensor_storage(tensor: torch.Tensor) -> Tuple[torch.device, int, int]:
+    """
+    Unique identifier to a tensor storage. Multiple different tensors can share the same underlying storage. For
+    example, "meta" tensors all share the same storage, and thus their identifier will all be equal. This identifier is
+    guaranteed to be unique and constant for this tensor's storage during its lifetime. Two tensor storages with
+    non-overlapping lifetimes may have the same id.
 
+    This method is the exact same copy of
+    https://github.com/huggingface/transformers/blob/main/src/transformers/pytorch_utils.py#L282C1-L300C58 but we added
+    it here manually to avoid import issue with old versions of transformers.
+    """
+    if tensor.device.type == "xla" and is_torch_tpu_available():
+        # NOTE: xla tensors dont have storage
+        # use some other unique id to distinguish.
+        # this is a XLA tensor, it must be created using torch_xla's
+        # device. So the following import is safe:
+        import torch_xla
+
+        unique_id = torch_xla._XLAC._xla_get_tensor_id(tensor)
+    else:
+        unique_id = storage_ptr(tensor)
+
+    return tensor.device, unique_id, storage_size(tensor)
 
 
 TRANSFORMERS_MODELS_TO_PREFIX_TUNING_POSTPROCESS_MAPPING = {

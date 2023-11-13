@@ -48,7 +48,7 @@ class PetlModelBase(nn.Module, ABC):
     """
 
     def __init__(self, model, petl_config: Union[PetlConfig, Dict[AnyStr, PetlConfig]], adapter_name: AnyStr,
-                 gradient_checkpointing=True,
+                 gradient_checkpointing=False,
                  gradient_checkpointing_kwargs=None,
                  **kwargs) -> None:
         super().__init__()

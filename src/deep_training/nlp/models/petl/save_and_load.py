@@ -16,11 +16,11 @@ import os
 from typing import Optional
 import torch
 from safetensors.torch import load_file as safe_load_file
-from ....layers.petl.constants import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
-from ....layers.petl.utils import infer_device
+from ...layers.petl.constants import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
+from ...layers.petl.utils import infer_device
 
 
-def get_lora_model_state_dict(model, state_dict=None, adapter_name="default"):
+def get_petl_model_state_dict(model, state_dict=None, adapter_name="default"):
     """
     Get the state dict of the Peft model.
 
@@ -73,18 +73,18 @@ def get_lora_model_state_dict(model, state_dict=None, adapter_name="default"):
     return to_return
 
 
-def set_lora_model_state_dict(model, peft_model_state_dict, adapter_name="default",strict=False):
+def set_petl_model_state_dict(model, petl_model_state_dict, adapter_name="default", strict=False):
     """
     Set the state dict of the Peft model.
 
     Args:
         model ([`PeftModel`]): The Peft model.
-        peft_model_state_dict (`dict`): The state dict of the Peft model.
+        petl_model_state_dict (`dict`): The state dict of the Peft model.
     """
     config = model.petl_config[adapter_name]
     state_dict = {}
     if getattr(model, "modules_to_save", None) is not None:
-        for key, value in peft_model_state_dict.items():
+        for key, value in petl_model_state_dict.items():
             if any(module_name in key for module_name in model.modules_to_save):
                 for module_name in model.modules_to_save:
                     if module_name in key:
@@ -92,10 +92,10 @@ def set_lora_model_state_dict(model, peft_model_state_dict, adapter_name="defaul
                         break
             state_dict[key] = value
     else:
-        state_dict = peft_model_state_dict
+        state_dict = petl_model_state_dict
 
     if config.lora_type in ('lora', 'adalora', 'ia3'):
-        peft_model_state_dict = {}
+        petl_model_state_dict = {}
         parameter_prefix = "ia3_" if config.lora_type == "ia3" else "lora_"
         for k, v in state_dict.items():
             if parameter_prefix in k:
@@ -105,9 +105,9 @@ def set_lora_model_state_dict(model, peft_model_state_dict, adapter_name="defaul
                     k = k.replace(suffix_to_replace, f"{adapter_name}.{suffix_to_replace}")
                 else:
                     k = f"{k}.{adapter_name}"
-                peft_model_state_dict[k] = v
+                petl_model_state_dict[k] = v
             else:
-                peft_model_state_dict[k] = v
+                petl_model_state_dict[k] = v
         if config.lora_type == "adalora":
             rank_pattern = config.rank_pattern
             if rank_pattern is not None:
@@ -115,7 +115,7 @@ def set_lora_model_state_dict(model, peft_model_state_dict, adapter_name="defaul
     else:
         raise NotImplementedError
 
-    load_result = model.load_state_dict(peft_model_state_dict, strict=strict)
+    load_result = model.load_state_dict(petl_model_state_dict, strict=strict)
     return load_result
 
 

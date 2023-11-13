@@ -66,7 +66,7 @@ class PetlArguments:
             return None
         for key in list(PETL_TYPE_TO_CONFIG_MAPPING.keys()):
             conf = getattr(self, key)
-            if conf is not None and conf.enable:
+            if conf is not None and (conf.enable or conf.with_lora):
                 return conf
         return None
 
@@ -79,5 +79,7 @@ class PetlArguments:
                 conf = PETL_TYPE_TO_CONFIG_MAPPING[key].from_memory(conf)
                 setattr(self,key,conf)
                 self.enable = self.lora.enable | self.enable
+                self.with_lora = self.lora.with_lora | self.with_lora
+                self.with_lora = self.enable = self.enable or self.with_lora
 
 
