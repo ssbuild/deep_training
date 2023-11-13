@@ -18,6 +18,8 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
   
 ## update
 - <strong>2023-10-22</strong>
+  - 0.2.9 release
+- <strong>2023-10-22</strong>
   - 0.2.7
     - support clip 完整训练 https://github.com/ssbuild/clip_finetuning 
     - support asr seq2seq 完整训练 https://github.com/ssbuild/asr_seq2seq_finetuning
