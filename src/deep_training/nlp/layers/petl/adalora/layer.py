@@ -23,10 +23,12 @@ from ..lora.layer import LoraLayer
 from ..utils import transpose, is_bnb_available,is_bnb_4bit_available,is_auto_gptq_available,is_optimum_available
 
 
+
 class AdaLoraLayer(LoraLayer):
     # List all names of layers that may contain adapter weights
     # Note: ranknum doesn't need to be included as it is not an nn.Module
-    adapter_layer_names = ["lora_A", "lora_B", "lora_E", "lora_embedding_A", "lora_embedding_B"]
+    adapter_layer_names = ("lora_A", "lora_B", "lora_E", "lora_embedding_A", "lora_embedding_B")
+    # other_param_names is defined in LoraLayer
 
     def __init__(
         self,
@@ -186,11 +188,11 @@ class RankAllocator(object):
 
     """
 
-    def __init__(self, model, peft_config, adapter_name):
-        self.peft_config = peft_config
+    def __init__(self, model, petl_config, adapter_name):
+        self.petl_config = petl_config
         self.adapter_name = adapter_name
-        self.beta1 = peft_config.beta1
-        self.beta2 = peft_config.beta2
+        self.beta1 = petl_config.beta1
+        self.beta2 = petl_config.beta2
         assert self.beta1 > 0 and self.beta1 < 1
         assert self.beta2 > 0 and self.beta2 < 1
 
@@ -198,7 +200,7 @@ class RankAllocator(object):
         self._set_budget_scheduler(model)
 
     def set_total_step(self, total_step):
-        self.peft_config.total_step = total_step
+        self.petl_config.total_step = total_step
 
     def reset_ipt(self):
         self.ipt = {}
@@ -214,12 +216,12 @@ class RankAllocator(object):
                 self.name_set.add(n.replace("lora_A", "%s"))
         self.name_set = sorted(self.name_set)
         # The total final rank budget
-        self.target_bgt = self.peft_config.target_r * len(self.name_set)
+        self.target_bgt = self.petl_config.target_r * len(self.name_set)
 
     def budget_schedule(self, step: int):
-        tinit = self.peft_config.tinit
-        tfinal = self.peft_config.tfinal
-        total_step = self.peft_config.total_step
+        tinit = self.petl_config.tinit
+        tfinal = self.petl_config.tfinal
+        total_step = self.petl_config.total_step
         # Initial warmup
         if step <= tinit:
             budget = self.init_bgt
@@ -232,7 +234,7 @@ class RankAllocator(object):
             # Budget decreasing with a cubic scheduler
             mul_coeff = 1 - (step - tinit) / (total_step - tfinal - tinit)
             budget = int((self.init_bgt - self.target_bgt) * (mul_coeff**3) + self.target_bgt)
-            mask_ind = True if step % self.peft_config.deltaT == 0 else False
+            mask_ind = True if step % self.petl_config.deltaT == 0 else False
         return budget, mask_ind
 
     def update_ipt(self, model):
@@ -314,7 +316,7 @@ class RankAllocator(object):
 
     def update_and_allocate(self, model, global_step, force_mask=False):
         # # Update the importance score and allocate the budget
-        if global_step < self.peft_config.total_step - self.peft_config.tfinal:
+        if global_step < self.petl_config.total_step - self.petl_config.tfinal:
             self.update_ipt(model)
         budget, mask_ind = self.budget_schedule(global_step)
         # Allocate the budget according to importance scores

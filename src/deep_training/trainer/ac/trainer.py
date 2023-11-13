@@ -39,7 +39,6 @@ from transformers.trainer_pt_utils import get_parameter_names, IterableDatasetSh
     nested_xla_mesh_reduce, distributed_concat, distributed_broadcast_scalars
 from transformers.trainer_utils import has_length, PREFIX_CHECKPOINT_DIR, number_of_arguments
 from transformers.training_args import ParallelMode
-
 from ...nlp.models.petl import PetlModel, PromptModel
 from ...nlp.optimizer.optimizer import OptimizerNames
 from transformers.utils import strtobool, logging, is_accelerate_available, is_peft_available, is_sagemaker_mp_enabled

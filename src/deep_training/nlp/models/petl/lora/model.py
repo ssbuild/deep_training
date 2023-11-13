@@ -9,19 +9,17 @@ from dataclasses import asdict, replace
 from enum import Enum
 from functools import reduce
 from itertools import chain
-from typing import Any
 import torch
 from torch import nn
 from tqdm import tqdm
 from transformers import Conv1D
-
-from .configuration import COMMON_LAYERS_PATTERN, LoraConfig,AdaLoraConfig,PetlConfig
-from .petl_model_internel import PetlModelAbstract
+from ..config.config import LoraConfig
+from ..petl_model_base import PetlModelBase
 from ....layers.petl.lora.layer import is_bnb_available, LoraLayer, Linear, \
     is_bnb_4bit_available, Embedding, Conv2d
-from ....layers.petl.petl_layer import PetlLayerAbstract, check_target_module_exists
+from ....layers.petl.petl_layer import PetlLayerBase, check_target_module_exists
 from ....layers.petl.utils import _freeze_adapter, _get_submodules, ModulesToSaveWrapper, \
-    prepare_model_for_kbit_training, TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING, get_quantization_config, \
+    TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING, get_quantization_config, \
     get_auto_gptq_quant_linear
 
 __all__ = [
@@ -39,7 +37,7 @@ if is_bnb_4bit_available():
 
 from ....layers.petl.lora.gptq import QuantLinear
 
-class LoraModule(PetlModelAbstract):
+class LoraModule(PetlModelBase):
     """
     Creates Low Rank Adapter (Lora) model from a pretrained transformers model.
 
@@ -56,15 +54,8 @@ class LoraModule(PetlModelAbstract):
         - **lora_config** ([`LoraConfig`]): The configuration of the Lora model.
     """
 
-    def __init__(self, model, config, adapter_name,
-                 auto_prepare_kbit_training=True,
-                 use_input_require_grads=True,
-                 use_gradient_checkpointing=True
-                 ):
-        super().__init__(model, config, adapter_name,
-                         auto_prepare_kbit_training=auto_prepare_kbit_training,
-                         use_input_require_grads=use_input_require_grads,
-                         use_gradient_checkpointing=use_gradient_checkpointing)
+    def __init__(self, model, config, adapter_name,**kwargs):
+        super().__init__(model, config, adapter_name,**kwargs)
 
     def _check_new_adapter_config(self, config: LoraConfig) -> None:
         """
@@ -157,12 +148,27 @@ class LoraModule(PetlModelAbstract):
         setattr(parent, child_name, new_module)
         # It's not necessary to set requires_grad here, as that is handled by
         # _mark_only_adapters_as_trainable
-        new_module.weight = child.weight
-        if hasattr(child, "bias"):
-            new_module.bias = child.bias
+                                        
+                                  
+                                        
+
+        # child layer wraps the original module, unpack it
+        if hasattr(child, "base_layer"):
+            child = child.base_layer
+        elif hasattr(child, "quant_linear_module"):
+            child = child.quant_linear_module
+
+        # TODO: layers with base_layer don't need the weight to be copied, as they have a reference already
+        if not hasattr(new_module, "base_layer"):
+            new_module.weight = child.weight
+            if hasattr(child, "bias"):
+                new_module.bias = child.bias
 
         if getattr(child, "state", None) is not None:
-            new_module.state = child.state
+            if hasattr(new_module, "base_layer"):
+                new_module.base_layer.state = child.state
+            else:
+                new_module.state = child.state
             new_module.to(child.weight.device)
 
         # dispatch to correct device
@@ -212,9 +218,9 @@ class LoraModule(PetlModelAbstract):
                     "index": target.index,
                 }
             )
-            new_module = Linear8bitLt(
-                adapter_name, target.in_features, target.out_features, bias=bias, **eightbit_kwargs
-            )
+                                      
+            new_module = Linear8bitLt(adapter_name, target, **eightbit_kwargs)
+             
         elif loaded_in_4bit and is_bnb_4bit_available() and isinstance(target, bnb.nn.Linear4bit):
             fourbit_kwargs = kwargs.copy()
             fourbit_kwargs.update(
@@ -224,7 +230,7 @@ class LoraModule(PetlModelAbstract):
                     "quant_type": target.weight.quant_type,
                 }
             )
-            new_module = Linear4bit(adapter_name, target.in_features, target.out_features, bias=bias, **fourbit_kwargs)
+            new_module = Linear4bit(adapter_name, target, **fourbit_kwargs)
         elif AutoGPTQQuantLinear is not None and isinstance(target, AutoGPTQQuantLinear):
             new_module = QuantLinear(adapter_name, target, **kwargs)
             target.weight = target.qweight
@@ -259,14 +265,14 @@ class LoraModule(PetlModelAbstract):
                         "Setting fan_in_fan_out to True."
                     )
                     kwargs["fan_in_fan_out"] = lora_config.fan_in_fan_out = True
-            elif 'sat.mpu.layers.ColumnParallelLinear' in str(type(target)) or 'sat.mpu.layers.RowParallelLinear' in str(type(target)):
-                in_features, out_features = target.input_size, target.output_size
-                if kwargs["fan_in_fan_out"]:
-                    warnings.warn(
-                        "fan_in_fan_out is set to True but the target module is `torch.nn.Linear`. "
-                        "Setting fan_in_fan_out to False."
-                    )
-                    kwargs["fan_in_fan_out"] = lora_config.fan_in_fan_out = False
+                                                                                                                                       
+                                                                                 
+                                            
+                                  
+                                                                                                    
+                                                          
+                     
+                                                                                 
             else:
                 raise ValueError(
                     f"Target module {target} is not supported. Currently, only the following modules are supported: "
@@ -296,7 +302,7 @@ class LoraModule(PetlModelAbstract):
 
     def _set_adapter_layers(self, enabled=True):
         for module in self.model.modules():
-            if isinstance(module, (PetlLayerAbstract, ModulesToSaveWrapper)):
+            if isinstance(module, (PetlLayerBase, ModulesToSaveWrapper)):
                 module.enable_adapters(enabled)
 
     def enable_adapter_layers(self):
@@ -355,28 +361,28 @@ class LoraModule(PetlModelAbstract):
                         padding=target.padding,
                         dilation=target.dilation,
                     )
-                elif is_bnb_available() and isinstance(target, bnb.nn.Linear8bitLt):
-                    bias = target.bias is not None
+                elif is_bnb_available() and isinstance(target, Linear8bitLt):
+                    bias = target.base_layer.bias is not None
                     new_module = bnb.nn.Linear8bitLt(
                         target.in_features,
                         target.out_features,
                         bias=bias,
-                        has_fp16_weights=target.state.has_fp16_weights,
-                        memory_efficient_backward=target.state.memory_efficient_backward,
-                        threshold=target.state.threshold,
-                        index=target.index,
-                        device=target.weight.device,
+                        has_fp16_weights=target.base_layer.state.has_fp16_weights,
+                        memory_efficient_backward=target.base_layer.state.memory_efficient_backward,
+                        threshold=target.base_layer.state.threshold,
+                        index=target.base_layer.index,
+                        device=target.base_layer.weight.device,
                     )
-                elif is_bnb_4bit_available() and isinstance(target, bnb.nn.Linear4bit):
-                    bias = target.bias is not None
+                elif is_bnb_4bit_available() and isinstance(target, Linear4bit):
+                    bias = target.base_layer.bias is not None
                     new_module = bnb.nn.Linear4bit(
                         target.in_features,
                         target.out_features,
                         bias=bias,
-                        compute_dtype=target.compute_dtype,
-                        compress_statistics=target.weight.compress_statistics,
-                        quant_type=target.weight.quant_type,
-                        device=target.weight.device,
+                        compute_dtype=target.base_layer.compute_dtype,
+                        compress_statistics=target.base_layer.weight.compress_statistics,
+                        quant_type=target.base_layer.weight.quant_type,
+                        device=target.base_layer.weight.device,
                     )
                 else:
                     bias = target.bias is not None
@@ -616,29 +622,15 @@ class LoraModule(PetlModelAbstract):
         del self.petl_config[adapter_name]
 
         key_list = [key for key, _ in self.model.named_modules() if "lora" not in key]
+        new_adapter = None
         for key in key_list:
             _, target, _ = _get_submodules(self.model, key)
             if isinstance(target, LoraLayer):
-                for attr in [
-                    "r",
-                    "lora_alpha",
-                    "scaling",
-                    "lora_A",
-                    "lora_B",
-                    "lora_embedding_A",
-                    "lora_embedding_B",
-                    "lora_dropout",
-                ]:
-                    if adapter_name in getattr(target, attr):
-                        getattr(target, attr).pop(adapter_name)
-                if adapter_name in target.active_adapters:
-                    resetting_active_adapter = (
-                        list(self.petl_config.keys())[0] if len(self.petl_config) > 0 else "default"
-                    )
-                    warnings.warn(
-                        f"Adapter {adapter_name} was active which is now deleted. Setting active adapter to {resetting_active_adapter}. "
-                    )
-                    target.set_adapter(resetting_active_adapter)
+                target.delete_adapter(adapter_name)
+                if new_adapter is None:
+                    new_adapter = target.active_adapters[:]
+
+        self.active_adapter = new_adapter or []
 
     def merge_and_unload(self, progressbar: bool = False, safe_merge: bool = False):
         r"""

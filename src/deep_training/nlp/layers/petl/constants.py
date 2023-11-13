@@ -7,7 +7,7 @@ SAFETENSORS_WEIGHTS_NAME = "adapter_model.safetensors"
 CONFIG_NAME = "adapter_config.json"
 
 
-
+COMMON_LAYERS_PATTERN = ["layers", "h", "block", "blocks", "layer"]
 
 TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING = {
     "t5": ["q", "v"],
@@ -80,6 +80,8 @@ TRANSFORMERS_MODELS_TO_ADALORA_TARGET_MODULES_MAPPING = {
     "falcon": ["query_key_value"],
     "btlm": ["c_proj", "c_attn"],
     "codegen": ["qkv_proj"],
+    "mistral": [ "q_proj", "v_proj" ],
+    "stablelm": [ "q_proj", "v_proj" ],
     'moss': ['qkv_proj'],
     'cpmant': ['project_q', 'project_v'],
     'rwkv': ['key', 'value', 'receptance'],

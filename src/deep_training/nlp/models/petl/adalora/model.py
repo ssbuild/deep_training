@@ -11,7 +11,7 @@ from ....layers.petl.adalora.layer import RankAllocator, SVDLinear,  AdaLoraLaye
 from ....layers.petl.utils import _freeze_adapter, _get_submodules, \
     TRANSFORMERS_MODELS_TO_ADALORA_TARGET_MODULES_MAPPING, prepare_model_for_kbit_training, get_quantization_config, \
     get_auto_gptq_quant_linear
-from .lora_model import LoraModule,LoraConfig
+from ..lora.model import LoraModule,LoraConfig
 
 __all__ = [
     'is_bnb_available',
@@ -28,31 +28,34 @@ if is_bnb_4bit_available():
 
 class AdaLoraModule(LoraModule):
     """
-    Creates AdaLoRA (Adaptive LoRA) model from a pretrained transformers model. Paper:
-    https://openreview.net/pdf?id=lq62uWRJjiY
+        Creates AdaLoRA (Adaptive LoRA) model from a pretrained transformers model. Paper:
+        https://openreview.net/forum?id=lq62uWRJjiY
 
-    Args:
-        model ([`transformers.PreTrainedModel`]): The model to be adapted.
-        config ([`AdaLoraConfig`]): The configuration of the AdaLora model.
+        Args:
+            model ([`transformers.PreTrainedModel`]): The model to be adapted.
+            config ([`AdaLoraConfig`]): The configuration of the AdaLora model.
+            adapter_name (`str`): The name of the adapter, defaults to `"default"`.
 
-    Returns:
-        `torch.nn.Module`: The AdaLora model.
+        Returns:
+            `torch.nn.Module`: The AdaLora model.
 
+        Example::
 
-    **Attributes**:
-        - **model** ([`transformers.PreTrainedModel`]) -- The model to be adapted.
-        - **petl_config** ([`AdaLoraConfig`]): The configuration of the AdaLora model.
-    """
+            >>> from transformers import AutoModelForSeq2SeqLM, LoraConfig >>> from peft import AdaLoraModel, AdaLoraConfig
+            >>> config = AdaLoraConfig(
+                    peft_type="ADALORA", task_type="SEQ_2_SEQ_LM", r=8, lora_alpha=32, target_modules=["q", "v"],
+                    lora_dropout=0.01,
+                )
+            >>> model = AutoModelForSeq2SeqLM.from_pretrained("t5-base") >>> model = AdaLoraModel(model, config, "default")
 
-    def __init__(self, model, config, adapter_name,
-                 auto_prepare_kbit_training=True,
-                 use_input_require_grads=True,
-                 use_gradient_checkpointing=True
-                 ):
-        super().__init__(model, config, adapter_name,
-                         auto_prepare_kbit_training=auto_prepare_kbit_training,
-                         use_input_require_grads=use_input_require_grads,
-                         use_gradient_checkpointing=use_gradient_checkpointing)
+        **Attributes**:
+            - **model** ([`transformers.PreTrainedModel`]) -- The model to be adapted.
+            - **petl_config** ([`AdaLoraConfig`]): The configuration of the AdaLora model.
+        """
+
+    def __init__(self, model, config, adapter_name,**kwargs):
+        super().__init__(model, config, adapter_name,**kwargs)
+
         traininable_mode_counter = 0
         for config in self.petl_config.values():
             if not config.inference_mode:
@@ -64,11 +67,12 @@ class AdaLoraModule(LoraModule):
                 "When using multiple adapters, set inference_mode to True for all adapters except the one you want to train."
             )
 
-        if self.petl_config[adapter_name].inference_mode:
+        if self.petl_config[ adapter_name ].inference_mode:
             _freeze_adapter(self.model, adapter_name)
         else:
             self.trainable_adapter_name = adapter_name
-            self.rankallocator = RankAllocator(self.model, self.petl_config[adapter_name], self.trainable_adapter_name)
+            self.rankallocator = RankAllocator(self.model, self.petl_config[ adapter_name ],
+                                               self.trainable_adapter_name)
 
     def _check_new_adapter_config(self, config: LoraConfig) -> None:
         """
@@ -119,7 +123,7 @@ class AdaLoraModule(LoraModule):
 
         quantization_config = get_quantization_config(self.model, method="gptq")
         if quantization_config is not None:
-            kwargs["gptq_quantization_config"] = quantization_config
+            kwargs[ "gptq_quantization_config" ] = quantization_config
 
         # If it is not a LoraLayer, create a new module, else update it with new adapters
         if not isinstance(target, AdaLoraLayer):
@@ -174,22 +178,22 @@ class AdaLoraModule(LoraModule):
         else:
             if isinstance(target, torch.nn.Linear):
                 in_features, out_features = target.in_features, target.out_features
-                if kwargs["fan_in_fan_out"]:
+                if kwargs[ "fan_in_fan_out" ]:
                     warnings.warn(
                         "fan_in_fan_out is set to True but the target module is `torch.nn.Linear`. "
                         "Setting fan_in_fan_out to False."
                     )
-                    kwargs["fan_in_fan_out"] = lora_config.fan_in_fan_out = False
+                    kwargs[ "fan_in_fan_out" ] = lora_config.fan_in_fan_out = False
             elif isinstance(target, Conv1D):
                 in_features, out_features = (
                     target.weight.ds_shape if hasattr(target.weight, "ds_shape") else target.weight.shape
                 )
-                if not kwargs["fan_in_fan_out"]:
+                if not kwargs[ "fan_in_fan_out" ]:
                     warnings.warn(
                         "fan_in_fan_out is set to False but the target module is `Conv1D`. "
                         "Setting fan_in_fan_out to True."
                     )
-                    kwargs["fan_in_fan_out"] = lora_config.fan_in_fan_out = True
+                    kwargs[ "fan_in_fan_out" ] = lora_config.fan_in_fan_out = True
             else:
                 raise ValueError(
                     f"Target module {target} is not supported. "
@@ -202,27 +206,20 @@ class AdaLoraModule(LoraModule):
     @staticmethod
     def _prepare_adapter_config(petl_config, model_config):
         if petl_config.target_modules is None:
-            if model_config["model_type"] not in TRANSFORMERS_MODELS_TO_ADALORA_TARGET_MODULES_MAPPING:
+            if model_config[ "model_type" ] not in TRANSFORMERS_MODELS_TO_ADALORA_TARGET_MODULES_MAPPING:
                 raise ValueError("Please specify `target_modules` in `petl_config`")
             petl_config.target_modules = TRANSFORMERS_MODELS_TO_ADALORA_TARGET_MODULES_MAPPING[
-                model_config["model_type"]
+                model_config[ "model_type" ]
             ]
         return petl_config
 
-    def __getattr__(self, name: str):
-        """Forward missing attributes to the wrapped module."""
-        try:
-            return super().__getattr__(name)  # defer to nn.Module's logic
-        except AttributeError:
-            if hasattr(self.model, name):
-                return getattr(self.model, name)
-            return getattr(self.model.model, name)
+
     def forward(self, *args, **kwargs):
         outputs = self.model.forward(*args, **kwargs)
 
         if getattr(outputs, "loss", None) is not None:
             # Calculate the orthogonal regularization
-            orth_reg_weight = self.petl_config[self.trainable_adapter_name].orth_reg_weight
+            orth_reg_weight = self.petl_config[ self.trainable_adapter_name ].orth_reg_weight
 
             if orth_reg_weight <= 0:
                 raise ValueError("orth_reg_weight should be greater than 0. ")
@@ -244,7 +241,7 @@ class AdaLoraModule(LoraModule):
         return outputs
 
     def resize_modules_by_rank_pattern(self, rank_pattern, adapter_name):
-        lora_config = self.petl_config[adapter_name]
+        lora_config = self.petl_config[ adapter_name ]
         for name, rank_idx in rank_pattern.items():
             if isinstance(rank_idx, list):
                 rank = sum(rank_idx)
@@ -253,12 +250,12 @@ class AdaLoraModule(LoraModule):
                 rank = rank_idx.sum().item()
             else:
                 raise ValueError("Unexcepted type of rank_idx")
-            key = ".".join(name.split(".")[0:-2]) if adapter_name in name else ".".join(name.split(".")[0:-1])
+            key = ".".join(name.split(".")[ 0:-2 ]) if adapter_name in name else ".".join(name.split(".")[ 0:-1 ])
             _, target, _ = _get_submodules(self.model, key)
-            lora_E_weights = target.lora_E[adapter_name][rank_idx]
-            lora_A_weights = target.lora_A[adapter_name][rank_idx]
-            lora_B_weights = target.lora_B[adapter_name][:, rank_idx]
-            ranknum = target.ranknum[adapter_name]
+            lora_E_weights = target.lora_E[ adapter_name ][ rank_idx ]
+            lora_A_weights = target.lora_A[ adapter_name ][ rank_idx ]
+            lora_B_weights = target.lora_B[ adapter_name ][ :, rank_idx ]
+            ranknum = target.ranknum[ adapter_name ]
             target.update_layer(
                 adapter_name,
                 rank,
@@ -268,30 +265,30 @@ class AdaLoraModule(LoraModule):
             )
             with torch.no_grad():
                 if rank > 0:
-                    target.lora_E[adapter_name].copy_(lora_E_weights)
-                    target.lora_A[adapter_name].copy_(lora_A_weights)
-                    target.lora_B[adapter_name].copy_(lora_B_weights)
+                    target.lora_E[ adapter_name ].copy_(lora_E_weights)
+                    target.lora_A[ adapter_name ].copy_(lora_A_weights)
+                    target.lora_B[ adapter_name ].copy_(lora_B_weights)
                     # The scaling is exactly as the previous
-                    target.ranknum[adapter_name].copy_(ranknum)
+                    target.ranknum[ adapter_name ].copy_(ranknum)
 
     def resize_state_dict_by_rank_pattern(self, rank_pattern, state_dict, adapter_name):
         for name, rank_idx in rank_pattern.items():
             rank = sum(rank_idx)
-            prefix = ".".join(name.split(".")[0:-2]) if adapter_name in name else ".".join(name.split(".")[0:-1])
-            for layer in ["lora_E", "lora_A", "lora_B"]:
+            prefix = ".".join(name.split(".")[ 0:-2 ]) if adapter_name in name else ".".join(name.split(".")[ 0:-1 ])
+            for layer in [ "lora_E", "lora_A", "lora_B" ]:
                 key = f"base_model.model.{prefix}.{layer}.{adapter_name}"
                 if layer != "lora_B":
-                    state_dict[key] = (
-                        state_dict[key][rank_idx] if rank != state_dict[key].shape[0] else state_dict[key]
+                    state_dict[ key ] = (
+                        state_dict[ key ][ rank_idx ] if rank != state_dict[ key ].shape[ 0 ] else state_dict[ key ]
                     )
                 else:
-                    state_dict[key] = (
-                        state_dict[key][:, rank_idx] if rank != state_dict[key].shape[1] else state_dict[key]
+                    state_dict[ key ] = (
+                        state_dict[ key ][ :, rank_idx ] if rank != state_dict[ key ].shape[ 1 ] else state_dict[ key ]
                     )
         return state_dict
 
     def update_and_allocate(self, global_step):
-        lora_config = self.petl_config[self.trainable_adapter_name]
+        lora_config = self.petl_config[ self.trainable_adapter_name ]
         # Update the importance score and allocate the budget
         if global_step < lora_config.total_step - lora_config.tfinal:
             _, rank_pattern = self.rankallocator.update_and_allocate(self.model, global_step)
@@ -311,3 +308,12 @@ class AdaLoraModule(LoraModule):
         # Pass the function and do forward propagation
         else:
             return None
+
+    def __getattr__(self, name: str):
+        """Forward missing attributes to the wrapped module."""
+        try:
+            return super().__getattr__(name)  # defer to nn.Module's logic
+        except AttributeError:
+            if hasattr(self.model, name):
+                return getattr(self.model, name)
+            return getattr(self.model.model, name)

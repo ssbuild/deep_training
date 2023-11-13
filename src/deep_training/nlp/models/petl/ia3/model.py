@@ -7,15 +7,14 @@ import warnings
 from dataclasses import asdict
 from enum import Enum
 import torch
-from torch import nn
-from torch.nn import functional as F
-from .petl_model_internel import PetlModelAbstract
+from transformers.pytorch_utils import Conv1D
+from ..petl_model_base import PetlModelBase
 from ....layers.petl.ia3.layer import IA3Layer, Linear, is_bnb_4bit_available,Conv2d
 from ....layers.petl.petl_layer import check_target_module_exists
-from ....layers.petl.utils import transpose, is_bnb_available, _get_submodules, ModulesToSaveWrapper, \
-    _is_valid_match, TRANSFORMERS_MODELS_TO_IA3_TARGET_MODULES_MAPPING, \
+from ....layers.petl.utils import is_bnb_available, _get_submodules, ModulesToSaveWrapper, \
+    TRANSFORMERS_MODELS_TO_IA3_TARGET_MODULES_MAPPING, \
     TRANSFORMERS_MODELS_TO_IA3_FEEDFORWARD_MODULES_MAPPING
-from transformers.pytorch_utils import Conv1D
+
 
 
 if is_bnb_available():
@@ -26,50 +25,43 @@ if is_bnb_available():
 if is_bnb_4bit_available():
     from ....layers.petl.ia3.bnb import Linear4bit
 
-class IA3Module(PetlModelAbstract):
+class IA3Module(PetlModelBase):
     """
-    Creates a Infused Adapter by Inhibiting and Amplifying Inner Activations ((IA)^3) model from a pretrained
-    transformers model. The method is described in detail in https://arxiv.org/abs/2205.05638
+        Creates a Infused Adapter by Inhibiting and Amplifying Inner Activations ((IA)^3) model from a pretrained
+        transformers model. The method is described in detail in https://arxiv.org/abs/2205.05638
 
-    Args:
-        model ([`~transformers.PreTrainedModel`]): The model to be adapted.
-        config ([`IA3Config`]): The configuration of the (IA)^3 model.
-        adapter_name (`str`): The name of the adapter, defaults to `"default"`.
+        Args:
+            model ([`~transformers.PreTrainedModel`]): The model to be adapted.
+            config ([`IA3Config`]): The configuration of the (IA)^3 model.
+            adapter_name (`str`): The name of the adapter, defaults to `"default"`.
 
-    Returns:
-        `torch.nn.Module`: The (IA)^3 model.
+        Returns:
+            `torch.nn.Module`: The (IA)^3 model.
 
-    Example:
+        Example:
 
-        ```py
-        >>> from transformers import AutoModelForSeq2SeqLM
-        >>> from peft import IA3Model, IA3Config
+            ```py
+            >>> from transformers import AutoModelForSeq2SeqLM, ia3Config
+            >>> from peft import IA3Model, IA3Config
 
-        >>> config = IA3Config(
-        ...     peft_type="IA3",
-        ...     task_type="SEQ_2_SEQ_LM",
-        ...     target_modules=["k", "v", "w0"],
-        ...     feedforward_modules=["w0"],
-        ... )
+            >>> config = IA3Config(
+            ...     peft_type="IA3",
+            ...     task_type="SEQ_2_SEQ_LM",
+            ...     target_modules=["k", "v", "w0"],
+            ...     feedforward_modules=["w0"],
+            ... )
 
-        >>> model = AutoModelForSeq2SeqLM.from_pretrained("t5-base")
-        >>> ia3_model = IA3Model(config, model)
-        ```
+            >>> model = AutoModelForSeq2SeqLM.from_pretrained("t5-base")
+            >>> ia3_model = IA3Model(config, model)
+            ```
 
-    **Attributes**:
-        - **model** ([`~transformers.PreTrainedModel`]) -- The model to be adapted.
-        - **petl_config** ([`ia3Config`]): The configuration of the (IA)^3 model.
-    """
+        **Attributes**:
+            - **model** ([`~transformers.PreTrainedModel`]) -- The model to be adapted.
+            - **petl_config** ([`ia3Config`]): The configuration of the (IA)^3 model.
+        """
 
-    def __init__(self, model, config, adapter_name,
-                 auto_prepare_kbit_training=True,
-                 use_input_require_grads=True,
-                 use_gradient_checkpointing=True
-                 ):
-        super().__init__(model, config, adapter_name,
-                         auto_prepare_kbit_training=auto_prepare_kbit_training,
-                         use_input_require_grads=use_input_require_grads,
-                         use_gradient_checkpointing=use_gradient_checkpointing)
+    def __init__(self, model, config, adapter_name,**kwargs):
+        super().__init__(model, config, adapter_name,**kwargs)
 
     @staticmethod
     def _create_new_module(ia3_config, adapter_name, target, **kwargs):
@@ -114,8 +106,8 @@ class IA3Module(PetlModelAbstract):
                 **fourbit_kwargs,
             )
         elif isinstance(target, torch.nn.Conv2d):
-            out_channels, in_channels = target.weight.size()[:2]
-            kernel_size = target.weight.size()[2:]
+            out_channels, in_channels = target.weight.size()[ :2 ]
+            kernel_size = target.weight.size()[ 2: ]
             stride = target.stride
             padding = target.padding
             new_module = Conv2d(
@@ -131,22 +123,23 @@ class IA3Module(PetlModelAbstract):
         else:
             if isinstance(target, torch.nn.Linear):
                 in_features, out_features = target.in_features, target.out_features
-                if kwargs["fan_in_fan_out"]:
+                if kwargs[ "fan_in_fan_out" ]:
                     warnings.warn(
                         "fan_in_fan_out is set to True but the target module is `torch.nn.Linear`. "
                         "Setting fan_in_fan_out to False."
                     )
-                    kwargs["fan_in_fan_out"] = ia3_config.fan_in_fan_out = False
+                    kwargs[ "fan_in_fan_out" ] = ia3_config.fan_in_fan_out = False
             elif isinstance(target, Conv1D):
                 in_features, out_features = (
                     target.weight.ds_shape if hasattr(target.weight, "ds_shape") else target.weight.shape
                 )
-                if not kwargs["fan_in_fan_out"]:
+                kwargs[ "is_target_conv_1d_layer" ] = True  # useful for unloading later
+                if not kwargs[ "fan_in_fan_out" ]:
                     warnings.warn(
                         "fan_in_fan_out is set to False but the target module is `Conv1D`. "
                         "Setting fan_in_fan_out to True."
                     )
-                    kwargs["fan_in_fan_out"] = ia3_config.fan_in_fan_out = True
+                    kwargs[ "fan_in_fan_out" ] = ia3_config.fan_in_fan_out = True
             else:
                 raise ValueError(
                     f"Target module {target} is not supported. "
@@ -175,15 +168,12 @@ class IA3Module(PetlModelAbstract):
             parent,
             **optional_kwargs,
     ):
-        loaded_in_8bit = optional_kwargs["loaded_in_8bit"]
-        loaded_in_4bit = optional_kwargs["loaded_in_4bit"]
-        current_key = optional_kwargs["current_key"]
+        loaded_in_8bit = optional_kwargs[ "loaded_in_8bit" ]
+        loaded_in_4bit = optional_kwargs[ "loaded_in_4bit" ]
+        current_key = optional_kwargs[ "current_key" ]
 
         # check if target module is in feedforward_modules
-        if isinstance(ia3_config.feedforward_modules, str):
-            is_feedforward = re.fullmatch(ia3_config.feedforward_modules, current_key)
-        else:
-            is_feedforward = any(current_key.endswith(target_key) for target_key in ia3_config.feedforward_modules)
+        is_feedforward = self._check_target_module_feedforward(ia3_config, current_key)
 
         kwargs = {
             "fan_in_fan_out": ia3_config.fan_in_fan_out,
@@ -199,7 +189,7 @@ class IA3Module(PetlModelAbstract):
                     "New adapter should have the same value for `is_feedforward` as previously added adapter."
                 )
             if isinstance(target, torch.nn.Conv2d):
-                target.update_layer_conv2d(
+                target.update_layer(
                     adapter_name,
                     ia3_config.init_ia3_weights,
                 )
@@ -216,6 +206,18 @@ class IA3Module(PetlModelAbstract):
             self._replace_module(parent, target_name, new_module, target)
 
     @staticmethod
+    def _check_target_module_feedforward(ia3_config, key) -> bool:
+        """
+        A helper private method that checks if the target module `key` matches with a feedforward module specified in
+        `ia3_config`
+        """
+        if isinstance(ia3_config.feedforward_modules, str):
+            is_feedforward = bool(re.fullmatch(ia3_config.feedforward_modules, key))
+        else:
+            is_feedforward = any(key.endswith(target_key) for target_key in ia3_config.feedforward_modules)
+        return is_feedforward
+
+    @staticmethod
     def _replace_module(parent, child_name, new_module, child):
         setattr(parent, child_name, new_module)
         new_module.weight = child.weight
@@ -230,22 +232,14 @@ class IA3Module(PetlModelAbstract):
             if "ia3_" in name:
                 module.to(child.weight.device)
 
-    def __getattr__(self, name: str):
-        """Forward missing attributes to the wrapped module."""
-        try:
-            return super().__getattr__(name)  # defer to nn.Module's logic
-        except AttributeError:
-            if hasattr(self.model, name):
-                return getattr(self.model, name)
-            return getattr(self.model.model, name)
 
     def get_petl_config_as_dict(self, inference: bool = False):
         config_dict = {}
         for key, value in self.petl_config.items():
             config = {k: v.value if isinstance(v, Enum) else v for k, v in asdict(value).items()}
             if inference:
-                config["inference_mode"] = True
-        config_dict[key] = config
+                config[ "inference_mode" ] = True
+        config_dict[ key ] = config
         return config
 
     def _set_adapter_layers(self, enabled=True):
@@ -269,14 +263,15 @@ class IA3Module(PetlModelAbstract):
 
     def _prepare_adapter_config(self, petl_config, model_config):
         if petl_config.target_modules is None:
-            if model_config["model_type"] not in TRANSFORMERS_MODELS_TO_IA3_TARGET_MODULES_MAPPING:
+            if model_config[ "model_type" ] not in TRANSFORMERS_MODELS_TO_IA3_TARGET_MODULES_MAPPING:
                 raise ValueError("Please specify `target_modules` in `petl_config`")
-            petl_config.target_modules = TRANSFORMERS_MODELS_TO_IA3_TARGET_MODULES_MAPPING[model_config["model_type"]]
+            petl_config.target_modules = TRANSFORMERS_MODELS_TO_IA3_TARGET_MODULES_MAPPING[
+                model_config[ "model_type" ] ]
         if petl_config.feedforward_modules is None:
-            if model_config["model_type"] not in TRANSFORMERS_MODELS_TO_IA3_FEEDFORWARD_MODULES_MAPPING:
+            if model_config[ "model_type" ] not in TRANSFORMERS_MODELS_TO_IA3_FEEDFORWARD_MODULES_MAPPING:
                 raise ValueError("Please specify `feedforward_modules` in `petl_config`")
             petl_config.feedforward_modules = TRANSFORMERS_MODELS_TO_IA3_FEEDFORWARD_MODULES_MAPPING[
-                model_config["model_type"]
+                model_config[ "model_type" ]
             ]
         return petl_config
 
@@ -297,7 +292,7 @@ class IA3Module(PetlModelAbstract):
         if getattr(self.model, "is_loaded_in_4bit", False):
             raise ValueError("Cannot merge ia3 layers when the model is loaded in 4-bit mode")
 
-        key_list = [key for key, _ in self.model.named_modules() if "ia3" not in key]
+        key_list = [ key for key, _ in self.model.named_modules() if "ia3" not in key ]
         for key in key_list:
             try:
                 parent, target, target_name = _get_submodules(self.model, key)
@@ -306,7 +301,7 @@ class IA3Module(PetlModelAbstract):
 
             # save any additional trainable modules part of `modules_to_save`
             if isinstance(target, ModulesToSaveWrapper):
-                setattr(parent, target_name, target.modules_to_save[target.active_adapter])
+                setattr(parent, target_name, target.modules_to_save[ target.active_adapter ])
                 continue
 
             if not isinstance(target, IA3Layer):
@@ -323,9 +318,22 @@ class IA3Module(PetlModelAbstract):
                 )
             else:
                 bias = target.bias is not None
-                new_module = torch.nn.Linear(target.in_features, target.out_features, bias=bias)
+                if getattr(target, "is_target_conv_1d_layer", False):
+                    new_module = Conv1D(target.out_features, target.in_features)
+                else:
+                    new_module = torch.nn.Linear(target.in_features, target.out_features, bias=bias)
 
             target.merge(safe_merge=safe_merge)
             self._replace_module(parent, target_name, new_module, target)
 
         return self.model
+
+    def __getattr__(self, name: str):
+        """Forward missing attributes to the wrapped module."""
+        try:
+            return super().__getattr__(name)  # defer to nn.Module's logic
+        except AttributeError:
+            if hasattr(self.model, name):
+                return getattr(self.model, name)
+            return getattr(self.model.model, name)
+

@@ -9,8 +9,7 @@ import torch
 from torch import nn
 from transformers import PreTrainedModel, HfArgumentParser, AutoConfig
 from ...data_helper import ModelArguments, TrainingArguments, DataArguments
-from ...nlp.models.petl.prompt import PromptLearningConfig, PromptModel,PromptArguments,get_prompt_model
-from ...nlp.models.petl import PetlModel, PetlArguments, LoraConfig, AdaLoraConfig, IA3Config
+from ...nlp.models.petl import PetlModel, PetlArguments, LoraConfig, AdaLoraConfig, IA3Config,PromptLearningConfig, PromptModel,PromptArguments,get_prompt_model
 from ...nlp.models.transformer_base import TransformerBase
 from ...utils.save_checkpoint import save_checkpoint_to_hf_format
 
@@ -52,7 +51,7 @@ class ModelWeightMixin:
     prompt_args = None
     def save_pretrained_merge_lora(self,sft_weight_path: str,llm_weight_only = True,max_shard_size="10GB"):
         assert os.path.exists(os.path.dirname(sft_weight_path))
-        assert self.lora_args is not None and self.lora_args.with_lora
+        assert self.lora_args is not None and self.lora_args.enable
         lora_model: PetlModel = self.backbone
         model: nn.Module = lora_model.merge_and_unload()
 
@@ -65,7 +64,7 @@ class ModelWeightMixin:
 
     # def save_pretrained_merge_lora_and_restore(self, sft_weight_path: str):
     #     assert os.path.exists(os.path.dirname(sft_weight_path))
-    #     assert self.lora_args is not None and self.lora_args.with_lora
+    #     assert self.lora_args is not None and self.lora_args.enable
     #     lora_model: LoraModel = self.backbone
     #     lora_model.merge_adapter()
     #     # 保存hf权重，可用infer.py推理
@@ -80,7 +79,7 @@ class ModelWeightMixin:
                         lora_config=None,
                         map_preprocess: Optional[Callable] = None):
         assert os.path.exists(sft_weight_path)
-        if self.lora_args is not None and self.lora_args.with_lora:
+        if self.lora_args is not None and self.lora_args.enable:
             # 恢复权重
             lora_model: PetlModel = self.backbone
             lora_model.load_adapter(sft_weight_path,
@@ -90,7 +89,7 @@ class ModelWeightMixin:
                                     strict=strict,
                                     map_preprocess=map_preprocess)
 
-        elif self.prompt_args is not None and self.prompt_args.with_prompt:
+        elif self.prompt_args is not None and self.prompt_args.enable:
             # 恢复权重
             lora_model: PromptModel = self.backbone
             lora_model.load_adapter(sft_weight_path,
@@ -142,7 +141,7 @@ class ModelWeightMixin:
                         merge_lora_weight=False,
                         llm_weight_only = True,
                         max_shard_size="10GB"):
-        if self.lora_args is not None and self.lora_args.with_lora:
+        if self.lora_args is not None and self.lora_args.enable:
             if merge_lora_weight:
                 # lora 合并权重 转换 hf权重
                 self.save_pretrained_merge_lora(sft_weight_path,
@@ -153,7 +152,7 @@ class ModelWeightMixin:
                     self.backbone.save_pretrained(sft_weight_path)
                 else:
                     self.backbone.model.save_pretrained(sft_weight_path)
-        elif self.prompt_args is not None and self.prompt_args.with_prompt:
+        elif self.prompt_args is not None and self.prompt_args.enable:
             if llm_weight_only:
                 self.backbone.save_pretrained(sft_weight_path)
             else:

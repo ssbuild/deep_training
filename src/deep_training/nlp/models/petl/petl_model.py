@@ -2,36 +2,51 @@
 # @Time:  10:42
 # @Author: tk
 # @File：lora_wrapper
+import collections
 import copy
 import os
 from typing import Optional,Tuple,Dict,List,Any,Union,Callable
 from contextlib import contextmanager
 import torch
-from accelerate.hooks import remove_hook_from_submodules
 from torch import nn
+from accelerate.hooks import remove_hook_from_submodules
 from transformers.utils import PushToHubMixin
 from safetensors.torch import save_file as safe_save_file
-from .....utils.function import copy_dataclass
-from ....layers.petl.utils import _set_trainable, _set_adapter, infer_device
-from .configuration import WEIGHTS_NAME, LoraConfig, AdaLoraConfig, PetlConfig, IA3Config, PetlArguments, \
-    SAFETENSORS_WEIGHTS_NAME
-from .lora_model import LoraModule
-from .adalora_model import AdaLoraModule
-from .ia3_model import IA3Module
-from .save_and_load import get_lora_model_state_dict, set_lora_model_state_dict, load_petl_weights
+from ..transformer_base import TransformerBase
+from ...layers.petl.constants import WEIGHTS_NAME,SAFETENSORS_WEIGHTS_NAME 
+from ....utils.function import copy_dataclass
+from ...layers.petl.utils import _set_trainable, _set_adapter, infer_device, id_tensor_storage
+from .config.config import *
+from .lora.model import LoraModule
+from .adalora.model import AdaLoraModule
+from .ia3.model import IA3Module
+from .loha.model import LoHaModule
+from .lokr.model import LoKrModule
+from .save_and_load import get_petl_model_state_dict, set_petl_model_state_dict, load_petl_weights
 
-LORA_TYPE_TO_MODEL_MAPPING = {
+PETL_TYPE_TO_MODEL_MAPPING = {
     "ia3": IA3Module,
     "lora": LoraModule,
     "adalora": AdaLoraModule,
+    "loha": LoHaModule,
+    "lokr": LoKrModule,
 }
 
-LORA_TYPE_TO_CONFIG_MAPPING = {
-    "ia3": IA3Config,
-    "lora": LoraConfig,
-    "adalora": AdaLoraConfig,
-}
 
+__all__ = [
+    "WEIGHTS_NAME",
+    "SAFETENSORS_WEIGHTS_NAME",
+    "PETL_TYPE_TO_MODEL_MAPPING",
+    "PetlModel",
+    "LoraModule",
+    "AdaLoraModule",
+    "IA3Module",
+    "LoHaModule",
+    "LoKrModule",
+    "get_petl_model_state_dict",
+    "set_petl_model_state_dict",
+    "load_petl_weights"
+]
 class PetlModel(PushToHubMixin, torch.nn.Module):
     """
     Base model encompassing various Lora methods.
@@ -57,9 +72,9 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
     """
 
     def __init__(self, model, petl_config: PetlConfig, adapter_name="default",
-                 auto_prepare_kbit_training=True,
-                 use_input_require_grads=True,
-                 use_gradient_checkpointing=True):
+                 gradient_checkpointing=False,
+                 gradient_checkpointing_kwargs=None,
+                 **kwargs):
         '''
             model TransformerBase , model.model
         '''
@@ -73,20 +88,41 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
         self.lora_type = petl_config.lora_type
         self.base_model_torch_dtype = getattr(model, "dtype", None)
         self.petl_config[adapter_name] = petl_config
-        self.base_model: LoraModule = LORA_TYPE_TO_MODEL_MAPPING[petl_config.lora_type](
+        self.base_model: LoraModule = PETL_TYPE_TO_MODEL_MAPPING[petl_config.lora_type](
             self.base_model, self.petl_config, adapter_name,
-            auto_prepare_kbit_training=auto_prepare_kbit_training,
-            use_input_require_grads=use_input_require_grads,
-            use_gradient_checkpointing=use_gradient_checkpointing,
+            gradient_checkpointing=gradient_checkpointing,
+            gradient_checkpointing_kwargs=gradient_checkpointing_kwargs,
+            **kwargs
         )
         self.set_additional_trainable_modules(petl_config, adapter_name)
-
+        if getattr(model, "is_gradient_checkpointing", True):
+            model = self._prepare_model_for_gradient_checkpointing(model)
         # the `pretraining_tp` is set for some models to simulate Tensor Parallelism during inference to avoid
         # numerical differences, https://github.com/pytorch/pytorch/issues/76232 - to avoid any unexpected
         # behavior we disable that in this line.
         if hasattr(self.base_model, "config") and hasattr(self.base_model.config, "pretraining_tp"):
             self.base_model.config.pretraining_tp = 1
 
+    def _prepare_model_for_gradient_checkpointing(self, model):
+        r"""
+        Prepares the model for gradient checkpointing if necessary
+        """
+        if isinstance(self.model, TransformerBase):
+            model = model.model
+        if not (
+                getattr(model, "is_loaded_in_8bit", False)
+                or getattr(model, "is_loaded_in_4bit", False)
+                or getattr(model, "is_quantized", False)
+        ):
+            if hasattr(model, "enable_input_require_grads"):
+                model.enable_input_require_grads()
+            elif hasattr(model, "get_input_embeddings"):
+
+                def make_inputs_require_grad(module, input, output):
+                    output.requires_grad_(True)
+
+                model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
+        return model
 
     def save_pretrained(
         self,
@@ -127,13 +163,35 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
         for adapter_name in selected_adapters:
             petl_config = self.petl_config[adapter_name]
             # save only the trainable weights
-            output_state_dict = get_lora_model_state_dict(
+            output_state_dict = get_petl_model_state_dict(
                 self, state_dict=kwargs.get("state_dict", None), adapter_name=adapter_name
             )
             output_dir = os.path.join(save_directory, adapter_name) if adapter_name != "default" else save_directory
             os.makedirs(output_dir, exist_ok=True)
 
             if safe_serialization:
+                # Section copied from: https://github.com/huggingface/transformers/blob/main/src/transformers/modeling_utils.py#L2111-L2134
+                # Safetensors does not allow tensor aliasing.
+                # We're going to remove aliases before saving
+                ptrs = collections.defaultdict(list)
+                for name, tensor in output_state_dict.items():
+                    # Sometimes in the state_dict we have non-tensor objects.
+                    # e.g. in bitsandbytes we have some `str` objects in the state_dict
+                    if isinstance(tensor, torch.Tensor):
+                        ptrs[id_tensor_storage(tensor)].append(name)
+                    else:
+                        # In the non-tensor case, fall back to the pointer of the object itself
+                        ptrs[id(tensor)].append(name)
+
+                # These are all the pointers of shared tensors.
+                shared_ptrs = {ptr: names for ptr, names in ptrs.items() if len(names) > 1}
+
+                for _, names in shared_ptrs.items():
+                    # Here we just clone the shared tensors to avoid tensor aliasing which is
+                    # not supported in safetensors.
+                    for shared_tensor_name in names[1:]:
+                        output_state_dict[shared_tensor_name] = output_state_dict[shared_tensor_name].clone()
+
                 safe_save_file(
                     output_state_dict,
                     os.path.join(output_dir, SAFETENSORS_WEIGHTS_NAME),
@@ -150,7 +208,6 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
             inference_mode = petl_config.inference_mode
             petl_config.inference_mode = True
 
-
             auto_mapping_dict = None
 
             petl_config.save_pretrained(output_dir, auto_mapping_dict=auto_mapping_dict)
@@ -163,7 +220,7 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
         for adapter_name, lora_config in self.petl_config.items():
             lora_config: LoraConfig
             # save only the trainable weights
-            output_state_dict = get_lora_model_state_dict(
+            output_state_dict = get_petl_model_state_dict(
                 self, state_dict=kwargs.get("state_dict", None), adapter_name=adapter_name
             )
 
@@ -183,7 +240,7 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
     @classmethod
     def from_pretrained(cls, model,
                         pretrained_model_name_or_path,
-                        lora_config: PetlConfig = None,
+                        lora_config: Optional[PetlConfig] = None,
                         adapter_name: str= "default",
                         is_trainable: bool =False, **kwargs):
         r"""
@@ -203,7 +260,7 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
 
         # load the config
         if lora_config is None:
-            lora_config = LORA_TYPE_TO_CONFIG_MAPPING[
+            lora_config = PETL_TYPE_TO_CONFIG_MAPPING[
                 LoraConfig.from_pretrained(pretrained_model_name_or_path, subfolder=kwargs.get("subfolder", None)).lora_type
             ].from_pretrained(pretrained_model_name_or_path, subfolder=kwargs.get("subfolder", None))
         elif isinstance(lora_config, PetlConfig):
@@ -265,10 +322,11 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
         """
         Disables the adapter module.
         """
-
-        self.base_model.disable_adapter_layers()
-        yield
-        self.base_model.enable_adapter_layers()
+        try:
+            self.base_model.disable_adapter_layers()
+            yield
+        finally:
+            self.base_model.enable_adapter_layers()
 
     def get_base_model(self)-> Union[nn.Module,Any]:
         """
@@ -304,7 +362,7 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
         if adapter_name not in self.petl_config:
             if config is None:
                 # load the config
-                lora_config = LORA_TYPE_TO_CONFIG_MAPPING[
+                lora_config = PETL_TYPE_TO_CONFIG_MAPPING[
                     LoraConfig.from_pretrained(model_id, subfolder=kwargs.get("subfolder", None)).lora_type
                 ].from_pretrained(model_id, subfolder=kwargs.get("subfolder", None))
             else:
@@ -320,7 +378,7 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
         if map_preprocess is not None:
             adapters_weights = map_preprocess(adapters_weights)
         # load the weights into the model
-        load_result = set_lora_model_state_dict(self, adapters_weights, adapter_name=adapter_name,strict=strict)
+        load_result = set_petl_model_state_dict(self, adapters_weights, adapter_name=adapter_name, strict=strict)
         return load_result
 
 
@@ -335,5 +393,13 @@ class PetlModel(PushToHubMixin, torch.nn.Module):
         _set_adapter(self, adapter_name)
 
     @property
-    def active_effi_config(self):
+    def active_petl_config(self):
         return self.petl_config[self.active_adapter]
+
+    def _get_base_model_class(self, is_prompt_tuning=False):
+        """
+        Returns the base model class.
+        """
+        if not is_prompt_tuning:
+            return self.base_model.model.__class__
+        return self.base_model.__class__

@@ -231,6 +231,9 @@ class TransformerBase(MyLightningModule, metaclass=TransformerFakeMeta):
     def gradient_checkpointing_enable(self):
         self.model.gradient_checkpointing_enable()
 
+    def is_gradient_checkpointing(self):
+        return getattr(self.model, "is_gradient_checkpointing", True)
+
 class TransformerLightningModule(MyLightningModule):
     def __init__(self, *args,**kwargs):
         config = get_value_from_args_assert('config',PretrainedConfig,*args,**kwargs)
@@ -640,4 +643,7 @@ class TransformerLightningModule(MyLightningModule):
         return outputs
 
     def gradient_checkpointing_enable(self):
-        self.model.gradient_checkpointing_enable()
+        self.backbone.gradient_checkpointing_enable()
+
+    def is_gradient_checkpointing(self):
+        return getattr(self.backbone,"is_gradient_checkpointing",True)

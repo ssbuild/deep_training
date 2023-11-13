@@ -1,17 +1,25 @@
 # -*- coding: utf-8 -*-
 # @Author  : ssbuild
 # @Time    : 2023/8/22 8:36
+import torch
 import copy
 import importlib
+import inspect
 import warnings
-from typing import Optional
-
-import torch
+from typing import Optional, Tuple
+import importlib_metadata
+import packaging
+import accelerate
+from accelerate.hooks import remove_hook_from_module, add_hook_to_module
 from accelerate.utils import is_xpu_available, is_npu_available
+from safetensors.torch import storage_ptr, storage_size
+from transformers import is_torch_tpu_available
+
 from .constants import (TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING,
                         TRANSFORMERS_MODELS_TO_ADALORA_TARGET_MODULES_MAPPING,
                         TRANSFORMERS_MODELS_TO_IA3_FEEDFORWARD_MODULES_MAPPING,
-                        TRANSFORMERS_MODELS_TO_IA3_TARGET_MODULES_MAPPING)
+                        TRANSFORMERS_MODELS_TO_IA3_TARGET_MODULES_MAPPING,
+                        COMMON_LAYERS_PATTERN)
 
 
 def is_bnb_available():
@@ -28,7 +36,16 @@ def is_bnb_4bit_available():
 
 
 def is_auto_gptq_available():
-    return importlib.util.find_spec("auto_gptq") is not None
+    if importlib.util.find_spec("auto_gptq") is not None:
+        AUTOGPTQ_MINIMUM_VERSION = packaging.version.parse("0.5.0")
+        version_autogptq = packaging.version.parse(importlib_metadata.version("auto_gptq"))
+        if AUTOGPTQ_MINIMUM_VERSION <= version_autogptq:
+            return True
+        else:
+            raise ImportError(
+                f"Found an incompatible version of auto-gptq. Found version {version_autogptq}, "
+                f"but only versions above {AUTOGPTQ_MINIMUM_VERSION} are supported"
+            )
 
 
 def is_optimum_available():
@@ -62,9 +79,7 @@ def starcoder_model_postprocess_past_key_value(past_key_values):
 
 
 
-def prepare_model_for_kbit_training(model,
-                                    use_input_require_grads=True,
-                                    use_gradient_checkpointing=True):
+def prepare_model_for_kbit_training(model,gradient_checkpointing=True,gradient_checkpointing_kwargs=None,**kwargs):
     r"""
        This method wraps the entire protocol for preparing a model before running a training. This includes:
            1- Cast the layernorm in fp32 2- making output embedding layer require grads 3- Add the upcasting of the lm
@@ -81,6 +96,9 @@ def prepare_model_for_kbit_training(model,
             loaded_in_kbit = getattr(s_model, "is_loaded_in_8bit", False) or getattr(s_model, "is_loaded_in_4bit", False)
 
     is_gptq_quantized = getattr(model, "quantization_method", None) == "gptq"
+    if gradient_checkpointing_kwargs is None:
+        gradient_checkpointing_kwargs = {}
+
     for name, param in model.named_parameters():
         # freeze base model's layers
         param.requires_grad = False
@@ -91,21 +109,37 @@ def prepare_model_for_kbit_training(model,
             if (param.dtype == torch.float16) or (param.dtype == torch.bfloat16):
                 param.data = param.data.to(torch.float32)
 
-    if (loaded_in_kbit or is_gptq_quantized) and use_input_require_grads:
-        # For backward compatibility
-        if hasattr(model, "enable_input_require_grads"):
-            model.enable_input_require_grads()
-        else:
-            def make_inputs_require_grad(module, input, output):
-                output.requires_grad_(True)
+    if (loaded_in_kbit or is_gptq_quantized) and gradient_checkpointing:
+        # When having `use_reentrant=False` + gradient_checkpointing, there is no need for this hack
+        if "use_reentrant" not in gradient_checkpointing_kwargs or gradient_checkpointing_kwargs["use_reentrant"]:
+            # For backward compatibility
+            if hasattr(model, "enable_input_require_grads"):
+                model.enable_input_require_grads()
+            else:
 
-            model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
+                def make_inputs_require_grad(module, input, output):
+                    output.requires_grad_(True)
 
-    if loaded_in_kbit and use_gradient_checkpointing:
+                model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
+
+        # To support older transformers versions, check if the model supports gradient_checkpointing_kwargs
+        _supports_gc_kwargs = "gradient_checkpointing_kwargs" in list(
+            inspect.signature(model.gradient_checkpointing_enable).parameters
+        )
+
+        if not _supports_gc_kwargs and len(gradient_checkpointing_kwargs) > 0:
+            warnings.warn(
+                "gradient_checkpointing_kwargs is not supported in this version of transformers. The passed kwargs will be ignored."
+                " if you want to use that feature, please upgrade to the latest version of transformers.",
+                FutureWarning,
+            )
+
+        gc_enable_kwargs = (
+            {} if not _supports_gc_kwargs else {"gradient_checkpointing_kwargs": gradient_checkpointing_kwargs}
+        )
 
         # enable gradient checkpointing for memory efficiency
-        model.gradient_checkpointing_enable()
-
+        model.gradient_checkpointing_enable(**gc_enable_kwargs)
     return model
 
 
@@ -145,15 +179,49 @@ class ModulesToSaveWrapper(torch.nn.Module):
         super().__init__()
         self.original_module = module_to_save
         self.modules_to_save = torch.nn.ModuleDict({})
+        self._active_adapter = adapter_name
+        self._disable_adapters = False
         self.update(adapter_name)
-        self.active_adapter = adapter_name
+
+    @property
+    def disable_adapters(self) -> bool:
+        # use a property to ensure that disable_adapters is not set directly, instead use the enable_adapters method
+        return self._disable_adapters
+
+    @property
+    def active_adapter(self) -> str:
+        # use a property to ensure that active_adapter is not set directly, instead use the set_adapter method
+        return self._active_adapter
 
     def update(self, adapter_name):
         self.modules_to_save.update(torch.nn.ModuleDict({adapter_name: copy.deepcopy(self.original_module)}))
 
+        if hasattr(self.modules_to_save[ adapter_name ], "_hf_hook"):
+            old_hook = self.modules_to_save[ adapter_name ]._hf_hook
+            new_hook = self._create_new_hook(old_hook)
+            remove_hook_from_module(self.modules_to_save[ adapter_name ])
+            add_hook_to_module(self.modules_to_save[ adapter_name ], new_hook)
+
+        self.original_module.requires_grad_(False)
+        if adapter_name == self.active_adapter:
+            self.modules_to_save[ adapter_name ].requires_grad_(True)
+
+    def _create_new_hook(self, old_hook):
+        r"""
+        Creates a new hook based on the old hook. Use it only if you know what you are doing !
+        """
+        old_hook_cls = getattr(accelerate.hooks, old_hook.__class__.__name__)
+        old_hook_attr = old_hook.__dict__
+        filtered_old_hook_attr = {}
+        old_hook_init_signature = inspect.signature(old_hook_cls.__init__)
+        for k in old_hook_attr.keys():
+            if k in old_hook_init_signature.parameters:
+                filtered_old_hook_attr[ k ] = old_hook_attr[ k ]
+        new_hook = old_hook_cls(**filtered_old_hook_attr)
+        return new_hook
 
     def forward(self, *args, **kwargs):
-        if self.active_adapter not in self.modules_to_save:
+        if self.disable_adapters or (self.active_adapter not in self.modules_to_save):
             return self.original_module(*args, **kwargs)
 
         if not torch.is_autocast_enabled():
@@ -163,6 +231,40 @@ class ModulesToSaveWrapper(torch.nn.Module):
                 kwargs[k] = kwargs[k].to(dtype)
 
         return self.modules_to_save[self.active_adapter](*args, **kwargs)
+
+    def enable_adapters(self, enabled: bool):
+        """Toggle the enabling and disabling of adapters
+
+        Takes care of setting the requires_grad flag for the adapter weights.
+
+        Args:
+            enabled (bool): True to enable adapters, False to disable adapters
+        """
+        if self._disable_adapters is not enabled:
+            # already in the desired state, do nothing
+            return
+
+        if enabled:
+            self.original_module.requires_grad_(False)
+            self.modules_to_save[self.active_adapter].requires_grad_(True)
+            self._disable_adapters = False
+        else:
+            self.original_module.requires_grad_(True)
+            self.modules_to_save.requires_grad_(False)
+            self._disable_adapters = True
+
+    def set_adapter(self, adapter_name: str):
+        """Set the active adapter
+
+        Args:
+            adapter_name (str): The name of the adapter to set as active
+        """
+        if adapter_name not in self.modules_to_save:
+            raise ValueError(f"Adapter {adapter_name} not found in {self.modules_to_save.keys()}")
+
+        self.modules_to_save[self.active_adapter].requires_grad_(False)
+        self.modules_to_save[adapter_name].requires_grad_(True)
+        self._active_adapter = adapter_name
 
 
 def _get_submodules(model, key):
@@ -186,21 +288,17 @@ def _set_trainable(model, adapter_name):
             parent, target, target_name = _get_submodules(model, key)
             if isinstance(target, ModulesToSaveWrapper):
                 target.update(adapter_name)
+                target.set_adapter(target.active_adapter)
             else:
-                for param in target.parameters():
-                    param.requires_grad = True
-                setattr(parent, target_name, ModulesToSaveWrapper(target, adapter_name))
-
-    for k, n in model.named_modules():
-        if isinstance(n,ModulesToSaveWrapper):
-            for p in n.original_module.parameters():
-                p.requires_grad = False
+                new_module = ModulesToSaveWrapper(target, adapter_name)
+                new_module.set_adapter(adapter_name)
+                setattr(parent, target_name, new_module)
 
 
 def _set_adapter(model, adapter_name):
     for module in model.modules():
         if isinstance(module, ModulesToSaveWrapper):
-            module.active_adapter = adapter_name
+            module.set_adapter(adapter_name)
 
 
 def transpose(weight, fan_in_fan_out):
@@ -282,7 +380,29 @@ def infer_device():
 
 
 
-COMMON_LAYERS_PATTERN = ["layers", "h", "block", "blocks", "layer"]
+def id_tensor_storage(tensor: torch.Tensor) -> Tuple[torch.device, int, int]:
+    """
+    Unique identifier to a tensor storage. Multiple different tensors can share the same underlying storage. For
+    example, "meta" tensors all share the same storage, and thus their identifier will all be equal. This identifier is
+    guaranteed to be unique and constant for this tensor's storage during its lifetime. Two tensor storages with
+    non-overlapping lifetimes may have the same id.
+
+    This method is the exact same copy of
+    https://github.com/huggingface/transformers/blob/main/src/transformers/pytorch_utils.py#L282C1-L300C58 but we added
+    it here manually to avoid import issue with old versions of transformers.
+    """
+    if tensor.device.type == "xla" and is_torch_tpu_available():
+        # NOTE: xla tensors dont have storage
+        # use some other unique id to distinguish.
+        # this is a XLA tensor, it must be created using torch_xla's
+        # device. So the following import is safe:
+        import torch_xla
+
+        unique_id = torch_xla._XLAC._xla_get_tensor_id(tensor)
+    else:
+        unique_id = storage_ptr(tensor)
+
+    return tensor.device, unique_id, storage_size(tensor)
 
 
 TRANSFORMERS_MODELS_TO_PREFIX_TUNING_POSTPROCESS_MAPPING = {
@@ -290,5 +410,47 @@ TRANSFORMERS_MODELS_TO_PREFIX_TUNING_POSTPROCESS_MAPPING = {
     "gpt_bigcode": starcoder_model_postprocess_past_key_value,
 }
 
-# WEIGHTS_NAME = "adapter_model.bin"
-# CONFIG_NAME = "adapter_config.json"
+
+
+def _prepare_prompt_learning_config(prompt_config, model_config):
+    if prompt_config.num_layers is None:
+        if "num_hidden_layers" in model_config:
+            num_layers = model_config["num_hidden_layers"]
+        elif "num_layers" in model_config:
+            num_layers = model_config["num_layers"]
+        elif "num_layer" in model_config:
+            num_layers = model_config["num_layer"]
+        elif "n_layer" in model_config:
+            num_layers = model_config["n_layer"]
+        else:
+            raise ValueError("Please specify `num_layers` in `prompt_config`")
+        prompt_config.num_layers = num_layers
+
+    if prompt_config.token_dim is None:
+        if "hidden_size" in model_config:
+            token_dim = model_config["hidden_size"]
+        elif "n_embd" in model_config:
+            token_dim = model_config["n_embd"]
+        elif "d_model" in model_config:
+            token_dim = model_config["d_model"]
+        else:
+            raise ValueError("Please specify `token_dim` in `prompt_config`")
+        prompt_config.token_dim = token_dim
+
+    if prompt_config.num_attention_heads is None:
+        if "num_attention_heads" in model_config:
+            num_attention_heads = model_config["num_attention_heads"]
+        elif "n_head" in model_config:
+            num_attention_heads = model_config["n_head"]
+        elif "num_heads" in model_config:
+            num_attention_heads = model_config["num_heads"]
+        elif "encoder_attention_heads" in model_config:
+            num_attention_heads = model_config["encoder_attention_heads"]
+        else:
+            raise ValueError("Please specify `num_attention_heads` in `prompt_config`")
+        prompt_config.num_attention_heads = num_attention_heads
+
+    if getattr(prompt_config, "encoder_hidden_size", None) is None:
+        setattr(prompt_config, "encoder_hidden_size", prompt_config.token_dim)
+
+    return prompt_config

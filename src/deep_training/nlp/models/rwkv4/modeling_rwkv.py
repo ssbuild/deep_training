@@ -542,7 +542,7 @@ class RwkvModel(RwkvPreTrainedModel):
 
         self.emb = init_method(nn.Embedding,config.vocab_size, config.n_embd,**kwargs)
         self.blocks = nn.ModuleList([RwkvBlock(config, i,**kwargs) for i in range(config.n_layers)])
-        self.ln_out = init_method(nn.LayerNorm,config.n_embd,**kwargs)
+        self.ln_out = nn.LayerNorm(config.n_embd,**kwargs)
 
         self._is_weight_rescaled = False
 

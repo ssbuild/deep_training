@@ -615,12 +615,12 @@ class QWenBlock(nn.Module):
         global skip_init_function
         init_method = skip_init_function
 
-        self.ln_1 = init_method(RMSNorm,
+        self.ln_1 = RMSNorm(
             hidden_size,
             eps=config.layer_norm_epsilon,**kwargs
         )
         self.attn = QWenAttention(config, **kwargs)
-        self.ln_2 = init_method(RMSNorm,
+        self.ln_2 = RMSNorm(
             hidden_size,
             eps=config.layer_norm_epsilon,**kwargs
         )
@@ -782,7 +782,7 @@ class QWenModel(QWenPreTrainedModel):
                 for i in range(config.num_hidden_layers)
             ]
         )
-        self.ln_f = init_method(RMSNorm,
+        self.ln_f = RMSNorm(
             self.embed_dim,
             eps=config.layer_norm_epsilon,
             **kwargs

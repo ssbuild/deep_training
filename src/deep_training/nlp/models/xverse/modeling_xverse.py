@@ -274,8 +274,8 @@ class XverseDecoderLayer(nn.Module):
             intermediate_size=config.intermediate_size,
             hidden_act=config.hidden_act,**kwargs
         )
-        self.input_layernorm = init_method(XverseRMSNorm,config.hidden_size, eps=config.rms_norm_eps,**kwargs)
-        self.post_attention_layernorm = init_method(XverseRMSNorm,config.hidden_size, eps=config.rms_norm_eps,**kwargs)
+        self.input_layernorm = XverseRMSNorm(config.hidden_size, eps=config.rms_norm_eps,**kwargs)
+        self.post_attention_layernorm = XverseRMSNorm(config.hidden_size, eps=config.rms_norm_eps,**kwargs)
 
     def forward(
         self,
@@ -466,7 +466,7 @@ class XverseModel(XversePreTrainedModel):
 
         self.embed_tokens = init_method(nn.Embedding,config.vocab_size, config.hidden_size, self.padding_idx,**kwargs)
         self.layers = nn.ModuleList([XverseDecoderLayer(config,**kwargs) for _ in range(config.num_hidden_layers)])
-        self.norm = init_method(XverseRMSNorm,config.hidden_size, eps=config.rms_norm_eps,**kwargs)
+        self.norm = XverseRMSNorm(config.hidden_size, eps=config.rms_norm_eps,**kwargs)
 
         self.gradient_checkpointing = False
         # Initialize weights and apply final processing

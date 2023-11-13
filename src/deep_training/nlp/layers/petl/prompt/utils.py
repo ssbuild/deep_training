@@ -15,7 +15,6 @@
 
 import copy
 import torch
-
 from ..utils import bloom_model_postprocess_past_key_value
 
 

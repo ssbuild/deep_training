@@ -3,17 +3,17 @@
 # @Time    : 2023/8/22 9:17
 import logging
 from abc import ABC, abstractmethod
-from typing import Union, Any,Dict,AnyStr
+from typing import Union, Any, Dict, AnyStr, List
 from torch import nn
 
-from .configuration import PetlConfig
-from ...transformer_base import TransformerBase
-from ....layers.petl.utils import _get_submodules, prepare_model_for_kbit_training
-from ....layers.petl.petl_layer import PetlLayerAbstract
+from .config.petl import PetlConfig
+from ..transformer_base import TransformerBase
+from ...layers.petl.utils import _get_submodules, prepare_model_for_kbit_training, ModulesToSaveWrapper
+from ...layers.petl.petl_layer import PetlLayerBase
 
 logger = logging.getLogger(__name__)
 
-class PetlModelAbstract(nn.Module, ABC):
+class PetlModelBase(nn.Module, ABC):
     r"""
     A base tuner model that provides the common methods and attributes for all tuners that are injectable into a
     torch.nn.Module
@@ -48,15 +48,13 @@ class PetlModelAbstract(nn.Module, ABC):
     """
 
     def __init__(self, model, petl_config: Union[PetlConfig, Dict[AnyStr, PetlConfig]], adapter_name: AnyStr,
-                 auto_prepare_kbit_training=True,
-                 use_input_require_grads=True,
-                 use_gradient_checkpointing=True
-                 ) -> None:
+                 gradient_checkpointing=False,
+                 gradient_checkpointing_kwargs=None,
+                 **kwargs) -> None:
         super().__init__()
 
-        self.auto_prepare_kbit_training = auto_prepare_kbit_training
-        self.use_input_require_grads = use_input_require_grads
-        self.use_gradient_checkpointing = use_gradient_checkpointing
+        self.gradient_checkpointing = gradient_checkpointing
+        self.gradient_checkpointing_kwargs = gradient_checkpointing_kwargs
         self.model = model
 
         # For advanced developpers, if you want to attach multiple adapters to your
@@ -89,7 +87,7 @@ class PetlModelAbstract(nn.Module, ABC):
         return self.model.model if isinstance(self.model, TransformerBase) else self.model
 
     @property
-    def active_adapters(self) -> list[str]:
+    def active_adapters(self) -> List[str ]:
         if isinstance(self.active_adapter, str):
             return [self.active_adapter]
         # is already a list of str
@@ -202,10 +200,10 @@ class PetlModelAbstract(nn.Module, ABC):
         loaded_in_4bit = getattr(transformer_model, "is_loaded_in_4bit", False)
         loaded_in_8bit = getattr(transformer_model, "is_loaded_in_8bit", False)
 
-        if self.auto_prepare_kbit_training and (loaded_in_4bit or loaded_in_8bit):
+        if self.gradient_checkpointing and (loaded_in_4bit or loaded_in_8bit):
             prepare_model_for_kbit_training(self.model,
-                                            use_input_require_grads=self.use_input_require_grads,
-                                            use_gradient_checkpointing=self.use_gradient_checkpointing)
+                                            gradient_checkpointing=self.gradient_checkpointing,
+                                            gradient_checkpointing_kwargs=self.gradient_checkpointing_kwargs)
 
         petl_config = self.petl_config[adapter_name]
         # Note: If possible, all checks should be performed *at the start of this method*.
@@ -216,6 +214,9 @@ class PetlModelAbstract(nn.Module, ABC):
         is_target_modules_in_base_model = False
         key_list = [key for key, _ in model.named_modules()]
 
+        _check_for_modules_to_save = getattr(petl_config, "modules_to_save", None) is not None
+        _has_modules_to_save = False
+
         model_config = getattr(model, "config", {"model_type": "custom"})
         if hasattr(model_config, "to_dict"):
             model_config = model_config.to_dict()
@@ -223,6 +224,22 @@ class PetlModelAbstract(nn.Module, ABC):
         petl_config = self._prepare_adapter_config(petl_config, model_config)
 
         for key in key_list:
+            # Check for modules_to_save in case
+            if _check_for_modules_to_save and any(
+                    key.endswith(f"{module_to_save}") for module_to_save in petl_config.modules_to_save
+            ):
+                # Optionally set the modules to save
+                parent, target, target_name = _get_submodules(model, key)
+
+                if not isinstance(target, ModulesToSaveWrapper):
+                    new_module = ModulesToSaveWrapper(target, adapter_name)
+                    setattr(parent, target_name, new_module)
+                else:
+                    target.update(adapter_name)
+
+                _has_modules_to_save = True
+                continue
+
             if not self._check_target_module_exists(petl_config, key):
                 continue
 
@@ -249,12 +266,18 @@ class PetlModelAbstract(nn.Module, ABC):
                 if adapter_name in n:
                     p.requires_grad = False
 
+        if _has_modules_to_save:
+            if not hasattr(model, "modules_to_save"):
+                model.modules_to_save = set(petl_config.modules_to_save)
+            else:
+                model.modules_to_save.update(set(petl_config.modules_to_save))
+                
     def merge_adapter(self):
         """
         This method merges the LoRa layers into the base model.
         """
         for module in self.model.modules():
-            if isinstance(module, PetlLayerAbstract):
+            if isinstance(module, PetlLayerBase):
                 module.merge()
 
     def unmerge_adapter(self):
@@ -262,5 +285,5 @@ class PetlModelAbstract(nn.Module, ABC):
         This method unmerges the LoRa layers from the base model.
         """
         for module in self.model.modules():
-            if isinstance(module, PetlLayerAbstract):
+            if isinstance(module, PetlLayerBase):
                 module.unmerge()
