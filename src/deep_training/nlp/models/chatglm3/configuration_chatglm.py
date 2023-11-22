@@ -16,6 +16,7 @@ class ChatGLMConfig(PretrainedConfig):
         classifier_dropout=None,
         attention_dropout=0.0,
         layernorm_epsilon=1e-5,
+        rope_ratio=1,
         rmsnorm=True,
         apply_residual_connection_post_layernorm=False,
         post_layer_norm=True,
@@ -44,6 +45,7 @@ class ChatGLMConfig(PretrainedConfig):
         self.classifier_dropout = classifier_dropout
         self.attention_dropout = attention_dropout
         self.layernorm_epsilon = layernorm_epsilon
+        self.rope_ratio = rope_ratio
         self.rmsnorm = rmsnorm
         self.apply_residual_connection_post_layernorm = apply_residual_connection_post_layernorm
         self.post_layer_norm = post_layer_norm
