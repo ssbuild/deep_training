@@ -10,18 +10,9 @@ class QWenConfig(PretrainedConfig):
     model_type = "qwen"
     keys_to_ignore_at_inference = ["past_key_values"]
 
-
-    attribute_map = {
-        "n_embd": "hidden_size",
-        "n_head": "num_attention_heads",
-        "n_positions": "max_position_embeddings",
-        "n_layer": "num_hidden_layers",
-        "padded_vocab_size": "vocab_size",
-    }
-
     def __init__(
         self,
-        vocab_size=151851,
+        vocab_size=151936,
         hidden_size=4096,
         num_hidden_layers=32,
         num_attention_heads=32,
@@ -35,8 +26,6 @@ class QWenConfig(PretrainedConfig):
         bf16=False,
         fp16=False,
         fp32=False,
-        eos_token_id=151643,
-
         kv_channels=128,
         rotary_pct=1.0,
         rotary_emb_base=10000,
@@ -46,19 +35,14 @@ class QWenConfig(PretrainedConfig):
         intermediate_size=22016,
         no_bias=True,
         tie_word_embeddings=False,
-        quantization_bit = 0,
-        initializer_weight=False,
-        apply_residual_connection_post_layernorm=False,
-        pos_emb= "rotary",
+        use_cache_quantization=False,
+        use_cache_kernel=False,
+        softmax_in_fp32=False,
         **kwargs,
     ):
-        self.eos_token_id = eos_token_id
-        super().__init__(
-            eos_token_id=eos_token_id, tie_word_embeddings=tie_word_embeddings, **kwargs
-        )
-
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
+        self.intermediate_size = intermediate_size
         self.num_hidden_layers = num_hidden_layers
         self.num_attention_heads = num_attention_heads
         self.emb_dropout_prob = emb_dropout_prob
@@ -66,10 +50,8 @@ class QWenConfig(PretrainedConfig):
         self.layer_norm_epsilon = layer_norm_epsilon
         self.initializer_range = initializer_range
         self.scale_attn_weights = scale_attn_weights
-        self.max_position_embeddings = max_position_embeddings
-
         self.use_cache = use_cache
-
+        self.max_position_embeddings = max_position_embeddings
         self.bf16 = bf16
         self.fp16 = fp16
         self.fp32 = fp32
@@ -79,13 +61,11 @@ class QWenConfig(PretrainedConfig):
         self.use_dynamic_ntk = use_dynamic_ntk
         self.use_logn_attn = use_logn_attn
         self.use_flash_attn = use_flash_attn
-        self.intermediate_size = intermediate_size
         self.no_bias = no_bias
-        self.tie_word_embeddings = tie_word_embeddings
-
-        self.pos_emb = pos_emb
-        self.apply_residual_connection_post_layernorm = (
-            apply_residual_connection_post_layernorm
+        self.use_cache_quantization = use_cache_quantization
+        self.use_cache_kernel = use_cache_kernel
+        self.softmax_in_fp32 = softmax_in_fp32
+        super().__init__(
+            tie_word_embeddings=tie_word_embeddings,
+            **kwargs
         )
-        self.quantization_bit = quantization_bit
-        self.initializer_weight = initializer_weight
