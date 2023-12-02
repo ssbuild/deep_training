@@ -301,6 +301,7 @@ def decode_tokens(
 class StopWordsLogitsProcessor(LogitsProcessor):
     """
     :class:`transformers.LogitsProcessor` that enforces that when specified sequences appear, stop geration.
+
     Args:
         stop_words_ids (:obj:`List[List[int]]`):
             List of list of token ids of stop ids. In order to get the tokens of the words

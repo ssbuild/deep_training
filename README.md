@@ -1,5 +1,5 @@
 ## transformer is all you need.
-- deep training framework based on lightning and transformers
+- deep training framework based on transformers
 
 ## install and download
 
@@ -17,6 +17,10 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
 
   
 ## update
+- <strong>2023-12-12</strong>
+   - 0.2.10 update qwen model for 1.8b 7b 14b 72b
+
+
 - <strong>2023-11-13</strong>
   - 0.2.9 release
   - 0.2.9.post0 support chatglm3-6b-32k
