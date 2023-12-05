@@ -193,6 +193,15 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
             **kwargs
     ) -> None:
 
+        self.do_lower_case = do_lower_case
+        self.remove_space = remove_space
+        self.vocab_file = vocab_file
+
+        self.bos_token = bos_token
+        self.eos_token = eos_token
+        self.end_token = end_token
+        self.mask_token = mask_token
+        self.gmask_token = gmask_token
         self.sp_tokenizer = SPTokenizer(vocab_file, num_image_tokens=num_image_tokens)
 
         super().__init__(
@@ -210,15 +219,7 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
             **kwargs
         )
 
-        self.do_lower_case = do_lower_case
-        self.remove_space = remove_space
-        self.vocab_file = vocab_file
 
-        self.bos_token = bos_token
-        self.eos_token = eos_token
-        self.end_token = end_token
-        self.mask_token = mask_token
-        self.gmask_token = gmask_token
 
 
 
