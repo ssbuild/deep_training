@@ -17,6 +17,9 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
 
   
 ## update
+- <strong>2024-02-15</strong>
+   - 0.2.11 support internlm2
+
 - <strong>2023-12-02</strong>
    - 0.2.10 update qwen model for 1.8b 7b 14b 72b
    - 0.2.10.post0 fix qwen attention_mask
