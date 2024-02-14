@@ -66,11 +66,10 @@ class QWenTokenizer(PreTrainedTokenizer):
         extra_vocab_file=None,
         **kwargs,
     ):
-        super().__init__(**kwargs)
 
         # how to handle errors in decoding UTF-8 byte sequences
         # use ignore if you are in streaming inference
-        self.errors = errors  
+        self.errors = errors
 
         self.mergeable_ranks = _load_tiktoken_bpe(vocab_file)  # type: Dict[bytes, int]
         self.special_tokens = {
@@ -99,7 +98,7 @@ class QWenTokenizer(PreTrainedTokenizer):
             special_tokens=self.special_tokens,
         )
         assert (
-            len(self.mergeable_ranks) + len(self.special_tokens) == enc.n_vocab
+                len(self.mergeable_ranks) + len(self.special_tokens) == enc.n_vocab
         ), f"{len(self.mergeable_ranks) + len(self.special_tokens)} != {enc.n_vocab} in encoding"
 
         self.decoder = {
@@ -112,6 +111,10 @@ class QWenTokenizer(PreTrainedTokenizer):
         self.eod_id = self.tokenizer.eot_token
         self.im_start_id = self.special_tokens[IMSTART]
         self.im_end_id = self.special_tokens[IMEND]
+
+        super().__init__(**kwargs)
+
+
 
     def __getstate__(self):
         # for pickle lovers
