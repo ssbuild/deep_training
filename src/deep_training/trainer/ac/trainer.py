@@ -39,8 +39,8 @@ from transformers.trainer_pt_utils import get_parameter_names, IterableDatasetSh
     nested_xla_mesh_reduce, distributed_concat, distributed_broadcast_scalars
 from transformers.trainer_utils import has_length, PREFIX_CHECKPOINT_DIR, number_of_arguments
 from transformers.training_args import ParallelMode
-from ...nlp.models.petl import PetlModel, PromptModel
-from ...nlp.optimizer.optimizer import OptimizerNames
+from ...models.models.petl import PetlModel, PromptModel
+from ...models.optimizer.optimizer import OptimizerNames
 from transformers.utils import strtobool, logging, is_accelerate_available, is_peft_available, is_sagemaker_mp_enabled
 from torch.optim.optimizer import Optimizer
 from ...data_helper import TrainingArgumentsAC
@@ -397,7 +397,7 @@ class TrainerAC:
             optimizer_cls = Adafactor
             optimizer_kwargs.update({"scale_parameter": False, "relative_step": False})
         elif args.optim == OptimizerNames.ADAMW_HF:
-            from ...nlp.optimizer.optimizer import AdamWHF
+            from ...models.optimizer.optimizer import AdamWHF
             optimizer_cls = AdamWHF
             optimizer_kwargs.update(adam_kwargs)
         elif args.optim in [ OptimizerNames.ADAMW_TORCH, OptimizerNames.ADAMW_TORCH_FUSED ]:

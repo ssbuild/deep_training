@@ -20,7 +20,7 @@ install_requires = [
 ]
 setup(
     name='deep_training',
-    version='0.2.11',
+    version='0.3.0.rc0',
     description='an easy training architecture',
     long_description='torch_training: https://github.com/ssbuild/deep_training.git',
     license='Apache License 2.0',
@@ -31,5 +31,11 @@ setup(
     package_dir={"": "src"},
     packages=find_packages("src"),
     package_data={"": ["**/*.cu", "**/*.cpp", "**/*.cuh", "**/*.h", "**/*.pyx"]},
+
+    entry_points={
+        'console_scripts': [
+            'deep_export = deep_training.tools.export_transformers:export',
+        ],
+    }
 
 )
