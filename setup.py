@@ -8,7 +8,7 @@ install_requires = [
     'numpy-io>=0.0.10 , < 0.1.0',
     'sentencepiece',
     'numpy',
-    'transformers>=4.22',
+    'transformers>=4.39',
     'seqmetric',
     'scipy',
     'scikit-learn',
