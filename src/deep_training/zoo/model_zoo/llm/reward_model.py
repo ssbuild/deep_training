@@ -2,7 +2,7 @@
 # @Author  : ssbuild
 # @Time    : 2023/5/29 9:46
 import torch
-from deep_training.models.models.transformer import TransformerForCausalLM
+from deep_training.nlp.models.transformer import TransformerForCausalLM
 from torch import nn
 
 from .llm_model import TransformerForLM

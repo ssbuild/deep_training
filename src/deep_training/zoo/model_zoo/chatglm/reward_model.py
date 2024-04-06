@@ -6,7 +6,7 @@ import torch
 from ..auto.base_wapper import BaseModelWrapper
 from ...weight.modelweighter import *
 from torch import nn
-from deep_training.models.models.transformer_base import TransformerBase
+from deep_training.nlp.models.transformer_base import TransformerBase
 from ...utils.transformer_utils import hf_decorator
 from .llm_model import MyChatGLMForConditionalGeneration,MyTransformerChatGlmLMHeadModel
 import logging

@@ -27,7 +27,7 @@ import torch
 from huggingface_hub import hf_hub_download
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerFast
 from transformers.modeling_utils import WEIGHTS_INDEX_NAME, shard_checkpoint
-from deep_training.models.models.rwkv4.configuration_rwkv import RwkvConfig
+from deep_training.nlp.models.rwkv4.configuration_rwkv import RwkvConfig
 
 
 NUM_HIDDEN_LAYERS_MAPPING = {

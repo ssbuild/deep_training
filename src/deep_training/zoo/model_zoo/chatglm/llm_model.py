@@ -10,9 +10,9 @@ import warnings
 from typing import List, Tuple, Optional, Callable
 import torch
 from torch import nn
-from deep_training.models.layers.rope_scale.patch import *
-from deep_training.models.models.chatglm import ChatGLMForConditionalGeneration,ChatGLMConfig,setup_model_profile # noqa
-from deep_training.models.models.transformer import TransformerBase
+from deep_training.nlp.layers.rope_scale.patch import *
+from deep_training.nlp.models.chatglm import ChatGLMForConditionalGeneration,ChatGLMConfig,setup_model_profile # noqa
+from deep_training.nlp.models.transformer import TransformerBase
 from transformers import LogitsProcessorList, LogitsProcessor, GenerationConfig, StoppingCriteriaList
 
 from .generation_utils import build_masks_and_position_ids_glm

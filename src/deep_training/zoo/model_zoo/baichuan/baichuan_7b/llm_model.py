@@ -2,8 +2,8 @@
 # @Time    : 2023/5/12 20:41
 # @Author  : tk
 # @FileName: llm_model
-from deep_training.models.layers.rope_scale.patch import *
-from deep_training.models.models.baichuan_7b.modeling_baichuan import BaiChuanForCausalLM,TransformerBaiChuanLMHeadModel,BaiChuanConfig,setup_model_profile
+from deep_training.nlp.layers.rope_scale.patch import *
+from deep_training.nlp.models.baichuan_7b.modeling_baichuan import BaiChuanForCausalLM,TransformerBaiChuanLMHeadModel,BaiChuanConfig,setup_model_profile
 
 from ...auto.base_wapper import BaseModelWrapper
 from ....utils.transformer_utils import hf_decorator

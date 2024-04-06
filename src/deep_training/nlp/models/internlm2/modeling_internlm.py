@@ -24,7 +24,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-from deep_training.models.utils.torch_utils import skip_init
+from deep_training.nlp.utils.torch_utils import skip_init
 from einops import rearrange
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss

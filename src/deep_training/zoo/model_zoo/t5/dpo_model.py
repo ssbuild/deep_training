@@ -2,7 +2,7 @@
 # @Author  : ssbuild
 # @Time    : 2023/9/19 14:56
 
-from deep_training.models.models.transformer import TransformerForSeq2SeqLM
+from deep_training.nlp.models.transformer import TransformerForSeq2SeqLM
 
 from ..auto.base_wapper import BaseModelWrapper
 from ...utils.dpo_utils import DpoModule

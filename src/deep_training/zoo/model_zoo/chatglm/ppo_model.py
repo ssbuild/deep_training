@@ -2,11 +2,11 @@
 # @Author  : ssbuild
 # @Time    : 2023/5/29 13:34
 import torch
-from deep_training.models.models.rl.modeling_ppo import ChatglmModelForCausalPrefixLMWithValueHead
-from deep_training.models.rl.ppo.configuration import PPOConfig,PPOArguments
-from deep_training.models.rl.ppo.ppo_module import PPOModelLoss
+from deep_training.nlp.models.rl.modeling_ppo import ChatglmModelForCausalPrefixLMWithValueHead
+from deep_training.nlp.rl.ppo.configuration import PPOConfig,PPOArguments
+from deep_training.nlp.rl.ppo.ppo_module import PPOModelLoss
 from transformers import AdamW
-from deep_training.models.optimizer.lion import Lion
+from deep_training.nlp.optimizer.lion import Lion
 from .llm_model import MyChatGLMForConditionalGeneration
 from ..auto.base_wapper import BaseModelWrapper
 from ...utils.transformer_utils import hf_decorator

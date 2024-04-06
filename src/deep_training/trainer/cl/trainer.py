@@ -39,8 +39,8 @@ from transformers.trainer_callback import CallbackHandler, PrinterCallback, Trai
 from transformers.trainer_pt_utils import get_parameter_names, IterableDatasetShard, reissue_pt_warnings
 from transformers.trainer_utils import has_length, PREFIX_CHECKPOINT_DIR, number_of_arguments
 
-from ...models.models.petl import PetlModel, PromptModel
-from ...models.optimizer.optimizer import OptimizerNames
+from ...nlp.models.petl import PetlModel, PromptModel
+from ...nlp.optimizer.optimizer import OptimizerNames
 from transformers.utils import strtobool, logging
 from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
@@ -437,7 +437,7 @@ class TrainerCL:
             optimizer_cls = colossalai.nn.optimizer.fused_adam.FusedAdam
             optimizer_kwargs.update(adam_kwargs)
         elif args.optim == OptimizerNames.ADAMW_HF:
-            from ...models.optimizer.optimizer import AdamWHF
+            from ...nlp.optimizer.optimizer import AdamWHF
             optimizer_cls = AdamWHF
             optimizer_kwargs.update(adam_kwargs)
         elif args.optim in [ OptimizerNames.ADAMW_TORCH, OptimizerNames.ADAMW_TORCH_FUSED ]:

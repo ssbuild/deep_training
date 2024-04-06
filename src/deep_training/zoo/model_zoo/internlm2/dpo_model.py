@@ -4,9 +4,9 @@
 
 from typing import List, Tuple, Optional
 import torch
-from deep_training.models.layers.rope_scale.patch import *
-from deep_training.models.models.internlm2.modeling_internlm import InternLM2ForCausalLM,InternLM2Config,setup_model_profile
-from deep_training.models.models.transformer_base import TransformerBase
+from deep_training.nlp.layers.rope_scale.patch import *
+from deep_training.nlp.models.internlm2.modeling_internlm import InternLM2ForCausalLM,InternLM2Config,setup_model_profile
+from deep_training.nlp.models.transformer_base import TransformerBase
 from transformers.generation.streamers import BaseStreamer
 
 from ..auto.base_wapper import BaseModelWrapper

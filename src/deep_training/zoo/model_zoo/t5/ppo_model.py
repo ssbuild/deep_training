@@ -2,9 +2,9 @@
 # @Author  : ssbuild
 # @Time    : 2023/5/29 15:32
 import torch
-from deep_training.models.models.rl.modeling_ppo import AutoModelForSeq2SeqLMWithValueHead
-from deep_training.models.rl.ppo.configuration import PPOConfig,PPOArguments
-from deep_training.models.rl.ppo.ppo_module import PPOModelLoss
+from deep_training.nlp.models.rl.modeling_ppo import AutoModelForSeq2SeqLMWithValueHead
+from deep_training.nlp.rl.ppo.configuration import PPOConfig,PPOArguments
+from deep_training.nlp.rl.ppo.ppo_module import PPOModelLoss
 
 from ..auto.base_wapper import BaseModelWrapper
 from ...utils.transformer_utils import hf_decorator

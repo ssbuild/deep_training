@@ -9,10 +9,10 @@ import re
 import warnings
 from typing import List, Tuple, Optional, Callable, Generator, Any, Union
 import torch
-from deep_training.models.layers.rope_scale.patch import *
-from deep_training.models.models.qwen.modeling_qwen import QWenConfig, QWenLMHeadModel, setup_model_profile, \
+from deep_training.nlp.layers.rope_scale.patch import *
+from deep_training.nlp.models.qwen.modeling_qwen import QWenConfig, QWenLMHeadModel, setup_model_profile, \
     _ERROR_BAD_CHAT_FORMAT
-from deep_training.models.models.transformer import TransformerBase
+from deep_training.nlp.models.transformer import TransformerBase
 from torch import nn
 from transformers import LogitsProcessorList, LogitsProcessor, GenerationConfig, StoppingCriteriaList, \
     PreTrainedTokenizer

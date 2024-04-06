@@ -3,7 +3,7 @@
 import math
 import torch
 from torch import nn
-from ...models.layers.seq_pointer import f1_metric_for_pointer
+from ...nlp.layers.seq_pointer import f1_metric_for_pointer
 
 
 def seq_masking(logits:torch.Tensor,mask,axis,value=-1e12):

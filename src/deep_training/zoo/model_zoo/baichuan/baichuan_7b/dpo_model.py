@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # @Author  : ssbuild
 # @Time    : 2023/9/19 16:53
-from deep_training.models.layers.rope_scale.patch import *
-from deep_training.models.models.baichuan_7b.modeling_baichuan import BaiChuanForCausalLM,TransformerBaiChuanLMHeadModel,BaiChuanConfig,setup_model_profile
+from deep_training.nlp.layers.rope_scale.patch import *
+from deep_training.nlp.models.baichuan_7b.modeling_baichuan import BaiChuanForCausalLM,TransformerBaiChuanLMHeadModel,BaiChuanConfig,setup_model_profile
 
 from ...auto.base_wapper import BaseModelWrapper
 from ....utils.dpo_utils import DpoModule

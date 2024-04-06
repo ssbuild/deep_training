@@ -9,12 +9,12 @@ from typing import List, Tuple, Optional, Callable
 import requests
 import torch
 from torch import nn
-from deep_training.models.layers.rope_scale.patch import *
-from deep_training.models.models.visualglm.modeling_chatglm import ChatGLMForConditionalGeneration, ChatGLMConfig, \
+from deep_training.nlp.layers.rope_scale.patch import *
+from deep_training.nlp.models.visualglm.modeling_chatglm import ChatGLMForConditionalGeneration, ChatGLMConfig, \
     setup_model_profile, ChatGLMForConditionalGenerationWithImage  # noqa
-from deep_training.models.models.transformer import TransformerBase
+from deep_training.nlp.models.transformer import TransformerBase
 from transformers import LogitsProcessorList, LogitsProcessor, GenerationConfig, StoppingCriteriaList
-from deep_training.models.models.visualglm.visual import BlipImageEvalProcessor
+from deep_training.nlp.models.visualglm.visual import BlipImageEvalProcessor
 from PIL import Image
 from io import BytesIO
 

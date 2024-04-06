@@ -2,8 +2,8 @@
 # @Author  : ssbuild
 # @Time    : 2023/10/26 16:06
 
-from deep_training.models.layers.rope_scale.patch import *
-from deep_training.models.models.transformer import TransformerBase
+from deep_training.nlp.layers.rope_scale.patch import *
+from deep_training.nlp.models.transformer import TransformerBase
 from transformers import AutoModelForSemanticSegmentation
 from ..auto.base_wapper import BaseModelWrapper
 from ...utils.transformer_utils import hf_decorator

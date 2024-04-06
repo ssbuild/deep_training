@@ -25,8 +25,8 @@ from transformers.utils import is_peft_available, WEIGHTS_NAME, SAFE_WEIGHTS_NAM
 from packaging import version
 from ...data_helper.training_args import TrainingArguments, DataArguments, \
     ModelArguments, TrainingArgumentsHF
-from ...models.models.petl import PetlModel
-from ...models.models.petl.prompt import PromptModel
+from ...nlp.models.petl import PetlModel
+from ...nlp.models.petl.prompt import PromptModel
 from transformers.trainer import logger
 
 if is_peft_available:

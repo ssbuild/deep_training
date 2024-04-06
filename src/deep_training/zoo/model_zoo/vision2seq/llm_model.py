@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # @Author  : ssbuild
 # @Time    : 2023/10/24 11:09
-from deep_training.models.layers.rope_scale.patch import *
-from deep_training.models.models.transformer import TransformerBase
+from deep_training.nlp.layers.rope_scale.patch import *
+from deep_training.nlp.models.transformer import TransformerBase
 from transformers import AutoModelForVision2Seq
 from ..auto.base_wapper import BaseModelWrapper
 from ...utils.transformer_utils import hf_decorator

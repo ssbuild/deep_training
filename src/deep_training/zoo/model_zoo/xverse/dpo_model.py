@@ -2,12 +2,12 @@
 # @Author  : ssbuild
 # @Time    : 2023/9/19 14:53
 import re
-from deep_training.models.layers.rope_scale.patch import *
+from deep_training.nlp.layers.rope_scale.patch import *
 from typing import List, Tuple, Optional,Any,Union
 import torch
 from torch import nn
-from deep_training.models.models.xverse.modeling_xverse import XverseForCausalLM,XverseConfig # noqa
-from deep_training.models.models.transformer import TransformerBase
+from deep_training.nlp.models.xverse.modeling_xverse import XverseForCausalLM,XverseConfig # noqa
+from deep_training.nlp.models.transformer import TransformerBase
 from transformers import GenerationConfig
 
 from ..auto.base_wapper import BaseModelWrapper

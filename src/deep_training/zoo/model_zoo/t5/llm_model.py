@@ -2,7 +2,7 @@
 # @Author  : tk
 # @FileName: models
 
-from deep_training.models.models.transformer import TransformerForSeq2SeqLM
+from deep_training.nlp.models.transformer import TransformerForSeq2SeqLM
 
 from ..auto.base_wapper import BaseModelWrapper
 from ...utils.transformer_utils import hf_decorator

@@ -3,8 +3,8 @@
 # @Author  : tk
 # @FileName: llm_model
 import torch
-from deep_training.models.layers.rope_scale.patch import *
-from deep_training.models.models.yi.modeling_yi import YiForCausalLM,YiConfig
+from deep_training.nlp.layers.rope_scale.patch import *
+from deep_training.nlp.models.yi.modeling_yi import YiForCausalLM,YiConfig
 
 from ..auto.base_wapper import BaseModelWrapper
 from ...utils.dpo_utils import DpoModule

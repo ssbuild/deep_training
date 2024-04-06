@@ -9,9 +9,9 @@ import re
 import warnings
 from typing import List, Tuple, Optional, Callable
 import torch
-from deep_training.models.layers.rope_scale.patch import *
-from deep_training.models.models.chatglm2.modeling_chatglm import ChatGLMForConditionalGeneration,ChatGLMConfig,setup_model_profile
-from deep_training.models.models.transformer import TransformerBase
+from deep_training.nlp.layers.rope_scale.patch import *
+from deep_training.nlp.models.chatglm2.modeling_chatglm import ChatGLMForConditionalGeneration,ChatGLMConfig,setup_model_profile
+from deep_training.nlp.models.transformer import TransformerBase
 from torch import nn
 from transformers import LogitsProcessorList, LogitsProcessor, GenerationConfig, StoppingCriteriaList
 from .tokenization_chatglm import ChatGLMTokenizer

@@ -2,9 +2,9 @@
 # @Author  : ssbuild
 # @Time    : 2023/5/29 9:52
 import torch
-from deep_training.models.rl.ilql.configuration import ILQLArguments, ILQLConfig
-from deep_training.models.rl.ilql.ilql_module import ILQLModelLoss
-from deep_training.models.models.rl.modeling_ilql import AutoModelForCausalLMWithILQLHeads
+from deep_training.nlp.rl.ilql.configuration import ILQLArguments, ILQLConfig
+from deep_training.nlp.rl.ilql.ilql_module import ILQLModelLoss
+from deep_training.nlp.models.rl.modeling_ilql import AutoModelForCausalLMWithILQLHeads
 from transformers import AdamW
 
 from ..auto.base_wapper import BaseModelWrapper

@@ -10,10 +10,10 @@ import warnings
 from typing import List, Tuple, Optional, Callable, Dict, Union
 import torch
 from torch import nn
-from deep_training.models.layers.rope_scale.patch import *
-from deep_training.models.models.chatglm import ChatGLMForConditionalGeneration,ChatGLMConfig,setup_model_profile # noqa
-from deep_training.models.models.transformer import TransformerBase
-from deep_training.models.losses.loss_dpo import dpo_loss
+from deep_training.nlp.layers.rope_scale.patch import *
+from deep_training.nlp.models.chatglm import ChatGLMForConditionalGeneration,ChatGLMConfig,setup_model_profile # noqa
+from deep_training.nlp.models.transformer import TransformerBase
+from deep_training.nlp.losses.loss_dpo import dpo_loss
 from .generation_utils import build_masks_and_position_ids_glm
 from .tokenization_chatglm import ChatGLMTokenizer
 from ..auto.base_wapper import BaseModelWrapper

@@ -3,7 +3,7 @@
 # @Time    : 2023/5/29 15:32
 import torch
 from torch import nn
-from deep_training.models.models.transformer import TransformerForSeq2SeqLM
+from deep_training.nlp.models.transformer import TransformerForSeq2SeqLM
 
 from ..auto.base_wapper import BaseModelWrapper
 from ...utils.transformer_utils import hf_decorator

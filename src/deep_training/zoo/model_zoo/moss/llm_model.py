@@ -2,13 +2,13 @@
 # @Author  : ssbuild
 # @Time    : 2023/5/29 16:14
 import re
-from deep_training.models.layers.rope_scale.patch import *
+from deep_training.nlp.layers.rope_scale.patch import *
 from typing import List, Tuple
 import torch
 from torch import nn
-from deep_training.models.models.moss import MossForCausalLM,MossConfig # noqa
+from deep_training.nlp.models.moss import MossForCausalLM,MossConfig # noqa
 from .tokenization_moss import MossTokenizer # noqa
-from deep_training.models.models.transformer import TransformerBase
+from deep_training.nlp.models.transformer import TransformerBase
 
 from ..auto.base_wapper import BaseModelWrapper
 from ...weight.modelweighter import *

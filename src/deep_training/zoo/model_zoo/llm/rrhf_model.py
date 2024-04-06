@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/5/18 16:41
 import torch
-from deep_training.models.models.transformer import TransformerForCausalLM
+from deep_training.nlp.models.transformer import TransformerForCausalLM
 from torch.nn import functional as F
 
 from ..auto.base_wapper import BaseModelWrapper

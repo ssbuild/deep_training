@@ -2,7 +2,7 @@
 # @Author  : ssbuild
 # @Time    : 2023/9/20 10:15
 import re
-from deep_training.models.models.petl import PetlModel,get_prompt_model, PromptModel
+from deep_training.nlp.models.petl import PetlModel,get_prompt_model, PromptModel
 from torch import nn
 from transformers import PreTrainedModel
 

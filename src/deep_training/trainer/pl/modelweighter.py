@@ -9,8 +9,8 @@ import torch
 from torch import nn
 from transformers import PreTrainedModel, HfArgumentParser, AutoConfig
 from ...data_helper import ModelArguments, TrainingArguments, DataArguments
-from ...models.models.petl import PetlModel, PetlArguments, LoraConfig, AdaLoraConfig, IA3Config,PromptLearningConfig, PromptModel,PromptArguments,get_prompt_model
-from ...models.models.transformer_base import TransformerBase
+from ...nlp.models.petl import PetlModel, PetlArguments, LoraConfig, AdaLoraConfig, IA3Config,PromptLearningConfig, PromptModel,PromptArguments,get_prompt_model
+from ...nlp.models.transformer_base import TransformerBase
 from ...utils.save_checkpoint import save_checkpoint_to_hf_format
 
 __all__ = [

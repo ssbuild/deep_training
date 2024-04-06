@@ -5,8 +5,8 @@
 
 import torch
 from torch import nn
-from deep_training.models.layers.rope_scale.patch import *
-from deep_training.models.models.rwkv4.modeling_rwkv import TransformerRWKV4LMHeadModel, RwkvConfig, set_model_profile, \
+from deep_training.nlp.layers.rope_scale.patch import *
+from deep_training.nlp.models.rwkv4.modeling_rwkv import TransformerRWKV4LMHeadModel, RwkvConfig, set_model_profile, \
     RwkvForCausalLM
 
 from ..auto.base_wapper import BaseModelWrapper

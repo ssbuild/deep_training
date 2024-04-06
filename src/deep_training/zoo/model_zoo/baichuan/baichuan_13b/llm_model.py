@@ -5,8 +5,8 @@
 import typing
 from typing import Optional, List,Union,Any
 import torch
-from deep_training.models.models.baichuan_13b.modeling_baichuan import BaichuanForCausalLM,TransformerBaichuanLMHeadModel,BaichuanConfig,setup_model_profile
-from deep_training.models.models.transformer_base import TransformerBase
+from deep_training.nlp.models.baichuan_13b.modeling_baichuan import BaichuanForCausalLM,TransformerBaichuanLMHeadModel,BaichuanConfig,setup_model_profile
+from deep_training.nlp.models.transformer_base import TransformerBase
 from transformers import GenerationConfig
 
 from ...auto.base_wapper import BaseModelWrapper

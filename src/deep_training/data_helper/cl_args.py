@@ -14,8 +14,8 @@ from transformers.trainer_utils import EvaluationStrategy
 from transformers.training_args import default_logdir
 from transformers.utils import logging
 from .base_args import _ArgumentsBase
-from ..models.optimizer.optimizer import OptimizerNames
-from ..models.scheduler.scheduler import SchedulerType
+from ..nlp.optimizer.optimizer import OptimizerNames
+from ..nlp.scheduler.scheduler import SchedulerType
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 

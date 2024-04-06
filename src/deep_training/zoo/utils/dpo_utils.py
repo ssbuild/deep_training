@@ -3,7 +3,7 @@
 # @Time    : 2023/9/19 14:36
 from typing import Dict, Tuple,Union,List
 import torch
-from deep_training.models.losses.loss_dpo import dpo_loss
+from deep_training.nlp.losses.loss_dpo import dpo_loss
 from torch import nn
 
 class DpoModule:

@@ -5,8 +5,8 @@
 from typing import Any
 
 import torch
-from deep_training.models.layers.rope_scale.patch import *
-from deep_training.models.models.transformer import TransformerForCausalLM
+from deep_training.nlp.layers.rope_scale.patch import *
+from deep_training.nlp.models.transformer import TransformerForCausalLM
 from .base_wapper import BaseModelWrapper
 from ...utils.dpo_utils import DpoModule
 from ...utils.transformer_utils import hf_decorator
