@@ -15,6 +15,7 @@ install_requires = [
     'tensorboard',
     'tqdm',
     'six',
+    'pyyaml'
     'safetensors',
     'fastdatasets>=0.9.17',
 ]

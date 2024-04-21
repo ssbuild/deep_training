@@ -15,10 +15,10 @@ from transformers.modeling_utils import shard_checkpoint
 from transformers.utils import WEIGHTS_INDEX_NAME
 
 parser = argparse.ArgumentParser(description='convert to huggingface.')
-parser.add_argument('src',  type=str,help='src model file or path')
-parser.add_argument('dst',  type=str,help='dst model path')
-parser.add_argument('mode',  choices=['hf', 'safetensors'], default="safetensors", help='dst model file')
-parser.add_argument('max_shard_size',default="10GB", help='max size per block')
+parser.add_argument('--src',  type=str,help='src model file or path')
+parser.add_argument('--dst',  type=str,help='dst model path')
+parser.add_argument('--mode',  choices=['hf', 'safetensors'], default="hf", help='dst model file')
+parser.add_argument('--max_shard_size',default="10GB", help='max size per block')
 
 args = parser.parse_args()
 
@@ -42,7 +42,7 @@ def convert2hf(weight):
             w[k] = v
     return w
 
-def main():
+def export():
     if model_file.endswith('.safetensors'):
         tensors = {}
         with safe_open(model_file, framework="pt", device='cpu') as f:
@@ -83,7 +83,7 @@ def main():
 
 
 def __main__():
-    main()
+    export()
 
 
 
