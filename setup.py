@@ -18,6 +18,7 @@ install_requires = [
     'pyyaml'
     'safetensors',
     'fastdatasets>=0.9.17',
+    'importlib_metadata',
 ]
 setup(
     name='deep_training',
