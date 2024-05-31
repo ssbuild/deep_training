@@ -24,9 +24,18 @@ from transformers import (
     AutoModelForAudioClassification,
     AutoModelForMaskedImageModeling,
     AutoModelForCausalLM,
+    AutoModelForVision2Seq,
     PretrainedConfig,
     AutoModel
 )
+
+try:
+
+    from transformers import (
+        AutoModelForVision2Seq,
+    )
+except:
+    AutoModelForVision2Seq = None
 
 from .transformer_base import TransformerBase,TransformerLightningModule,MyLightningModule
 from ..layers.mask import unilm_mask
@@ -79,6 +88,11 @@ class TransformerForCausalLM(TransformerBase):
         self.set_model(self.from_pretrained(model_class or AutoModelForCausalLM, *args, **kwargs))
 
 
+class TransformerForCausalVision2Seq(TransformerBase):
+    def __init__(self,*args: Any,model_class=None, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        assert AutoModelForVision2Seq is not None
+        self.set_model(self.from_pretrained(model_class or AutoModelForVision2Seq, *args, **kwargs))
 
 
 class TransformerForMaskLM(TransformerBase):
