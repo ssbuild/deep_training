@@ -17,6 +17,9 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
 
   
 ## update
+- <strong>2024-06-10</strong>
+   - 0.3.1 support glm4,glm4v
+
 - <strong>2024-02-15</strong>
    - 0.2.11 support internlm2
 
