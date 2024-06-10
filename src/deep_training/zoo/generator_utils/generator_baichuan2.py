@@ -7,7 +7,7 @@ from transformers import GenerationConfig, PreTrainedModel
 from .generator_base import GeneratorBase
 
 class Generate(GeneratorBase):
-    def build_tokens(self, messages: List[dict], max_new_tokens: int=0):
+    def build_tokens(self, messages: List[dict], max_new_tokens: int=0,**kwargs):
         max_new_tokens = max_new_tokens or self.generation_config.max_new_tokens
         max_input_tokens = self.config.model_max_length - max_new_tokens
         max_input_tokens = max(self.config.model_max_length // 2, max_input_tokens)

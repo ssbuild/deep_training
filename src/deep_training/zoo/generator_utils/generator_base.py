@@ -7,19 +7,20 @@ from transformers import PreTrainedModel, BatchEncoding
 
 
 class GeneratorBase:
-    def __init__(self,model : PreTrainedModel,tokenizer,**kwargs):
+    def __init__(self,model : PreTrainedModel,tokenizer,image_processor=None,**kwargs):
         self.model = model
         self.tokenizer = tokenizer
         self.config = kwargs.get('config',None) or self.model.config
         self.generation_config = kwargs.get('generation_config',None) or getattr(self.model,'generation_config',None)
         self.model_max_length = kwargs.get('model_max_length',None) or getattr(self.config,'model_max_length',None) or 65535
+        self.image_processor = image_processor
         self.kwargs = kwargs
 
 
     def preprocess_inputs(self,query,history = None,**kwargs):
         return query,history or []
 
-    def build_tokens(self,prompt,max_new_tokens=0):
+    def build_tokens(self,prompt,max_new_tokens=0,**kwargs):
         length = self.model_max_length - max_new_tokens
         assert length > 0
         inputs = self.tokenizer([prompt], return_tensors="pt")

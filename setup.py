@@ -18,10 +18,11 @@ install_requires = [
     'pyyaml',
     'safetensors',
     'fastdatasets>=0.9.17',
+    'importlib_metadata',
 ]
 setup(
     name='deep_training',
-    version='0.3.0',
+    version='0.3.1',
     description='an easy training architecture',
     long_description='torch_training: https://github.com/ssbuild/deep_training.git',
     license='Apache License 2.0',
