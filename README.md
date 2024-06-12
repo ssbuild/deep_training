@@ -18,10 +18,11 @@ pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --forc
   
 ## update
 - <strong>2024-06-10</strong>
-   - 0.3.1 support glm4,glm4v
+   - 0.3.1 support glm4 https://github.com/ssbuild/glm4_finetuning 
+   glm4v https://github.com/ssbuild/glm4v_finetuning 
 
 - <strong>2024-02-15</strong>
-   - 0.2.11 support internlm2
+   - 0.2.11 support internlm2 https://github.com/ssbuild/internlm2_finetuning
 
 - <strong>2023-12-02</strong>
    - 0.2.10 update qwen model for 1.8b 7b 14b 72b
