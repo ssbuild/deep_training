@@ -64,15 +64,14 @@ class MyChatGLMForConditionalGeneration(ChatGLMForConditionalGeneration):
 
     @torch.inference_mode()
     def chat(self, tokenizer, query: str, history: List[Dict] = None, role: str = "user", image=None,
-             max_length: int = 8192, num_beams=1, do_sample=True, top_p=0.8, temperature=0.8, logits_processor=None,
+             logits_processor=None,
              **kwargs):
         if history is None:
             history = []
         if logits_processor is None:
             logits_processor = LogitsProcessorList()
         logits_processor.append(InvalidScoreLogitsProcessor())
-        gen_kwargs = {"max_length": max_length, "num_beams": num_beams, "do_sample": do_sample, "top_p": top_p,
-                      "temperature": temperature, "logits_processor": logits_processor, **kwargs}
+        gen_kwargs = {"logits_processor": logits_processor, **kwargs}
         message = {"role": role, "content": query}
         if image is not None:
             message["image"] = image
@@ -90,7 +89,7 @@ class MyChatGLMForConditionalGeneration(ChatGLMForConditionalGeneration):
 
     @torch.inference_mode()
     def stream_chat(self, tokenizer, query: str, history: List[Dict] = None, role: str = "user", image=None,
-                    past_key_values=None, max_length: int = 8192, do_sample=True, top_p=0.8, temperature=0.8,
+                    past_key_values=None, 
                     logits_processor=None, return_past_key_values=False, **kwargs):
         if history is None:
             history = []
@@ -99,8 +98,7 @@ class MyChatGLMForConditionalGeneration(ChatGLMForConditionalGeneration):
         logits_processor.append(InvalidScoreLogitsProcessor())
         eos_token_id = [tokenizer.eos_token_id, tokenizer.convert_tokens_to_ids("<|user|>"),
                         tokenizer.convert_tokens_to_ids("<|observation|>")]
-        gen_kwargs = {"max_length": max_length, "do_sample": do_sample, "top_p": top_p,
-                      "temperature": temperature, "logits_processor": logits_processor, **kwargs}
+        gen_kwargs = {"logits_processor": logits_processor, **kwargs}
         message = {"role": role, "content": "query"}
         if image is not None:
             message["image"] = image
