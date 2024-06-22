@@ -369,7 +369,7 @@ Create a model factory, lightweight and efficient training program and make it e
 
 
 ## discuss
-QQ group：185144988
+QQ group：821096761
 
 
 ## Star History
