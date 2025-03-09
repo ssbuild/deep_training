@@ -19,10 +19,11 @@ install_requires = [
     'safetensors',
     'fastdatasets>=0.9.17',
     'importlib_metadata',
+    'huggingface_hub',
 ]
 setup(
     name='deep_training',
-    version='0.3.1',
+    version='0.3.2rc1',
     description='an easy training architecture',
     long_description='torch_training: https://github.com/ssbuild/deep_training.git',
     license='Apache License 2.0',

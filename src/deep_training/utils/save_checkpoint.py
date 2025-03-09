@@ -6,10 +6,10 @@ import json
 import os
 import typing
 import torch
-from transformers import PretrainedConfig,PreTrainedModel
-from transformers.modeling_utils import shard_checkpoint
-from transformers.utils import WEIGHTS_INDEX_NAME
 
+from transformers import PretrainedConfig,PreTrainedModel
+from huggingface_hub import save_torch_state_dict
+from transformers.utils import WEIGHTS_INDEX_NAME
 
 def save_checkpoint_to_hf_format(
         model: typing.Optional[typing.Union[PreTrainedModel,typing.Any]],

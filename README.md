@@ -6,7 +6,6 @@
 - pip install -U deep_training
 - 源码安装
 ```text
-pip uninstall deep_training
 pip install -U git+https://github.com/ssbuild/deep_training.git
 ```
 
