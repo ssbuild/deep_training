@@ -14,6 +14,7 @@ pip install -U git+https://github.com/ssbuild/deep_training.git
 pip install -U git+https://github.com/ssbuild/deep_training.git --no-deps --force-reinstall
 ```
 
+## support python 3.10 3.11 3.12 3.13
   
 ## update
 - <strong>2024-06-10</strong>
